@@ -1,6 +1,6 @@
 # Datadog Sandbox Terraform Catalog for AWS Infrastructure
 
-## 📋 Table of Contents
+## Table of Contents
 
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)
