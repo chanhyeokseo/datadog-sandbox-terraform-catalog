@@ -3,7 +3,6 @@
 # # ============================================
 
 # # User data script for running Datadog agent container
-# # Note: Docker is pre-installed in Amazon Linux 2023
 # locals {
 #   docker_datadog_user_data = <<-EOF
 #     #!/bin/bash
