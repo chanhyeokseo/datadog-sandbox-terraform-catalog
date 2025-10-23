@@ -175,30 +175,13 @@ resource "aws_route_table_association" "private_assoc" {
 }
 
 # ============================================
-# Security Groups
+# Security Groups (Shared)
 # ============================================
 
-# Security Group for SSH access
-resource "aws_security_group" "ec2" {
-  name        = "${local.vpc_name_prefix}-ec2-sg"
-  description = "Security group for EC2 access"
+resource "aws_security_group" "shared_base" {
+  name        = "${local.vpc_name_prefix}-shared-base-sg"
+  description = "Shared base security group with common egress rules"
   vpc_id      = aws_vpc.main.id
-
-  ingress {
-    description = "Allow SSH from my IP"
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = [local.my_ip_cidr]
-  }
-
-  ingress {
-    description = "Allow UDP from my IP"
-    from_port   = 8125
-    to_port     = 8125
-    protocol    = "udp"
-    cidr_blocks = [local.my_ip_cidr]
-  }
 
   egress {
     description = "Allow all outbound traffic"
@@ -215,27 +198,8 @@ resource "aws_security_group" "ec2" {
   tags = merge(
     local.vpc_common_tags,
     {
-      Name = "${local.vpc_name_prefix}-ec2-sg"
+      Name        = "${local.vpc_name_prefix}-shared-base-sg"
+      Description = "Shared base security group - do not add user-specific rules here"
     }
   )
-
-}
-
-# ============================================
-# Outputs
-# ============================================
-
-output "vpc_id" {
-  description = "ID of the VPC"
-  value       = aws_vpc.main.id
-}
-
-output "ssh_security_group_id" {
-  description = "Security group ID for EC2 access"
-  value       = aws_security_group.ec2.id
-}
-
-output "my_public_ip" {
-  description = "Your detected public IP address"
-  value       = local.my_ip_cidr
 }

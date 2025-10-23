@@ -62,9 +62,9 @@ echo "Public Route Table ID: $PUBLIC_RT_ID"
 PRIVATE_RT_ID=$(get_resource_id "route-tables" "tag:Name" "${VPC_NAME_PREFIX}-private-rt" 'RouteTables[0].RouteTableId')
 echo "Private Route Table ID: $PRIVATE_RT_ID"
 
-# Get Security Group ID
-SG_ID=$(get_resource_id "security-groups" "tag:Name" "${VPC_NAME_PREFIX}-ec2-sg" 'SecurityGroups[0].GroupId')
-echo "Security Group ID: $SG_ID"
+# Get Security Group ID (shared base)
+SG_ID=$(get_resource_id "security-groups" "tag:Name" "${VPC_NAME_PREFIX}-shared-base-sg" 'SecurityGroups[0].GroupId')
+echo "Shared Base Security Group ID: $SG_ID"
 
 echo ""
 echo "Step 2: Verifying all resources found..."
@@ -163,9 +163,9 @@ terraform import aws_route_table_association.public2_assoc "$PUBLIC_SUBNET_2_ID/
 echo "Importing Private Subnet Route Table Association..."
 terraform import aws_route_table_association.private_assoc "$PRIVATE_SUBNET_1_ID/$PRIVATE_RT_ID" || echo "⚠️  Private Subnet association already imported or failed"
 
-# Import Security Group
-echo "Importing EC2 Security Group..."
-terraform import aws_security_group.ec2 "$SG_ID" || echo "⚠️  Security Group already imported or failed"
+# Import Shared Base Security Group
+echo "Importing Shared Base Security Group..."
+terraform import aws_security_group.shared_base "$SG_ID" || echo "⚠️  Shared Base Security Group already imported or failed"
 
 echo ""
 echo "=========================================="
