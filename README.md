@@ -1,7 +1,5 @@
 # Datadog Sandbox Terraform Caralog for AWS Infrastructure
 
-This Terraform configuration manages AWS infrastructure including VPC, subnets, security groups, and EC2 instances.
-
 ## 📋 Table of Contents
 
 - [Prerequisites](#prerequisites)
