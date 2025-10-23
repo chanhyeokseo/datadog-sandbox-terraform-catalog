@@ -1,4 +1,4 @@
-# Datadog Sandbox Terraform Caralog for AWS Infrastructure
+# Datadog Sandbox Terraform Catalog for AWS Infrastructure
 
 ## 📋 Table of Contents
 
