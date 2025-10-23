@@ -47,3 +47,15 @@ variable "ec2_key_name" {
   type        = string
 }
 
+# Datadog Configuration
+variable "datadog_api_key" {
+  description = "Datadog API key for agent authentication"
+  type        = string
+  sensitive   = true
+}
+
+variable "datadog_site" {
+  description = "Datadog site (e.g., datadoghq.com, datadoghq.eu, us3.datadoghq.com)"
+  type        = string
+  default     = "datadoghq.com"
+}
