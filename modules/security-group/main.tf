@@ -1,12 +1,11 @@
 # ============================================
-# Security Groups
+# Personal Security Group Module
 # ============================================
 
-# Personal Security Group for EC2 access
-resource "aws_security_group" "personal_ec2" {
-  name        = "${local.project_name_prefix}-personal-sg"
+resource "aws_security_group" "personal" {
+  name        = "${var.name_prefix}-personal-sg"
   description = "Personal security group for ${var.project_name} EC2 access"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = var.vpc_id
 
   # SSH access from your IP
   ingress {
@@ -14,7 +13,7 @@ resource "aws_security_group" "personal_ec2" {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = [local.my_ip_cidr]
+    cidr_blocks = [var.my_ip_cidr]
   }
 
   egress {
@@ -26,9 +25,10 @@ resource "aws_security_group" "personal_ec2" {
   }
 
   tags = merge(
-    local.project_common_tags,
+    var.common_tags,
     {
-      Name = "${local.project_name_prefix}-personal-sg"
+      Name = "${var.name_prefix}-personal-sg"
     }
   )
 }
+

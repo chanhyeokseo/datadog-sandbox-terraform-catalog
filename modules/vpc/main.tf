@@ -1,6 +1,8 @@
 # ============================================
-# VPC
+# VPC Module
 # ============================================
+
+# VPC
 resource "aws_vpc" "main" {
   cidr_block           = var.vpc_cidr
   enable_dns_support   = true
@@ -11,16 +13,14 @@ resource "aws_vpc" "main" {
   }
   
   tags = merge(
-    local.vpc_common_tags,
+    var.common_tags,
     {
-      Name = "${local.vpc_name_prefix}-vpc"
+      Name = "${var.name_prefix}-vpc"
     }
   )
 }
 
-# ============================================
 # Internet Gateway
-# ============================================
 resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.main.id
   
@@ -29,21 +29,17 @@ resource "aws_internet_gateway" "igw" {
   }
   
   tags = merge(
-    local.vpc_common_tags,
+    var.common_tags,
     {
-      Name = "${local.vpc_name_prefix}-igw"
+      Name = "${var.name_prefix}-igw"
     }
   )
 }
 
-# ============================================
-# Subnets
-# ============================================
-
 # Public Subnet 1
 resource "aws_subnet" "public" {
   vpc_id                  = aws_vpc.main.id
-  cidr_block              = local.public_subnet_cidr
+  cidr_block              = var.public_subnet_cidr
   map_public_ip_on_launch = true
   
   lifecycle {
@@ -51,9 +47,9 @@ resource "aws_subnet" "public" {
   }
   
   tags = merge(
-    local.vpc_common_tags,
+    var.common_tags,
     {
-      Name = "${local.vpc_name_prefix}-public-subnet-1"
+      Name = "${var.name_prefix}-public-subnet-1"
     }
   )
 }
@@ -61,7 +57,7 @@ resource "aws_subnet" "public" {
 # Public Subnet 2
 resource "aws_subnet" "public2" {
   vpc_id                  = aws_vpc.main.id
-  cidr_block              = local.public_subnet2_cidr
+  cidr_block              = var.public_subnet2_cidr
   map_public_ip_on_launch = true
   
   lifecycle {
@@ -69,9 +65,9 @@ resource "aws_subnet" "public2" {
   }
   
   tags = merge(
-    local.vpc_common_tags,
+    var.common_tags,
     {
-      Name = "${local.vpc_name_prefix}-public-subnet-2"
+      Name = "${var.name_prefix}-public-subnet-2"
     }
   )
 }
@@ -79,23 +75,19 @@ resource "aws_subnet" "public2" {
 # Private Subnet
 resource "aws_subnet" "private" {
   vpc_id     = aws_vpc.main.id
-  cidr_block = local.private_subnet_cidr
+  cidr_block = var.private_subnet_cidr
   
   lifecycle {
     prevent_destroy = true
   }
   
   tags = merge(
-    local.vpc_common_tags,
+    var.common_tags,
     {
-      Name = "${local.vpc_name_prefix}-private-subnet-1"
+      Name = "${var.name_prefix}-private-subnet-1"
     }
   )
 }
-
-# ============================================
-# Route Tables
-# ============================================
 
 # Public Route Table
 resource "aws_route_table" "public" {
@@ -106,16 +98,12 @@ resource "aws_route_table" "public" {
   }
   
   tags = merge(
-    local.vpc_common_tags,
+    var.common_tags,
     {
-      Name = "${local.vpc_name_prefix}-public-rt"
+      Name = "${var.name_prefix}-public-rt"
     }
   )
 }
-
-# ============================================
-# Routes and Route Table Associations
-# ============================================
 
 # Route to IGW in public route table
 resource "aws_route" "public_internet_access" {
@@ -128,7 +116,7 @@ resource "aws_route" "public_internet_access" {
   }
 }
 
-# Associate public subnet with public route table
+# Associate public subnet 1 with public route table
 resource "aws_route_table_association" "public_assoc" {
   subnet_id      = aws_subnet.public.id
   route_table_id = aws_route_table.public.id
@@ -157,9 +145,9 @@ resource "aws_route_table" "private" {
   }
   
   tags = merge(
-    local.vpc_common_tags,
+    var.common_tags,
     {
-      Name = "${local.vpc_name_prefix}-private-rt"
+      Name = "${var.name_prefix}-private-rt"
     }
   )
 }
@@ -174,12 +162,9 @@ resource "aws_route_table_association" "private_assoc" {
   }
 }
 
-# ============================================
-# Security Groups (Shared)
-# ============================================
-
+# Shared Base Security Group
 resource "aws_security_group" "shared_base" {
-  name        = "${local.vpc_name_prefix}-shared-base-sg"
+  name        = "${var.name_prefix}-shared-base-sg"
   description = "Shared base security group with common egress rules"
   vpc_id      = aws_vpc.main.id
 
@@ -196,10 +181,11 @@ resource "aws_security_group" "shared_base" {
   }
 
   tags = merge(
-    local.vpc_common_tags,
+    var.common_tags,
     {
-      Name        = "${local.vpc_name_prefix}-shared-base-sg"
+      Name        = "${var.name_prefix}-shared-base-sg"
       Description = "Shared base security group - do not add user-specific rules here"
     }
   )
 }
+
