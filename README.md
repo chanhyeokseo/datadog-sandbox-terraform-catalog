@@ -17,6 +17,9 @@
 
 ### First Time Setup (VPC Owner)
 
+> [!CAUTION]
+> DO NOT run below commands unless you are the owner of this environment setup. If you are a new user of this sandbox environment, navigate to 'For New Users: Importing Shared VPC' section.
+
 ```bash
 # 1. Configure AWS credentials
 aws configure
@@ -35,13 +38,16 @@ terraform apply
 
 **Quick Import (Automated):**
 ```bash
-# 1. Copy and edit variables
+# 1. Initialize
+terraform init
+
+# 2. Copy and edit variables
 cp terraform.tfvars.example terraform.tfvars
 
-# 2. Make script executable
+# 3. Make script executable
 chmod +x scripts/import-vpc.sh
 
-# 3. Run import script
+# 4. Run import script
 ./scripts/import-vpc.sh
 ```
 

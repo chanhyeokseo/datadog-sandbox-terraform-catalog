@@ -5,6 +5,11 @@ resource "aws_vpc" "main" {
   cidr_block           = var.vpc_cidr
   enable_dns_support   = true
   enable_dns_hostnames = true
+  
+  lifecycle {
+    prevent_destroy = true
+  }
+  
   tags = merge(
     local.vpc_common_tags,
     {
@@ -18,6 +23,11 @@ resource "aws_vpc" "main" {
 # ============================================
 resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.main.id
+  
+  lifecycle {
+    prevent_destroy = true
+  }
+  
   tags = merge(
     local.vpc_common_tags,
     {
@@ -35,6 +45,11 @@ resource "aws_subnet" "public" {
   vpc_id                  = aws_vpc.main.id
   cidr_block              = local.public_subnet_cidr
   map_public_ip_on_launch = true
+  
+  lifecycle {
+    prevent_destroy = true
+  }
+  
   tags = merge(
     local.vpc_common_tags,
     {
@@ -48,6 +63,11 @@ resource "aws_subnet" "public2" {
   vpc_id                  = aws_vpc.main.id
   cidr_block              = local.public_subnet2_cidr
   map_public_ip_on_launch = true
+  
+  lifecycle {
+    prevent_destroy = true
+  }
+  
   tags = merge(
     local.vpc_common_tags,
     {
@@ -60,6 +80,11 @@ resource "aws_subnet" "public2" {
 resource "aws_subnet" "private" {
   vpc_id     = aws_vpc.main.id
   cidr_block = local.private_subnet_cidr
+  
+  lifecycle {
+    prevent_destroy = true
+  }
+  
   tags = merge(
     local.vpc_common_tags,
     {
@@ -75,6 +100,11 @@ resource "aws_subnet" "private" {
 # Public Route Table
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
+  
+  lifecycle {
+    prevent_destroy = true
+  }
+  
   tags = merge(
     local.vpc_common_tags,
     {
@@ -92,23 +122,40 @@ resource "aws_route" "public_internet_access" {
   route_table_id         = aws_route_table.public.id
   destination_cidr_block = "0.0.0.0/0"
   gateway_id             = aws_internet_gateway.igw.id
+  
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 # Associate public subnet with public route table
 resource "aws_route_table_association" "public_assoc" {
   subnet_id      = aws_subnet.public.id
   route_table_id = aws_route_table.public.id
+  
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 # Associate public subnet 2 with public route table
 resource "aws_route_table_association" "public2_assoc" {
   subnet_id      = aws_subnet.public2.id
   route_table_id = aws_route_table.public.id
+  
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 # Private Route Table
 resource "aws_route_table" "private" {
   vpc_id = aws_vpc.main.id
+  
+  lifecycle {
+    prevent_destroy = true
+  }
+  
   tags = merge(
     local.vpc_common_tags,
     {
@@ -121,6 +168,10 @@ resource "aws_route_table" "private" {
 resource "aws_route_table_association" "private_assoc" {
   subnet_id      = aws_subnet.private.id
   route_table_id = aws_route_table.private.id
+  
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 # ============================================
@@ -155,6 +206,10 @@ resource "aws_security_group" "ec2" {
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
+  }
+  
+  lifecycle {
+    prevent_destroy = true
   }
 
   tags = merge(
