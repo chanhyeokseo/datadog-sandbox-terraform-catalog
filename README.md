@@ -12,8 +12,7 @@
 - Terraform
 - AWS Account
 - AWS CLI configured
-- Docker (for building container images)
-- Docker Buildx (for multi-platform builds)
+- Docker (only required when building container images)
 
 ## Quick Start
 
