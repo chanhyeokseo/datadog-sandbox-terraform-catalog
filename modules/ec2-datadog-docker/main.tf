@@ -26,6 +26,19 @@ locals {
     
     echo "=== Starting Datadog Docker Agent Setup ==="
 
+    # Install Docker
+    echo "Installing Docker..."
+    yum update -y
+    yum install -y docker
+    
+    # Start Docker service
+    echo "Starting Docker service..."
+    systemctl start docker
+    systemctl enable docker
+    
+    # Add ec2-user to docker group
+    usermod -a -G docker ec2-user
+
     # Run Datadog Agent container
     echo "Starting Datadog Agent container..."
     docker run -d \
@@ -59,6 +72,21 @@ resource "aws_instance" "datadog_host" {
 
   # Ensure user data runs on change
   user_data_replace_on_change = true
+
+  # EBS root volume configuration
+  root_block_device {
+    volume_size           = 5
+    volume_type           = "gp3"
+    delete_on_termination = true
+    encrypted             = true
+
+    tags = merge(
+      var.common_tags,
+      {
+        Name = "${var.name_prefix}-docker-datadog-host-root"
+      }
+    )
+  }
 
   tags = merge(
     var.common_tags,

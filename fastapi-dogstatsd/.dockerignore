@@ -1,0 +1,10 @@
+README.md
+build-and-push.sh
+.git
+.gitignore
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+

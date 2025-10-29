@@ -1,4 +1,4 @@
-# Datadog Sandbox Terraform Catalog for AWS Infrastructure
+# DogSTAC: Datadog Sandbox manager with Terraform AWS Catalog
 
 ## Table of Contents
 
@@ -12,6 +12,8 @@
 - Terraform
 - AWS Account
 - AWS CLI configured
+- Docker (for building container images)
+- Docker Buildx (for multi-platform builds)
 
 ## Quick Start
 
