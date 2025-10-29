@@ -4,7 +4,6 @@ import os
 
 app = FastAPI()
 
-# Configure Datadog
 options = {
     "statsd_host": os.getenv("DD_AGENT_HOST", "localhost"),
     "statsd_port": int(os.getenv("DD_DOGSTATSD_PORT", 8125)),
