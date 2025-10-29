@@ -1,4 +1,4 @@
-# DogSTAC: Datadog Sandbox manager with Terraform AWS Catalog
+# DogSTAC: Datadog Sandbox with Terraform AWS Catalog
 
 ## Table of Contents
 
