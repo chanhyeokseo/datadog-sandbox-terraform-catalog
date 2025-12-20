@@ -67,7 +67,7 @@
 # }
 
 # # ============================================
-# # EC2 Windows 2016 Instance Module
+# # EC2 Windows Server 2016 Instance Module
 # # ============================================
 # module "ec2_windows_2016" {
 #   source = "./modules/ec2-basic"
