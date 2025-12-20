@@ -14,9 +14,8 @@ variable "instance_type" {
 }
 
 variable "custom_ami_id" {
-  description = "Custom AMI ID (optional, defaults to latest Amazon Linux 2023)"
+  description = "AMI ID for the EC2 instance"
   type        = string
-  default     = ""
 }
 
 variable "subnet_id" {

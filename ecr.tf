@@ -55,12 +55,12 @@
 #     command     = <<-EOT
 #       set -e
 #       echo "=== Building and Pushing Docker Image ==="
-      
+
 #       # Login to ECR
 #       echo "Logging in to ECR..."
 #       aws ecr get-login-password --region ${data.aws_region.current.name} | \
 #         docker login --username AWS --password-stdin ${data.aws_caller_identity.current.account_id}.dkr.ecr.${data.aws_region.current.name}.amazonaws.com
-      
+
 #       # Build and push image for linux/amd64 (required for ECS Fargate)
 #       echo "Building and pushing Docker image..."
 #       docker buildx build \
@@ -68,7 +68,7 @@
 #         --push \
 #         -t ${aws_ecr_repository.fastapi_dogstatsd.repository_url}:latest \
 #         .
-      
+
 #       echo "=== Docker image pushed successfully ==="
 #       echo "Image URI: ${aws_ecr_repository.fastapi_dogstatsd.repository_url}:latest"
 #     EOT

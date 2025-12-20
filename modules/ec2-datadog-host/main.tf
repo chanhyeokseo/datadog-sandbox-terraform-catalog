@@ -2,23 +2,6 @@
 # EC2 Datadog Host-Based Module
 # ============================================
 
-# Data source for Amazon Linux 2023 AMI
-data "aws_ami" "amazon_linux_2023" {
-  most_recent = true
-  owners      = ["amazon"]
-
-  filter {
-    name   = "name"
-    values = ["al2023-ami-*-x86_64"]
-  }
-
-  filter {
-    name   = "virtualization-type"
-    values = ["hvm"]
-  }
-}
-
-# User data script for installing Datadog agent
 locals {
   datadog_user_data = <<-EOF
     #!/bin/bash
@@ -49,9 +32,8 @@ locals {
   EOF
 }
 
-# EC2 Instance with Host-Based Datadog Agent
 resource "aws_instance" "datadog_host" {
-  ami           = data.aws_ami.amazon_linux_2023.id
+  ami           = var.custom_ami_id
   instance_type = var.instance_type
 
   subnet_id                   = var.subnet_id
@@ -62,8 +44,11 @@ resource "aws_instance" "datadog_host" {
 
   user_data = local.datadog_user_data
 
-  # Ensure user data runs on change
   user_data_replace_on_change = true
+
+  lifecycle {
+    ignore_changes = [ami]
+  }
 
   tags = merge(
     var.common_tags,

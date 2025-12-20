@@ -2,23 +2,6 @@
 # EC2 Datadog Docker Module
 # ============================================
 
-# Data source for Amazon Linux 2023 AMI
-data "aws_ami" "amazon_linux_2023" {
-  most_recent = true
-  owners      = ["amazon"]
-
-  filter {
-    name   = "name"
-    values = ["al2023-ami-*-x86_64"]
-  }
-
-  filter {
-    name   = "virtualization-type"
-    values = ["hvm"]
-  }
-}
-
-# User data script for running Datadog agent container
 locals {
   docker_datadog_user_data = <<-EOF
     #!/bin/bash
@@ -51,15 +34,14 @@ locals {
       -v /proc/:/host/proc/:ro \
       -v /sys/fs/cgroup/:/host/sys/fs/cgroup:ro \
       -v /var/lib/docker/containers:/var/lib/docker/containers:ro \
-      gcr.io/datadoghq/agent:7
+      gcr.io/datadoghq/agent:7.72.1
     
     echo "=== Datadog Docker Agent Setup Complete ==="
   EOF
 }
 
-# EC2 Instance with Docker Datadog Agent
 resource "aws_instance" "datadog_host" {
-  ami           = data.aws_ami.amazon_linux_2023.id
+  ami           = var.custom_ami_id
   instance_type = var.instance_type
 
   subnet_id              = var.subnet_id
@@ -70,12 +52,14 @@ resource "aws_instance" "datadog_host" {
 
   user_data = local.docker_datadog_user_data
 
-  # Ensure user data runs on change
   user_data_replace_on_change = true
 
-  # EBS root volume configuration
+  lifecycle {
+    ignore_changes = [ami]
+  }
+
   root_block_device {
-    volume_size           = 5
+    volume_size           = 30
     volume_type           = "gp3"
     delete_on_termination = true
     encrypted             = true
@@ -95,4 +79,3 @@ resource "aws_instance" "datadog_host" {
     }
   )
 }
-

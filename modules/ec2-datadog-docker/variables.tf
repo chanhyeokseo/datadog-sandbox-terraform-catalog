@@ -13,6 +13,11 @@ variable "instance_type" {
   default     = "t3.micro"
 }
 
+variable "custom_ami_id" {
+  description = "AMI ID for the EC2 instance"
+  type        = string
+}
+
 variable "subnet_id" {
   description = "ID of the subnet where instance will be launched"
   type        = string

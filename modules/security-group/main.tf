@@ -16,6 +16,15 @@ resource "aws_security_group" "personal" {
     cidr_blocks = [var.my_ip_cidr]
   }
 
+  # RDP access from your IP
+  ingress {
+    description = "Allow RDP from my IP"
+    from_port   = 3389
+    to_port     = 3389
+    protocol    = "tcp"
+    cidr_blocks = [var.my_ip_cidr]
+  }
+
   # HTTP access for FastAPI app (open to world for testing)
   ingress {
     description = "Allow HTTP (8000) from anywhere"
@@ -49,4 +58,3 @@ resource "aws_security_group" "personal" {
     }
   )
 }
-

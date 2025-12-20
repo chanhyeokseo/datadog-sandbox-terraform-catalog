@@ -2,25 +2,8 @@
 # Basic EC2 Instance Module
 # ============================================
 
-# Data source for Amazon Linux 2023 AMI
-data "aws_ami" "amazon_linux_2023" {
-  most_recent = true
-  owners      = ["amazon"]
-
-  filter {
-    name   = "name"
-    values = ["al2023-ami-*-x86_64"]
-  }
-
-  filter {
-    name   = "virtualization-type"
-    values = ["hvm"]
-  }
-}
-
-# EC2 Instance
 resource "aws_instance" "host" {
-  ami           = var.custom_ami_id != "" ? var.custom_ami_id : data.aws_ami.amazon_linux_2023.id
+  ami           = var.custom_ami_id
   instance_type = var.instance_type
 
   subnet_id                   = var.subnet_id
@@ -31,6 +14,10 @@ resource "aws_instance" "host" {
 
   user_data                   = var.user_data
   user_data_replace_on_change = var.user_data_replace_on_change
+
+  lifecycle {
+    ignore_changes = [ami]
+  }
 
   tags = merge(
     var.common_tags,
