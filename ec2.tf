@@ -10,7 +10,7 @@
 
 #   name_prefix        = local.project_name_prefix
 #   instance_type      = var.ec2_instance_type
-#   subnet_id          = module.vpc.public_subnet_id
+#   subnet_id          = local.vpc.public_subnet_id
 #   security_group_ids = [module.security_group.security_group_id]
 #   key_name           = var.ec2_key_name
 #   custom_ami_id      = data.aws_ami.amazon_linux_2023.id
@@ -42,7 +42,7 @@
 
 #   name_prefix        = "${local.project_name_prefix}-windows"
 #   instance_type      = "t3.medium"
-#   subnet_id          = module.vpc.public_subnet_id
+#   subnet_id          = local.vpc.public_subnet_id
 #   security_group_ids = [module.security_group.security_group_id]
 #   key_name           = var.ec2_key_name
 #   custom_ami_id      = data.aws_ami.windows_2025.id
@@ -66,37 +66,37 @@
 #   value       = "Use RDP to connect to ${module.ec2_windows.instance_public_ip} - Get password using your key pair"
 # }
 
-# ============================================
-# EC2 Windows 2016 Instance Module
-# ============================================
-module "ec2_windows_2016" {
-  source = "./modules/ec2-basic"
+# # ============================================
+# # EC2 Windows 2016 Instance Module
+# # ============================================
+# module "ec2_windows_2016" {
+#   source = "./modules/ec2-basic"
 
-  name_prefix        = "${local.project_name_prefix}-windows-2016"
-  instance_type      = "t3.medium"
-  subnet_id          = module.vpc.public_subnet_id
-  security_group_ids = [module.security_group.security_group_id]
-  key_name           = var.ec2_key_name
-  custom_ami_id      = data.aws_ami.windows_2016.id
+#   name_prefix        = "${local.project_name_prefix}-windows-2016"
+#   instance_type      = "t3.medium"
+#   subnet_id          = local.vpc.public_subnet_id
+#   security_group_ids = [module.security_group.security_group_id]
+#   key_name           = var.ec2_key_name
+#   custom_ami_id      = data.aws_ami.windows_2016.id
 
-  common_tags = local.project_common_tags
-}
+#   common_tags = local.project_common_tags
+# }
 
-# EC2 Windows 2016 Module Outputs
-output "ec2_windows_2016_instance_id" {
-  description = "ID of the Windows 2016 EC2 instance"
-  value       = module.ec2_windows_2016.instance_id
-}
+# # EC2 Windows 2016 Module Outputs
+# output "ec2_windows_2016_instance_id" {
+#   description = "ID of the Windows 2016 EC2 instance"
+#   value       = module.ec2_windows_2016.instance_id
+# }
 
-output "ec2_windows_2016_public_ip" {
-  description = "Public IP of the Windows 2016 EC2 instance"
-  value       = module.ec2_windows_2016.instance_public_ip
-}
+# output "ec2_windows_2016_public_ip" {
+#   description = "Public IP of the Windows 2016 EC2 instance"
+#   value       = module.ec2_windows_2016.instance_public_ip
+# }
 
-output "ec2_windows_2016_rdp_info" {
-  description = "RDP connection information for Windows 2016 instance"
-  value       = "Use RDP to connect to ${module.ec2_windows_2016.instance_public_ip} - Get password using your key pair"
-}
+# output "ec2_windows_2016_rdp_info" {
+#   description = "RDP connection information for Windows 2016 instance"
+#   value       = "Use RDP to connect to ${module.ec2_windows_2016.instance_public_ip} - Get password using your key pair"
+# }
 
 # # ============================================
 # # EC2 Datadog Host Module
@@ -143,7 +143,7 @@ output "ec2_windows_2016_rdp_info" {
 
 #   name_prefix        = local.project_name_prefix
 #   instance_type      = "t3.medium"
-#   subnet_id          = module.vpc.public_subnet_id
+#   subnet_id          = local.vpc.public_subnet_id
 #   security_group_ids = [module.security_group.security_group_id]
 #   key_name           = var.ec2_key_name
 #   custom_ami_id      = data.aws_ami.amazon_linux_2023.id

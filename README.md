@@ -3,7 +3,6 @@
 ## Table of Contents
 
 - [Prerequisites](#prerequisites)
-- [Quick Start](#quick-start)
 - [For New Users: Importing Shared VPC](#for-new-users-importing-shared-vpc)
 - [AWS Credentials Setup](#aws-credentials-setup)
 
@@ -13,44 +12,6 @@
 - AWS Account
 - AWS CLI configured
 - Docker (only required when building container images)
-
-## Quick Start
-
-### First Time Setup (VPC Owner)
-
-> [!CAUTION]
-> DO NOT run below commands unless you are the owner of this environment setup. If you are a new user of this sandbox environment, navigate to 'For New Users: Importing Shared VPC' section.
-
-```bash
-# 1. Configure AWS credentials
-aws configure
-
-# 2. Copy and edit variables
-cp terraform.tfvars.example terraform.tfvars
-# Edit terraform.tfvars with your values
-
-# 3. Initialize and apply
-terraform init
-terraform plan
-terraform apply
-```
-
-### For New Users: Importing Shared VPC
-
-**Quick Import (Automated):**
-```bash
-# 1. Initialize
-terraform init
-
-# 2. Copy and edit variables
-cp terraform.tfvars.example terraform.tfvars
-
-# 3. Make script executable
-chmod +x scripts/import-vpc.sh
-
-# 4. Run import script
-./scripts/import-vpc.sh
-```
 
 ## AWS Credentials Setup
 

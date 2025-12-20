@@ -4,23 +4,18 @@
 # Copy this file to terraform.tfvars and update with your values
 # cp terraform.tfvars.example terraform.tfvars
 
-# Shared VPC settings
-# These MUST match the existing VPC if importing
-vpc_name = "shared"
-vpc_env  = "test"
+# External VPC Configuration
+vpc_id            = "vpc-xxxxxxxxx"
+public_subnet_id  = "subnet-xxxxxxxxx"
+public_subnet2_id = "subnet-xxxxxxxxx"
+private_subnet_id = "subnet-xxxxxxxxx"
 
 # Personal project settings
-# Change these to your own values
 project_name = "your-name"
 project_env  = "test"
 
-# VPC configuration
-# This MUST match the existing VPC CIDR if importing
-vpc_cidr = "10.100.0.0/16"
-
 # EC2 configuration
 # Replace with your AWS EC2 key pair name
-# Required when you are deploying EC2 instances
 ec2_key_name = "your-key-pair-name"
 
 # Datadog configuration

@@ -3,13 +3,23 @@
 # ============================================
 
 # Shared/VPC Resources
-variable "vpc_name" {
-  description = "Name for shared VPC resources (e.g., shared, common)"
+variable "vpc_id" {
+  description = "ID of existing VPC to use (e.g., vpc-xxxxxxxxx)"
   type        = string
 }
 
-variable "vpc_env" {
-  description = "Environment for VPC resources (e.g., dev, test, prod)"
+variable "public_subnet_id" {
+  description = "ID of existing public subnet 1"
+  type        = string
+}
+
+variable "public_subnet2_id" {
+  description = "ID of existing public subnet 2"
+  type        = string
+}
+
+variable "private_subnet_id" {
+  description = "ID of existing private subnet"
   type        = string
 }
 
@@ -28,11 +38,6 @@ variable "region" {
   description = "AWS region"
   type        = string
   default     = "ap-northeast-2"
-}
-
-variable "vpc_cidr" {
-  description = "CIDR block for VPC (e.g., 10.180.0.0/16, 10.190.0.0/16)"
-  type        = string
 }
 
 # EC2 Configuration
