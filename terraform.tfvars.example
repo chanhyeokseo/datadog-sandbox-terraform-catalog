@@ -10,6 +10,10 @@ public_subnet_id  = "subnet-xxxxxxxxx"
 public_subnet2_id = "subnet-xxxxxxxxx"
 private_subnet_id = "subnet-xxxxxxxxx"
 
+# Required tagging policy
+creator = "firstname.lastname"
+team    = "technical-support-engineering"
+
 # Personal project settings
 project_name = "your-name"
 project_env  = "test"
@@ -19,5 +23,13 @@ project_env  = "test"
 ec2_key_name = "your-key-pair-name"
 
 # Datadog configuration
-# Get your API key from: https://app.datadoghq.com/organization-settings/api-keys
 datadog_api_key = "your-datadog-api-key-here"
+
+# RDS configuration (uncomment when using RDS modules)
+# rds_username       = "admin"
+# rds_password       = "YourRDSPassword123"
+# rds_instance_class = "db.t3.micro"
+
+# DBM Auto-Config (uncomment when using dbm-autoconfig.tf)
+# dbm_postgres_datadog_password = "YourDatadogDBMPassword123"
+# ssh_private_key_path          = "./your-key.pem"

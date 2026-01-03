@@ -9,6 +9,9 @@ terraform {
     http = {
       source = "hashicorp/http"
     }
+    null = {
+      source = "hashicorp/null"
+    }
   }
 }
 
@@ -120,6 +123,8 @@ locals {
     Project     = var.project_name
     Environment = var.project_env
     ManagedBy   = "Terraform"
+    creator     = var.creator
+    team        = var.team
   }
 
   my_ip_cidr = "${chomp(data.http.my_ip.response_body)}/32"

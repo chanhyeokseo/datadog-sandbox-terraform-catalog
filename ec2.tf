@@ -3,7 +3,7 @@
 # # ============================================
 
 # # ============================================
-# # EC2 Basic Instance Module
+# # EC2 Linux Basic Instance Module
 # # ============================================
 # module "ec2_basic" {
 #   source = "./modules/ec2-basic"
@@ -32,6 +32,80 @@
 # output "ec2_basic_ssh_command" {
 #   description = "SSH command to connect to the basic EC2 instance"
 #   value       = module.ec2_basic.ssh_command
+# }
+
+# # ============================================
+# # EC2 Linux Datadog Host Module
+# # ============================================
+# module "ec2_datadog_host" {
+#   source = "./modules/ec2-datadog-host"
+
+#   name_prefix       = local.project_name_prefix
+#   instance_type     = var.ec2_instance_type
+#   subnet_id         = local.vpc.public_subnet_id
+#   security_group_ids = [module.security_group.security_group_id]
+#   key_name          = var.ec2_key_name
+#   custom_ami_id     = data.aws_ami.amazon_linux_2023.id
+
+#   datadog_api_key = var.datadog_api_key
+#   datadog_site    = var.datadog_site
+#   project_name    = var.project_name
+#   environment     = var.project_env
+
+#   common_tags = local.project_common_tags
+# }
+
+# # EC2 Datadog Host Module Outputs
+# output "host_datadog_instance_id" {
+#   description = "ID of the Host-based Datadog EC2 instance"
+#   value       = module.ec2_datadog_host.instance_id
+# }
+
+# output "host_datadog_public_ip" {
+#   description = "Public IP of the Host-based Datadog EC2 instance"
+#   value       = module.ec2_datadog_host.instance_public_ip
+# }
+
+# output "host_datadog_ssh_command" {
+#   description = "SSH command to connect to the Host-based Datadog instance"
+#   value       = module.ec2_datadog_host.ssh_command
+# }
+
+# # ============================================
+# # EC2 Linux Datadog Docker Module
+# # ============================================
+# module "ec2_datadog_docker" {
+#   source = "./modules/ec2-datadog-docker"
+
+#   name_prefix        = local.project_name_prefix
+#   instance_type      = "t3.medium"
+#   subnet_id          = local.vpc.public_subnet_id
+#   security_group_ids = [module.security_group.security_group_id]
+#   key_name           = var.ec2_key_name
+#   custom_ami_id      = data.aws_ami.amazon_linux_2023.id
+
+#   datadog_api_key = var.datadog_api_key
+#   datadog_site    = var.datadog_site
+#   project_name    = var.project_name
+#   environment     = var.project_env
+
+#   common_tags = local.project_common_tags
+# }
+
+# # EC2 Datadog Docker Module Outputs
+# output "docker_datadog_instance_id" {
+#   description = "ID of the Docker Datadog EC2 instance"
+#   value       = module.ec2_datadog_docker.instance_id
+# }
+
+# output "docker_datadog_public_ip" {
+#   description = "Public IP of the Docker Datadog EC2 instance"
+#   value       = module.ec2_datadog_docker.instance_public_ip
+# }
+
+# output "docker_datadog_ssh_command" {
+#   description = "SSH command to connect to the Docker Datadog instance"
+#   value       = module.ec2_datadog_docker.ssh_command
 # }
 
 # # ============================================
@@ -96,80 +170,6 @@
 # output "ec2_windows_2016_rdp_info" {
 #   description = "RDP connection information for Windows 2016 instance"
 #   value       = "Use RDP to connect to ${module.ec2_windows_2016.instance_public_ip} - Get password using your key pair"
-# }
-
-# # ============================================
-# # EC2 Datadog Host Module
-# # ============================================
-# module "ec2_datadog_host" {
-#   source = "./modules/ec2-datadog-host"
-
-#   name_prefix       = local.project_name_prefix
-#   instance_type     = var.ec2_instance_type
-#   subnet_id         = module.vpc.public_subnet_id
-#   security_group_ids = [module.security_group.security_group_id]
-#   key_name          = var.ec2_key_name
-#   custom_ami_id     = data.aws_ami.amazon_linux_2023.id
-
-#   datadog_api_key = var.datadog_api_key
-#   datadog_site    = var.datadog_site
-#   project_name    = var.project_name
-#   environment     = var.project_env
-
-#   common_tags = local.project_common_tags
-# }
-
-# # EC2 Datadog Host Module Outputs
-# output "host_datadog_instance_id" {
-#   description = "ID of the Host-based Datadog EC2 instance"
-#   value       = module.ec2_datadog_host.instance_id
-# }
-
-# output "host_datadog_public_ip" {
-#   description = "Public IP of the Host-based Datadog EC2 instance"
-#   value       = module.ec2_datadog_host.instance_public_ip
-# }
-
-# output "host_datadog_ssh_command" {
-#   description = "SSH command to connect to the Host-based Datadog instance"
-#   value       = module.ec2_datadog_host.ssh_command
-# }
-
-# # ============================================
-# # EC2 Datadog Docker Module
-# # ============================================
-# module "ec2_datadog_docker" {
-#   source = "./modules/ec2-datadog-docker"
-
-#   name_prefix        = local.project_name_prefix
-#   instance_type      = "t3.medium"
-#   subnet_id          = local.vpc.public_subnet_id
-#   security_group_ids = [module.security_group.security_group_id]
-#   key_name           = var.ec2_key_name
-#   custom_ami_id      = data.aws_ami.amazon_linux_2023.id
-
-#   datadog_api_key = var.datadog_api_key
-#   datadog_site    = var.datadog_site
-#   project_name    = var.project_name
-#   environment     = var.project_env
-
-#   common_tags = local.project_common_tags
-# }
-
-# # EC2 Datadog Docker Module Outputs
-# output "docker_datadog_instance_id" {
-#   description = "ID of the Docker Datadog EC2 instance"
-#   value       = module.ec2_datadog_docker.instance_id
-# }
-
-# output "docker_datadog_public_ip" {
-#   description = "Public IP of the Docker Datadog EC2 instance"
-#   value       = module.ec2_datadog_docker.instance_public_ip
-# }
-
-# output "docker_datadog_ssh_command" {
-#   description = "SSH command to connect to the Docker Datadog instance"
-#   value       = module.ec2_datadog_docker.ssh_command
 # }
 
 # # ============================================
@@ -240,7 +240,7 @@
 # resource "aws_instance" "ecs_instance" {
 #   ami                    = data.aws_ami.ecs_optimized.id
 #   instance_type          = "t3.medium"  # 4GB RAM for ECS tasks
-#   subnet_id              = module.vpc.public_subnet_id
+#   subnet_id              = local.vpc.public_subnet_id
 #   vpc_security_group_ids = [module.security_group.security_group_id]
 #   key_name               = var.ec2_key_name
 #   iam_instance_profile   = aws_iam_instance_profile.ecs_instance_profile.name

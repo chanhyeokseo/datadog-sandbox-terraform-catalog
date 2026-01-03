@@ -22,7 +22,8 @@ resource "aws_instance" "host" {
   tags = merge(
     var.common_tags,
     {
-      Name = "${var.name_prefix}-host"
+      Name    = "${var.name_prefix}-host"
+      service = var.service
     }
   )
 }

@@ -57,3 +57,9 @@ variable "common_tags" {
   default     = {}
 }
 
+variable "service" {
+  description = "Service name for tagging (e.g., ec2, rds, ecs)"
+  type        = string
+  default     = "ec2"
+}
+

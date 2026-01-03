@@ -67,7 +67,8 @@ resource "aws_instance" "datadog_host" {
     tags = merge(
       var.common_tags,
       {
-        Name = "${var.name_prefix}-docker-datadog-host-root"
+        Name    = "${var.name_prefix}-docker-datadog-host-root"
+        service = var.service
       }
     )
   }
@@ -75,7 +76,8 @@ resource "aws_instance" "datadog_host" {
   tags = merge(
     var.common_tags,
     {
-      Name = "${var.name_prefix}-docker-datadog-host"
+      Name    = "${var.name_prefix}-docker-datadog-host"
+      service = var.service
     }
   )
 }

@@ -54,7 +54,8 @@ resource "aws_security_group" "personal" {
   tags = merge(
     var.common_tags,
     {
-      Name = "${var.name_prefix}-personal-sg"
+      Name    = "${var.name_prefix}-personal-sg"
+      service = var.service
     }
   )
 }

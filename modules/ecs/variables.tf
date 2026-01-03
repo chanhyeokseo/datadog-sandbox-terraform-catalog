@@ -91,3 +91,9 @@ variable "common_tags" {
   default     = {}
 }
 
+variable "service" {
+  description = "Service name for tagging"
+  type        = string
+  default     = "ecs"
+}
+

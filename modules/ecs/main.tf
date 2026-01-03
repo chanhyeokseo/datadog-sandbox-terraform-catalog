@@ -8,7 +8,8 @@ resource "aws_ecs_cluster" "main" {
   tags = merge(
     var.common_tags,
     {
-      Name = "${var.name_prefix}-ecs-cluster"
+      Name    = "${var.name_prefix}-ecs-cluster"
+      service = var.service
     }
   )
 }
@@ -54,7 +55,8 @@ resource "aws_ecs_capacity_provider" "ec2" {
   tags = merge(
     var.common_tags,
     {
-      Name = "${var.name_prefix}-ecs-ec2-cp"
+      Name    = "${var.name_prefix}-ecs-ec2-cp"
+      service = var.service
     }
   )
 }
@@ -89,7 +91,7 @@ resource "aws_autoscaling_group" "ecs" {
   }
 
   dynamic "tag" {
-    for_each = var.common_tags
+    for_each = merge(var.common_tags, { service = var.service })
     content {
       key                 = tag.key
       value               = tag.value
@@ -128,7 +130,8 @@ resource "aws_launch_template" "ecs" {
     tags = merge(
       var.common_tags,
       {
-        Name = "${var.name_prefix}-ecs-instance"
+        Name    = "${var.name_prefix}-ecs-instance"
+        service = var.service
       }
     )
   }
@@ -136,7 +139,8 @@ resource "aws_launch_template" "ecs" {
   tags = merge(
     var.common_tags,
     {
-      Name = "${var.name_prefix}-ecs-launch-template"
+      Name    = "${var.name_prefix}-ecs-launch-template"
+      service = var.service
     }
   )
 }
@@ -165,7 +169,8 @@ resource "aws_iam_role" "ecs_instance_role" {
   tags = merge(
     var.common_tags,
     {
-      Name = "${var.name_prefix}-ecs-instance-role"
+      Name    = "${var.name_prefix}-ecs-instance-role"
+      service = var.service
     }
   )
 }
@@ -184,7 +189,8 @@ resource "aws_iam_instance_profile" "ecs_instance" {
   tags = merge(
     var.common_tags,
     {
-      Name = "${var.name_prefix}-ecs-instance-profile"
+      Name    = "${var.name_prefix}-ecs-instance-profile"
+      service = var.service
     }
   )
 }
@@ -212,7 +218,8 @@ resource "aws_iam_role" "ecs_task_execution_role" {
   tags = merge(
     var.common_tags,
     {
-      Name = "${var.name_prefix}-ecs-task-execution-role"
+      Name    = "${var.name_prefix}-ecs-task-execution-role"
+      service = var.service
     }
   )
 }
@@ -241,7 +248,8 @@ resource "aws_iam_role" "ecs_task_role" {
   tags = merge(
     var.common_tags,
     {
-      Name = "${var.name_prefix}-ecs-task-role"
+      Name    = "${var.name_prefix}-ecs-task-role"
+      service = var.service
     }
   )
 }
