@@ -22,6 +22,11 @@ output "cluster_version" {
   value       = aws_eks_cluster.main.version
 }
 
+output "latest_eks_version" {
+  description = "Latest recommended EKS version available"
+  value       = data.external.eks_latest_version.result.version
+}
+
 output "cluster_certificate_authority_data" {
   description = "Base64 encoded certificate data for the cluster"
   value       = aws_eks_cluster.main.certificate_authority[0].data
@@ -82,6 +87,6 @@ output "fargate_profile_arn" {
 # Kubeconfig command
 output "kubeconfig_command" {
   description = "Command to update kubeconfig for kubectl access"
-  value       = "aws eks update-kubeconfig --region ap-northeast-2 --name ${aws_eks_cluster.main.name}"
+  value       = "aws eks update-kubeconfig --region ${var.region} --name ${aws_eks_cluster.main.name}"
 }
 

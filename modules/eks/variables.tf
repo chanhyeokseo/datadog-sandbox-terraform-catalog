@@ -8,9 +8,9 @@ variable "name_prefix" {
 }
 
 variable "cluster_version" {
-  description = "Kubernetes version for the EKS cluster"
+  description = "Kubernetes version for the EKS cluster. Leave empty to use latest version."
   type        = string
-  default     = "1.31"
+  default     = ""
 }
 
 # ============================================
@@ -95,6 +95,12 @@ variable "fargate_namespaces" {
   default     = ["default", "kube-system"]
 }
 
+variable "fargate_subnet_ids" {
+  description = "List of private subnet IDs for Fargate profile (must be private subnets)"
+  type        = list(string)
+  default     = []
+}
+
 # ============================================
 # Access Configuration
 # ============================================
@@ -141,5 +147,11 @@ variable "service" {
   description = "Service name for tagging"
   type        = string
   default     = "eks"
+}
+
+variable "region" {
+  description = "AWS region for kubeconfig command"
+  type        = string
+  default     = "ap-northeast-2"
 }
 

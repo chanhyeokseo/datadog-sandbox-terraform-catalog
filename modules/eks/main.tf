@@ -5,8 +5,20 @@
 data "aws_partition" "current" {}
 data "aws_caller_identity" "current" {}
 
+# Get latest EKS version using external data source
+data "external" "eks_latest_version" {
+  program = ["bash", "-c", <<-EOF
+    VERSION=$(aws eks describe-addon-versions --addon-name vpc-cni --region ${var.region} \
+      --query "addons[0].addonVersions[0].compatibilities[*].clusterVersion" \
+      --output text 2>/dev/null | tr '\t' '\n' | sort -rV | head -1)
+    echo "{\"version\": \"$VERSION\"}"
+  EOF
+  ]
+}
+
 locals {
-  cluster_name = "${var.name_prefix}-eks-cluster"
+  cluster_name    = "${var.name_prefix}-eks-cluster"
+  cluster_version = var.cluster_version != "" ? var.cluster_version : data.external.eks_latest_version.result.version
 }
 
 # ============================================
@@ -54,7 +66,7 @@ resource "aws_iam_role_policy_attachment" "cluster_vpc_controller" {
 
 resource "aws_eks_cluster" "main" {
   name     = local.cluster_name
-  version  = var.cluster_version
+  version  = local.cluster_version
   role_arn = aws_iam_role.cluster.arn
 
   vpc_config {
@@ -64,11 +76,14 @@ resource "aws_eks_cluster" "main" {
     public_access_cidrs     = var.public_access_cidrs
   }
 
-  # Ensure that IAM Role permissions are created before and deleted after EKS Cluster handling.
   depends_on = [
     aws_iam_role_policy_attachment.cluster_policy,
     aws_iam_role_policy_attachment.cluster_vpc_controller,
   ]
+
+  lifecycle {
+    ignore_changes = [version]
+  }
 
   tags = merge(
     var.common_tags,
@@ -283,7 +298,7 @@ resource "aws_eks_fargate_profile" "main" {
   cluster_name           = aws_eks_cluster.main.name
   fargate_profile_name   = "${var.name_prefix}-fargate-profile"
   pod_execution_role_arn = aws_iam_role.fargate[0].arn
-  subnet_ids             = var.subnet_ids
+  subnet_ids             = var.fargate_subnet_ids
 
   dynamic "selector" {
     for_each = var.fargate_namespaces
