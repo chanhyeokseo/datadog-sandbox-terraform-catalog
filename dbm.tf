@@ -6,7 +6,7 @@
 # # - RDS PostgreSQL instance
 
 # # ============================================
-# # PostgreSQL DBM Test
+# # PostgreSQL DBM
 # # ============================================
 # module "dbm_postgres_ec2" {
 #   source = "./modules/ec2-datadog-host"
@@ -67,7 +67,7 @@
 # }
 
 # # # ============================================
-# # # MySQL DBM Test
+# # # MySQL DBM -- WIP
 # # # ============================================
 # # module "dbm_mysql_ec2" {
 # #   source = "./modules/ec2-datadog-host"
@@ -128,7 +128,7 @@
 # # }
 
 # # # ============================================
-# # # Oracle DBM Test
+# # # Oracle DBM -- WIP
 # # # ============================================
 # # module "dbm_oracle_ec2" {
 # #   source = "./modules/ec2-datadog-host"
@@ -188,7 +188,7 @@
 # # }
 
 # # # ============================================
-# # # SQL Server DBM Test
+# # # SQL Server DBM -- WIP
 # # # ============================================
 # # module "dbm_sqlserver_ec2" {
 # #   source = "./modules/ec2-datadog-host"
@@ -248,7 +248,7 @@
 # # }
 
 # # # ============================================
-# # # Amazon DocumentDB DBM Test
+# # # Amazon DocumentDB DBM -- WIP
 # # # ============================================
 # # module "dbm_docdb_ec2" {
 # #   source = "./modules/ec2-datadog-host"

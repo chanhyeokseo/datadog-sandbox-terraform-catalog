@@ -10,7 +10,8 @@ resource "aws_instance" "host" {
   vpc_security_group_ids      = var.security_group_ids
   associate_public_ip_address = var.associate_public_ip
 
-  key_name = var.key_name
+  key_name          = var.key_name
+  get_password_data = var.get_password_data
 
   user_data                   = var.user_data
   user_data_replace_on_change = var.user_data_replace_on_change

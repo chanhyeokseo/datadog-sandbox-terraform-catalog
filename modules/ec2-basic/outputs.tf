@@ -37,3 +37,9 @@ output "ami_id" {
   value       = aws_instance.host.ami
 }
 
+output "password_data" {
+  description = "Encrypted password data for Windows instances (use rsadecrypt to decrypt)"
+  value       = aws_instance.host.password_data
+  sensitive   = true
+}
+

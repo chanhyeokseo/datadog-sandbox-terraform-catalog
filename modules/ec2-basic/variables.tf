@@ -63,3 +63,9 @@ variable "service" {
   default     = "ec2"
 }
 
+variable "get_password_data" {
+  description = "Whether to get password data for Windows instances"
+  type        = bool
+  default     = false
+}
+

@@ -3,7 +3,7 @@
 # # ============================================
 
 # # ============================================
-# # EC2 Linux Basic Instance Module
+# # EC2 Linux Basic Instance
 # # ============================================
 # module "ec2_basic" {
 #   source = "./modules/ec2-basic"
@@ -18,7 +18,7 @@
 #   common_tags = local.project_common_tags
 # }
 
-# # EC2 Basic Module Outputs
+# # EC2 Linux Basic Outputs
 # output "ec2_basic_instance_id" {
 #   description = "ID of the basic EC2 instance"
 #   value       = module.ec2_basic.instance_id
@@ -35,7 +35,7 @@
 # }
 
 # # ============================================
-# # EC2 Linux Datadog Host Module
+# # EC2 Linux Datadog Host
 # # ============================================
 # module "ec2_datadog_host" {
 #   source = "./modules/ec2-datadog-host"
@@ -55,7 +55,7 @@
 #   common_tags = local.project_common_tags
 # }
 
-# # EC2 Datadog Host Module Outputs
+# # EC2 Datadog Host Outputs
 # output "host_datadog_instance_id" {
 #   description = "ID of the Host-based Datadog EC2 instance"
 #   value       = module.ec2_datadog_host.instance_id
@@ -72,7 +72,7 @@
 # }
 
 # # ============================================
-# # EC2 Linux Datadog Docker Module
+# # EC2 Linux Datadog Docker
 # # ============================================
 # module "ec2_datadog_docker" {
 #   source = "./modules/ec2-datadog-docker"
@@ -92,7 +92,7 @@
 #   common_tags = local.project_common_tags
 # }
 
-# # EC2 Datadog Docker Module Outputs
+# # EC2 Datadog Docker Outputs
 # output "docker_datadog_instance_id" {
 #   description = "ID of the Docker Datadog EC2 instance"
 #   value       = module.ec2_datadog_docker.instance_id
@@ -109,7 +109,7 @@
 # }
 
 # # ============================================
-# # EC2 Windows Instance Module
+# # EC2 Windows Instance
 # # ============================================
 # module "ec2_windows" {
 #   source = "./modules/ec2-basic"
@@ -120,11 +120,12 @@
 #   security_group_ids = [module.security_group.security_group_id]
 #   key_name           = var.ec2_key_name
 #   custom_ami_id      = data.aws_ami.windows_2025.id
+#   get_password_data  = true
 
 #   common_tags = local.project_common_tags
 # }
 
-# # EC2 Windows Module Outputs
+# # EC2 Windows Instance Outputs
 # output "ec2_windows_instance_id" {
 #   description = "ID of the Windows EC2 instance"
 #   value       = module.ec2_windows.instance_id
@@ -137,11 +138,17 @@
 
 # output "ec2_windows_rdp_info" {
 #   description = "RDP connection information for Windows instance"
-#   value       = "Use RDP to connect to ${module.ec2_windows.instance_public_ip} - Get password using your key pair"
+#   value       = "RDP to ${module.ec2_windows.instance_public_ip} | User: Administrator"
+# }
+
+# output "ec2_windows_password" {
+#   description = "Administrator password for Windows instance (decrypted)"
+#   value       = module.ec2_windows.password_data != "" ? rsadecrypt(module.ec2_windows.password_data, file(var.ssh_private_key_path)) : "Password not yet available (wait ~4 minutes after instance creation)"
+#   sensitive   = true
 # }
 
 # # ============================================
-# # EC2 Windows Server 2016 Instance Module
+# # EC2 Windows Server 2016 Instance
 # # ============================================
 # module "ec2_windows_2016" {
 #   source = "./modules/ec2-basic"
@@ -152,11 +159,12 @@
 #   security_group_ids = [module.security_group.security_group_id]
 #   key_name           = var.ec2_key_name
 #   custom_ami_id      = data.aws_ami.windows_2016.id
+#   get_password_data  = true
 
 #   common_tags = local.project_common_tags
 # }
 
-# # EC2 Windows 2016 Module Outputs
+# # EC2 Windows 2016 Instance Outputs
 # output "ec2_windows_2016_instance_id" {
 #   description = "ID of the Windows 2016 EC2 instance"
 #   value       = module.ec2_windows_2016.instance_id
@@ -169,14 +177,19 @@
 
 # output "ec2_windows_2016_rdp_info" {
 #   description = "RDP connection information for Windows 2016 instance"
-#   value       = "Use RDP to connect to ${module.ec2_windows_2016.instance_public_ip} - Get password using your key pair"
+#   value       = "RDP to ${module.ec2_windows_2016.instance_public_ip} | User: Administrator"
+# }
+
+# output "ec2_windows_2016_password" {
+#   description = "Administrator password for Windows 2016 instance (decrypted)"
+#   value       = module.ec2_windows_2016.password_data != "" ? rsadecrypt(module.ec2_windows_2016.password_data, file(var.ssh_private_key_path)) : "Password not yet available (wait ~4 minutes after instance creation)"
+#   sensitive   = true
 # }
 
 # # ============================================
 # # ECS EC2 Container Instance
 # # ============================================
 
-# # Get ECS optimized AMI
 # data "aws_ami" "ecs_optimized" {
 #   most_recent = true
 #   owners      = ["amazon"]
@@ -192,7 +205,6 @@
 #   }
 # }
 
-# # IAM Role for ECS EC2 Instance
 # resource "aws_iam_role" "ecs_instance_role" {
 #   name = "${local.project_name_prefix}-ecs-instance-role"
 
@@ -217,13 +229,11 @@
 #   )
 # }
 
-# # Attach ECS Instance Role Policy
 # resource "aws_iam_role_policy_attachment" "ecs_instance_role_policy" {
 #   role       = aws_iam_role.ecs_instance_role.name
 #   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"
 # }
 
-# # IAM Instance Profile
 # resource "aws_iam_instance_profile" "ecs_instance_profile" {
 #   name = "${local.project_name_prefix}-ecs-instance-profile"
 #   role = aws_iam_role.ecs_instance_role.name
@@ -236,7 +246,6 @@
 #   )
 # }
 
-# # ECS EC2 Instance
 # resource "aws_instance" "ecs_instance" {
 #   ami                    = data.aws_ami.ecs_optimized.id
 #   instance_type          = "t3.medium"  # 4GB RAM for ECS tasks
@@ -258,7 +267,7 @@
 #   )
 # }
 
-# # ECS Instance Outputs
+# # ECS EC2 Instance Outputs
 # output "ecs_instance_id" {
 #   description = "ID of the ECS EC2 instance"
 #   value       = aws_instance.ecs_instance.id
