@@ -19,7 +19,7 @@
 #   node_capacity_type  = "ON_DEMAND"
 
 #   # Fargate Configuration (optional, set to true if you want to use Fargate)
-#   enable_fargate     = false
+#   enable_fargate     = true
 #   fargate_subnet_ids = [local.vpc.private_subnet_id]
 #   fargate_namespaces = ["default", "kube-system"]
 
@@ -43,9 +43,4 @@
 # output "eks_kubeconfig_command" {
 #   description = "Command to configure kubectl"
 #   value       = module.eks_cluster.kubeconfig_command
-# }
-
-# output "eks_node_group_name" {
-#   description = "Name of the EKS node group"
-#   value       = module.eks_cluster.node_group_name
 # }
