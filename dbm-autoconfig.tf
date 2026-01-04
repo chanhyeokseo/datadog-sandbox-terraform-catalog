@@ -52,11 +52,8 @@
 # }
 
 # # ============================================
-# # Null Resource for DBM Auto-Configuration
+# # DBM Auto-Configuration
 # # ============================================
-# # This runs after both EC2 and RDS are created to:
-# # 1. Set up PostgreSQL datadog user, schema, and functions
-# # 2. Configure Datadog Agent for DBM
 
 # resource "null_resource" "dbm_autoconfig_setup" {
 #   depends_on = [
@@ -78,7 +75,6 @@
 #     timeout     = "5m"
 #   }
 
-#   # Wait for EC2 instance to be ready and Datadog agent to be installed
 #   provisioner "remote-exec" {
 #     inline = [
 #       "echo 'Waiting for instance to be ready...'",
@@ -88,37 +84,28 @@
 #     ]
 #   }
 
-#   # Setup PostgreSQL for Datadog DBM
 #   provisioner "remote-exec" {
 #     inline = [
 #       "echo 'Setting up PostgreSQL for Datadog DBM...'",
 #       "export PGPASSWORD='${var.rds_password}'",
       
-#       # Create pg_stat_statements extension in postgres database (default Agent connection)
 #       "psql -h ${module.dbm_autoconfig_rds.db_endpoint} -p ${module.dbm_autoconfig_rds.db_port} -U ${var.rds_username} -d postgres -c \"CREATE EXTENSION IF NOT EXISTS pg_stat_statements;\"",
       
-#       # Create pg_stat_statements extension in datadog database
 #       "psql -h ${module.dbm_autoconfig_rds.db_endpoint} -p ${module.dbm_autoconfig_rds.db_port} -U ${var.rds_username} -d datadog -c \"CREATE EXTENSION IF NOT EXISTS pg_stat_statements;\"",
       
-#       # Create datadog user
 #       "psql -h ${module.dbm_autoconfig_rds.db_endpoint} -p ${module.dbm_autoconfig_rds.db_port} -U ${var.rds_username} -d datadog -c \"CREATE USER datadog WITH password '${var.dbm_postgres_datadog_password}';\" || echo 'User may already exist'",
       
-#       # Create datadog schema
 #       "psql -h ${module.dbm_autoconfig_rds.db_endpoint} -p ${module.dbm_autoconfig_rds.db_port} -U ${var.rds_username} -d datadog -c \"CREATE SCHEMA IF NOT EXISTS datadog;\"",
       
-#       # Grant permissions
 #       "psql -h ${module.dbm_autoconfig_rds.db_endpoint} -p ${module.dbm_autoconfig_rds.db_port} -U ${var.rds_username} -d datadog -c \"GRANT USAGE ON SCHEMA datadog TO datadog;\"",
 #       "psql -h ${module.dbm_autoconfig_rds.db_endpoint} -p ${module.dbm_autoconfig_rds.db_port} -U ${var.rds_username} -d datadog -c \"GRANT USAGE ON SCHEMA public TO datadog;\"",
 #       "psql -h ${module.dbm_autoconfig_rds.db_endpoint} -p ${module.dbm_autoconfig_rds.db_port} -U ${var.rds_username} -d datadog -c \"GRANT pg_monitor TO datadog;\"",
       
-#       # Grant SELECT on pg_stat_statements to datadog user
 #       "psql -h ${module.dbm_autoconfig_rds.db_endpoint} -p ${module.dbm_autoconfig_rds.db_port} -U ${var.rds_username} -d datadog -c \"GRANT SELECT ON pg_stat_statements TO datadog;\"",
 #       "psql -h ${module.dbm_autoconfig_rds.db_endpoint} -p ${module.dbm_autoconfig_rds.db_port} -U ${var.rds_username} -d postgres -c \"GRANT SELECT ON pg_stat_statements TO datadog;\"",
       
-#       # Add public schema (where pg_stat_statements is created) to datadog user search_path
 #       "psql -h ${module.dbm_autoconfig_rds.db_endpoint} -p ${module.dbm_autoconfig_rds.db_port} -U ${var.rds_username} -d datadog -c \"ALTER ROLE datadog SET search_path = '\\\"\\$user\\\"',public;\"",
       
-#       # Create explain_statement function
 #       <<-EOF
 #       psql -h ${module.dbm_autoconfig_rds.db_endpoint} -p ${module.dbm_autoconfig_rds.db_port} -U ${var.rds_username} -d datadog <<'EOSQL'
 #       CREATE OR REPLACE FUNCTION datadog.explain_statement(
@@ -147,7 +134,6 @@
 #     ]
 #   }
 
-#   # Configure Datadog Agent for PostgreSQL DBM
 #   provisioner "remote-exec" {
 #     inline = [
 #       "echo 'Configuring Datadog Agent for PostgreSQL DBM...'",
