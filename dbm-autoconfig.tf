@@ -8,7 +8,7 @@
 # # - PostgreSQL DBM configuration
 
 # # ============================================
-# # PostgreSQL DBM Auto-Config EC2
+# # PostgreSQL DBM Auto-Configuration
 # # ============================================
 # module "dbm_autoconfig_ec2" {
 #   source = "./modules/ec2-datadog-host"
@@ -28,9 +28,6 @@
 #   common_tags = local.project_common_tags
 # }
 
-# # ============================================
-# # PostgreSQL RDS for DBM Auto-Config
-# # ============================================
 # module "dbm_autoconfig_rds" {
 #   source = "./modules/rds"
 
@@ -50,10 +47,6 @@
 
 #   common_tags = local.project_common_tags
 # }
-
-# # ============================================
-# # DBM Auto-Configuration
-# # ============================================
 
 # resource "null_resource" "dbm_autoconfig_setup" {
 #   depends_on = [
@@ -169,9 +162,7 @@
 #   }
 # }
 
-# # ============================================
-# # Outputs
-# # ============================================
+# # PostgreSQL DBM Auto-Configuration Outputs
 # output "dbm_autoconfig_ec2_ssh" {
 #   description = "SSH command for DBM auto-config EC2"
 #   value       = module.dbm_autoconfig_ec2.ssh_command
