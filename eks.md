@@ -8,3 +8,10 @@ aws eks update-kubeconfig --region ap-northeast-2 --name <cluster-name>
 ```
 
 If you want to enable AWS Fargate, set the enable_fargate option to true before applying the configuration.
+
+# Deploy Datadog Agent
+
+Choose one of the following methods and follow the README.md instructions:
+
+- **Helm**: `eks/helm/README.md`
+- **Datadog Operator**: `eks/datadog-operator/README.md`
