@@ -1,0 +1,8 @@
+datadog:
+  site: "datadoghq.com"
+  clusterName: "your-cluster-name-here"
+  apiKeyExistingSecret: "datadog-secret"
+  clusterChecks:
+    enabled: true
+  orchestratorExplorer:
+    enabled: true
