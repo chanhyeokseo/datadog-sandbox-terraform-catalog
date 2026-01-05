@@ -13,5 +13,5 @@ If you want to enable AWS Fargate, set the enable_fargate option to true before 
 
 Choose one of the following methods and follow the README.md instructions:
 
-- **Helm**: `eks/helm/README.md`
-- **Datadog Operator**: `eks/datadog-operator/README.md`
+- **Helm**: `eks/agent-helm/README.md`
+- **Datadog Operator**: `eks/agent-datadog-operator/README.md`
