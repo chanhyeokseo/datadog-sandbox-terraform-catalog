@@ -33,7 +33,7 @@ spec:
             - |
               pip install flask --quiet
               cat <<EOF > /app.py
-              from flask import Flask
+              from flask import Flask, abort
               app = Flask(__name__)
 
               @app.route('/')
@@ -43,6 +43,30 @@ spec:
               @app.route('/health')
               def health():
                   return 'OK'
+
+              @app.route('/api/success')
+              def success():
+                  return {'status': 'success'}, 200
+
+              @app.route('/api/created')
+              def created():
+                  return {'status': 'created'}, 201
+
+              @app.route('/api/bad-request')
+              def bad_request():
+                  return {'error': 'bad request'}, 400
+
+              @app.route('/api/not-found')
+              def not_found():
+                  return {'error': 'not found'}, 404
+
+              @app.route('/api/error')
+              def error():
+                  return {'error': 'internal server error'}, 500
+
+              @app.route('/api/unavailable')
+              def unavailable():
+                  return {'error': 'service unavailable'}, 503
 
               if __name__ == '__main__':
                   app.run(host='0.0.0.0', port=5000)
