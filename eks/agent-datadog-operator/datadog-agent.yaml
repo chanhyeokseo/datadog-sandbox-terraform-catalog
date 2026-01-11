@@ -15,3 +15,11 @@ spec:
       enabled: true
     orchestratorExplorer:
       enabled: true
+    apm:
+      enabled: true
+      hostPortConfig:
+        enabled: true
+      unixDomainSocketConfig:
+        enabled: true
+    processDiscovery:
+      enabled: true
