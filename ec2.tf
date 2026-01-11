@@ -144,7 +144,7 @@
 # output "ec2_windows_password" {
 #   description = "Administrator password for Windows instance (decrypted)"
 #   value       = module.ec2_windows.password_data != "" ? rsadecrypt(module.ec2_windows.password_data, file(var.ssh_private_key_path)) : "Password not yet available (wait ~4 minutes after instance creation)"
-#   sensitive   = true
+#   sensitive   = false # true if you want to redact the password in the output
 # }
 
 # # ============================================
@@ -183,7 +183,7 @@
 # output "ec2_windows_2016_password" {
 #   description = "Administrator password for Windows 2016 instance (decrypted)"
 #   value       = module.ec2_windows_2016.password_data != "" ? rsadecrypt(module.ec2_windows_2016.password_data, file(var.ssh_private_key_path)) : "Password not yet available (wait ~4 minutes after instance creation)"
-#   sensitive   = true
+#   sensitive   = false # true if you want to redact the password in the output
 # }
 
 # # ============================================
