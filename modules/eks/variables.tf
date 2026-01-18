@@ -80,6 +80,58 @@ variable "node_capacity_type" {
 }
 
 # ============================================
+# Windows Node Group Configuration
+# ============================================
+
+variable "enable_windows_node_group" {
+  description = "Enable Windows managed node group (requires Linux node group to be enabled)"
+  type        = bool
+  default     = false
+}
+
+variable "windows_node_instance_types" {
+  description = "Instance types for the Windows node group"
+  type        = list(string)
+  default     = ["t3.medium"]
+}
+
+variable "windows_node_desired_size" {
+  description = "Desired number of Windows nodes"
+  type        = number
+  default     = 2
+}
+
+variable "windows_node_min_size" {
+  description = "Minimum number of Windows nodes"
+  type        = number
+  default     = 1
+}
+
+variable "windows_node_max_size" {
+  description = "Maximum number of Windows nodes"
+  type        = number
+  default     = 4
+}
+
+variable "windows_node_disk_size" {
+  description = "Disk size in GB for Windows worker nodes"
+  type        = number
+  default     = 50
+}
+
+variable "windows_node_ami_type" {
+  description = "AMI type for the Windows node group (WINDOWS_CORE_2019_x86_64, WINDOWS_FULL_2019_x86_64, WINDOWS_CORE_2022_x86_64, WINDOWS_FULL_2022_x86_64)"
+  type        = string
+  default     = "WINDOWS_FULL_2022_x86_64"
+}
+
+variable "windows_node_capacity_type" {
+  description = "Capacity type for the Windows node group (ON_DEMAND, SPOT)"
+  type        = string
+  default     = "ON_DEMAND"
+}
+
+# ============================================
 # Fargate Configuration
 # ============================================
 
