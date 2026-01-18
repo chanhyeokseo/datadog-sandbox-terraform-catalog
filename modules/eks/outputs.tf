@@ -73,6 +73,27 @@ output "node_iam_role_arn" {
   value       = var.enable_node_group ? aws_iam_role.node[0].arn : null
 }
 
+# Windows Node Group Outputs
+output "windows_node_group_name" {
+  description = "Name of the Windows EKS node group"
+  value       = var.enable_windows_node_group ? aws_eks_node_group.windows[0].node_group_name : null
+}
+
+output "windows_node_group_arn" {
+  description = "ARN of the Windows EKS node group"
+  value       = var.enable_windows_node_group ? aws_eks_node_group.windows[0].arn : null
+}
+
+output "windows_node_group_status" {
+  description = "Status of the Windows EKS node group"
+  value       = var.enable_windows_node_group ? aws_eks_node_group.windows[0].status : null
+}
+
+output "windows_node_iam_role_arn" {
+  description = "IAM role ARN for the Windows node group"
+  value       = var.enable_windows_node_group ? aws_iam_role.windows_node[0].arn : null
+}
+
 # Fargate Outputs
 output "fargate_profile_name" {
   description = "Name of the Fargate profile"

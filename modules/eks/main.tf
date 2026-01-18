@@ -251,6 +251,102 @@ resource "aws_eks_node_group" "main" {
 }
 
 # ============================================
+# IAM Role for Windows Node Group
+# ============================================
+
+resource "aws_iam_role" "windows_node" {
+  count = var.enable_windows_node_group ? 1 : 0
+
+  name = "${var.name_prefix}-eks-windows-node-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+
+  tags = merge(
+    var.common_tags,
+    {
+      Name    = "${var.name_prefix}-eks-windows-node-role"
+      service = var.service
+    }
+  )
+}
+
+resource "aws_iam_role_policy_attachment" "windows_node_worker" {
+  count = var.enable_windows_node_group ? 1 : 0
+
+  policy_arn = "arn:${data.aws_partition.current.partition}:iam::aws:policy/AmazonEKSWorkerNodePolicy"
+  role       = aws_iam_role.windows_node[0].name
+}
+
+resource "aws_iam_role_policy_attachment" "windows_node_cni" {
+  count = var.enable_windows_node_group ? 1 : 0
+
+  policy_arn = "arn:${data.aws_partition.current.partition}:iam::aws:policy/AmazonEKS_CNI_Policy"
+  role       = aws_iam_role.windows_node[0].name
+}
+
+resource "aws_iam_role_policy_attachment" "windows_node_ecr" {
+  count = var.enable_windows_node_group ? 1 : 0
+
+  policy_arn = "arn:${data.aws_partition.current.partition}:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+  role       = aws_iam_role.windows_node[0].name
+}
+
+# ============================================
+# EKS Windows Node Group
+# ============================================
+
+resource "aws_eks_node_group" "windows" {
+  count = var.enable_windows_node_group ? 1 : 0
+
+  cluster_name    = aws_eks_cluster.main.name
+  node_group_name = "${var.name_prefix}-windows-node-group"
+  node_role_arn   = aws_iam_role.windows_node[0].arn
+  subnet_ids      = var.subnet_ids
+
+  instance_types = var.windows_node_instance_types
+  capacity_type  = var.windows_node_capacity_type
+  disk_size      = var.windows_node_disk_size
+  ami_type       = var.windows_node_ami_type
+
+  scaling_config {
+    desired_size = var.windows_node_desired_size
+    min_size     = var.windows_node_min_size
+    max_size     = var.windows_node_max_size
+  }
+
+  update_config {
+    max_unavailable = 1
+  }
+
+  # Windows nodes require Linux nodes to be running first for CoreDNS
+  depends_on = [
+    aws_iam_role_policy_attachment.windows_node_worker,
+    aws_iam_role_policy_attachment.windows_node_cni,
+    aws_iam_role_policy_attachment.windows_node_ecr,
+    aws_eks_node_group.main,
+  ]
+
+  tags = merge(
+    var.common_tags,
+    {
+      Name    = "${var.name_prefix}-windows-node-group"
+      service = var.service
+    }
+  )
+}
+
+# ============================================
 # IAM Role for Fargate
 # ============================================
 
