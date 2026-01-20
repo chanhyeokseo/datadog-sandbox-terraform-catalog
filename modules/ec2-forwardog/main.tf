@@ -3,101 +3,113 @@
 # ============================================
 
 locals {
-  forwardog_user_data = <<-EOF
-    #!/bin/bash
-    set -e
-    
-    echo "=== Starting Forwardog Setup ==="
+  forwardog_user_data = <<-USERDATA
+#!/bin/bash
+set -e
 
-    # Install Docker
-    echo "Installing Docker..."
-    yum update -y
-    yum install -y docker
-    
-    # Start Docker service
-    echo "Starting Docker service..."
-    systemctl start docker
-    systemctl enable docker
-    
-    # Add ec2-user to docker group
-    usermod -a -G docker ec2-user
+echo "=== Starting Forwardog Setup ==="
 
-    # Create working directory
-    mkdir -p /opt/forwardog
-    cd /opt/forwardog
+# Install Docker
+echo "Installing Docker..."
+yum update -y
+yum install -y docker
 
-    # Create docker-compose.yml
-    cat > /opt/forwardog/docker-compose.yml << 'COMPOSE'
-    version: "3.8"
+# Start Docker service
+echo "Starting Docker service..."
+systemctl start docker
+systemctl enable docker
 
-    services:
-      forwardog:
-        image: ${var.forwardog_image}
-        container_name: forwardog
-        ports:
-          - "8000:8000"
-        environment:
-          - DD_API_KEY=${var.datadog_api_key}
-          - DD_SITE=${var.datadog_site}
-          - DD_AGENT_HOST=datadog-agent
-          - DOGSTATSD_PORT=8125
-        volumes:
-          - forwardog-logs:/var/log/forwardog
-        networks:
-          - forwardog-network
-        depends_on:
-          - datadog-agent
-        restart: unless-stopped
+# Add ec2-user to docker group
+usermod -a -G docker ec2-user
 
-      datadog-agent:
-        image: ${var.datadog_agent_image}
-        container_name: datadog-agent
-        environment:
-          - DD_API_KEY=${var.datadog_api_key}
-          - DD_SITE=${var.datadog_site}
-          - DD_DOGSTATSD_NON_LOCAL_TRAFFIC=true
-          - DD_LOGS_ENABLED=true
-          - DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL=false
-          - DD_LOGS_CONFIG_AUTO_MULTI_LINE_DETECTION=true
-          - DD_LOGS_CONFIG_FORCE_USE_HTTP=true
-          - DD_HOSTNAME=forwardog-agent
-          - DD_TAGS=env:${var.environment},project:${var.project_name},service:forwardog,terraform:true
-        volumes:
-          - /var/run/docker.sock:/var/run/docker.sock:ro
-          - /proc/:/host/proc/:ro
-          - /sys/fs/cgroup/:/host/sys/fs/cgroup:ro
-          - forwardog-logs:/var/log/forwardog:ro
-        ports:
-          - "8125:8125/udp"
-        networks:
-          - forwardog-network
-        restart: unless-stopped
+# Create working directory
+mkdir -p /opt/forwardog
+cd /opt/forwardog
 
+# Create datadog agent conf.d directory for log collection
+mkdir -p /opt/forwardog/datadog-agent-conf.d/forwardog.d
+
+# Create log collection config for forwardog
+cat > /opt/forwardog/datadog-agent-conf.d/forwardog.d/conf.yaml << 'LOGCONF'
+logs:
+  - type: file
+    path: /var/log/forwardog/forwardog.log
+    service: forwardog
+    source: forwardog
+LOGCONF
+
+# Create docker-compose.yml
+cat > /opt/forwardog/docker-compose.yml << COMPOSE
+version: "3.8"
+
+services:
+  forwardog:
+    image: ${var.forwardog_image}
+    container_name: forwardog
+    ports:
+      - "8000:8000"
+    environment:
+      - DD_API_KEY=${var.datadog_api_key}
+      - DD_SITE=${var.datadog_site}
+      - DD_AGENT_HOST=datadog-agent
+      - DOGSTATSD_PORT=8125
     volumes:
-      forwardog-logs:
-        driver: local
-
+      - forwardog-logs:/var/log/forwardog
     networks:
-      forwardog-network:
-        driver: bridge
-    COMPOSE
+      - forwardog-network
+    depends_on:
+      - datadog-agent
+    restart: unless-stopped
 
-    # Install Docker Compose plugin
-    echo "Installing Docker Compose..."
-    mkdir -p /usr/local/lib/docker/cli-plugins
-    curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64 -o /usr/local/lib/docker/cli-plugins/docker-compose
-    chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+  datadog-agent:
+    image: ${var.datadog_agent_image}
+    container_name: datadog-agent
+    environment:
+      - DD_API_KEY=${var.datadog_api_key}
+      - DD_SITE=${var.datadog_site}
+      - DD_DOGSTATSD_NON_LOCAL_TRAFFIC=true
+      - DD_LOGS_ENABLED=true
+      - DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL=false
+      - DD_LOGS_CONFIG_AUTO_MULTI_LINE_DETECTION=true
+      - DD_LOGS_CONFIG_FORCE_USE_HTTP=true
+      - DD_HOSTNAME=forwardog-agent
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /proc/:/host/proc/:ro
+      - /sys/fs/cgroup/:/host/sys/fs/cgroup:ro
+      - forwardog-logs:/var/log/forwardog:ro
+      - ./datadog-agent-conf.d:/etc/datadog-agent/conf.d:ro
+    ports:
+      - "8125:8125/udp"
+    networks:
+      - forwardog-network
+    restart: unless-stopped
 
-    # Wait for Docker to be fully ready
-    sleep 5
+volumes:
+  forwardog-logs:
+    driver: local
 
-    # Start Forwardog stack
-    echo "Starting Forwardog stack..."
-    cd /opt/forwardog
-    docker compose up -d
+networks:
+  forwardog-network:
+    driver: bridge
+COMPOSE
 
-    echo "=== Forwardog Setup Complete ==="
-  EOF
+# Install Docker Compose plugin
+echo "Installing Docker Compose..."
+mkdir -p /usr/local/lib/docker/cli-plugins
+curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64 -o /usr/local/lib/docker/cli-plugins/docker-compose
+chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
+# Wait for Docker to be fully ready
+sleep 5
+
+# Start Forwardog stack
+echo "Starting Forwardog stack..."
+cd /opt/forwardog
+docker compose up -d
+
+echo "=== Forwardog Setup Complete ==="
+USERDATA
 }
 
 resource "aws_instance" "forwardog" {
