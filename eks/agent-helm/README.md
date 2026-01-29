@@ -16,6 +16,14 @@ kubectl create secret generic datadog-secret --from-literal api-key=<YOUR_DATADO
 helm install datadog-agent -f datadog-values.yaml datadog/datadog
 ```
 
+# Upgrade
+
+Update datadog-values.yaml and upgrade the Datadog Agent:
+
+```
+helm upgrade datadog-agent -f datadog-values.yaml datadog/datadog
+```
+
 # Uninstallation
 
 ```

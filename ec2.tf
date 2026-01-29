@@ -185,3 +185,42 @@
 #   value       = module.ec2_windows_2016.password_data != "" ? rsadecrypt(module.ec2_windows_2016.password_data, file(var.ssh_private_key_path)) : "Password not yet available (wait ~4 minutes after instance creation)"
 #   sensitive   = false # true if you want to redact the password in the output
 # }
+
+# # ============================================
+# # EC2 Windows Server 2022 Instance
+# # ============================================
+# module "ec2_windows_2022" {
+#   source = "./modules/ec2-basic"
+
+#   name_prefix        = "${local.project_name_prefix}-windows-2022"
+#   instance_type      = "t3.medium"
+#   subnet_id          = local.vpc.public_subnet_id
+#   security_group_ids = [module.security_group.security_group_id]
+#   key_name           = var.ec2_key_name
+#   custom_ami_id      = data.aws_ami.windows_2022.id
+#   get_password_data  = true
+
+#   common_tags = local.project_common_tags
+# }
+
+# # EC2 Windows 2022 Instance Outputs
+# output "ec2_windows_2022_instance_id" {
+#   description = "ID of the Windows 2022 EC2 instance"
+#   value       = module.ec2_windows_2022.instance_id
+# }
+
+# output "ec2_windows_2022_public_ip" {
+#   description = "Public IP of the Windows 2022 EC2 instance"
+#   value       = module.ec2_windows_2022.instance_public_ip
+# }
+
+# output "ec2_windows_2022_rdp_info" {
+#   description = "RDP connection information for Windows 2022 instance"
+#   value       = "RDP to ${module.ec2_windows_2022.instance_public_ip} | User: Administrator"
+# }
+
+# output "ec2_windows_2022_password" {
+#   description = "Administrator password for Windows 2022 instance (decrypted)"
+#   value       = module.ec2_windows_2022.password_data != "" ? rsadecrypt(module.ec2_windows_2022.password_data, file(var.ssh_private_key_path)) : "Password not yet available (wait ~4 minutes after instance creation)"
+#   sensitive   = false # true if you want to redact the password in the output
+# }
