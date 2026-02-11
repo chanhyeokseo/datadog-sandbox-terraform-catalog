@@ -1,0 +1,119 @@
+.description-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.description-modal {
+  background: var(--bg-primary);
+  border-radius: 0;
+  width: 90%;
+  max-width: 560px;
+  max-height: 85vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+}
+
+.description-modal .modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+}
+
+.description-modal .modal-header h2 {
+  margin: 0;
+  font-size: 18px;
+  color: var(--text-primary);
+}
+
+.description-modal .close-button {
+  background: none;
+  border: none;
+  font-size: 28px;
+  line-height: 1;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.description-modal .close-button:hover {
+  color: var(--text-primary);
+}
+
+.description-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+.description-loading,
+.description-error {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.description-error {
+  color: var(--error-color, #dc3545);
+}
+
+.description-body {
+  color: var(--text-primary);
+  line-height: 1.6;
+}
+
+.description-body h1 {
+  margin: 0 0 12px 0;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.description-body h2 {
+  margin: 20px 0 10px 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.description-body h3 {
+  margin: 16px 0 8px 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.description-body p {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+}
+
+.description-body ul {
+  margin: 0 0 12px 0;
+  padding-left: 20px;
+}
+
+.description-body li {
+  margin-bottom: 6px;
+}
+
+.description-body strong {
+  font-weight: 600;
+}
+
+.description-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+.description-content::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+.description-content::-webkit-scrollbar-thumb {
+  background: var(--text-tertiary);
+}

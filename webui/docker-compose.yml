@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: terraform-webui-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ..:/terraform:rw
+    restart: unless-stopped
+    networks:
+      - terraform-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: terraform-webui-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - terraform-network
+
+networks:
+  terraform-network:
+    driver: bridge

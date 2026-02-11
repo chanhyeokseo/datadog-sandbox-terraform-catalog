@@ -1,0 +1,46 @@
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+import logging
+
+from app.routes import terraform, ssh
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
+app = FastAPI(
+    title="Terraform Web UI",
+    description="Web UI for managing Terraform infrastructure",
+    version="1.0.0"
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(terraform.router)
+app.include_router(ssh.router)
+
+
+@app.get("/")
+async def root():
+    return {
+        "message": "Terraform Web UI API",
+        "version": "1.0.0",
+        "docs": "/docs"
+    }
+
+
+@app.get("/health")
+async def health():
+    return {"status": "healthy"}
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

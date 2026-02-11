@@ -1,0 +1,259 @@
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 20px;
+}
+
+.onboarding-modal {
+  background: var(--bg-primary);
+  border-radius: 0;
+  width: 90%;
+  max-width: 600px;
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  animation: slideIn 0.3s ease-out;
+  position: relative;
+  z-index: 10000;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.onboarding-header {
+  padding: 24px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.onboarding-header h2 {
+  margin: 0;
+  font-size: 24px;
+  color: var(--text-primary);
+}
+
+.onboarding-content {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.onboarding-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  background: rgba(255, 193, 7, 0.1);
+  border: 1px solid rgba(255, 193, 7, 0.3);
+  border-radius: 0;
+}
+
+.alert-icon {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.alert-message {
+  flex: 1;
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+
+.alert-message strong {
+  color: #ffc107;
+}
+
+.onboarding-explanation {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.onboarding-explanation h3 {
+  margin: 0;
+  font-size: 18px;
+  color: var(--text-primary);
+}
+
+.onboarding-explanation p {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.onboarding-explanation strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.onboarding-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.onboarding-steps h3 {
+  margin: 0;
+  font-size: 18px;
+  color: var(--text-primary);
+}
+
+.onboarding-steps ol {
+  margin: 0;
+  padding-left: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.onboarding-steps li {
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.onboarding-steps li strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.onboarding-note {
+  padding: 16px;
+  background: rgba(33, 150, 243, 0.1);
+  border: 1px solid rgba(33, 150, 243, 0.3);
+  border-radius: 0;
+}
+
+.onboarding-note p {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.onboarding-note strong {
+  color: #2196f3;
+  font-weight: 600;
+}
+
+.onboarding-footer {
+  padding: 20px 24px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 14px;
+  user-select: none;
+}
+
+.checkbox-label input[type="checkbox"] {
+  cursor: pointer;
+}
+
+.checkbox-label span {
+  cursor: pointer;
+}
+
+.onboarding-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.btn-secondary {
+  padding: 10px 20px;
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: 0;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.btn-secondary:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.btn-primary {
+  padding: 10px 20px;
+  border: none;
+  background: #4caf50;
+  color: white;
+  border-radius: 0;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
+}
+
+.btn-primary:hover {
+  background: #45a049;
+  box-shadow: 0 4px 12px rgba(76, 175, 80, 0.4);
+  transform: translateY(-2px);
+}
+
+/* Light mode adjustments */
+.light-mode .onboarding-modal {
+  background: #ffffff;
+}
+
+.light-mode .onboarding-alert {
+  background: rgba(255, 193, 7, 0.15);
+}
+
+.light-mode .onboarding-note {
+  background: rgba(33, 150, 243, 0.15);
+}
+
+.light-mode .btn-secondary {
+  border-color: #e0e0e0;
+}
+
+.light-mode .btn-secondary:hover {
+  background: #f5f5f5;
+}
+
+/* Scrollbar styling */
+.onboarding-modal::-webkit-scrollbar {
+  width: 8px;
+}
+
+.onboarding-modal::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+  border-radius: 0;
+}
+
+.onboarding-modal::-webkit-scrollbar-thumb {
+  background: var(--text-tertiary);
+  border-radius: 0;
+}
+
+.onboarding-modal::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
+}
