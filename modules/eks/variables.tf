@@ -1,6 +1,3 @@
-# ============================================
-# EKS Module Variables
-# ============================================
 
 variable "name_prefix" {
   description = "Name prefix for EKS resources"
@@ -13,9 +10,6 @@ variable "cluster_version" {
   default     = ""
 }
 
-# ============================================
-# Network Configuration
-# ============================================
 
 variable "vpc_id" {
   description = "VPC ID where EKS cluster will be created"
@@ -27,9 +21,6 @@ variable "subnet_ids" {
   type        = list(string)
 }
 
-# ============================================
-# Node Group Configuration
-# ============================================
 
 variable "enable_node_group" {
   description = "Enable managed node group"
@@ -79,9 +70,6 @@ variable "node_capacity_type" {
   default     = "ON_DEMAND"
 }
 
-# ============================================
-# Windows Node Group Configuration
-# ============================================
 
 variable "enable_windows_node_group" {
   description = "Enable Windows managed node group (requires Linux node group to be enabled)"
@@ -131,9 +119,6 @@ variable "windows_node_capacity_type" {
   default     = "ON_DEMAND"
 }
 
-# ============================================
-# Fargate Configuration
-# ============================================
 
 variable "enable_fargate" {
   description = "Enable Fargate profile"
@@ -153,9 +138,6 @@ variable "fargate_subnet_ids" {
   default     = []
 }
 
-# ============================================
-# Access Configuration
-# ============================================
 
 variable "endpoint_public_access" {
   description = "Enable public access to EKS API endpoint"
@@ -175,9 +157,6 @@ variable "public_access_cidrs" {
   default     = ["0.0.0.0/0"]
 }
 
-# ============================================
-# Add-ons Configuration
-# ============================================
 
 variable "enable_cluster_addons" {
   description = "Enable EKS managed add-ons (vpc-cni, coredns, kube-proxy)"
@@ -185,9 +164,6 @@ variable "enable_cluster_addons" {
   default     = true
 }
 
-# ============================================
-# Tags
-# ============================================
 
 variable "common_tags" {
   description = "Common tags to apply to all resources"

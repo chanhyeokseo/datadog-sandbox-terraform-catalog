@@ -1,6 +1,3 @@
-# ============================================
-# Lambda Function Module (Basic)
-# ============================================
 
 data "aws_region" "current" {}
 
@@ -11,12 +8,9 @@ data "archive_file" "lambda_zip" {
   excludes    = var.exclude_files
 }
 
-# ============================================
-# IAM Roles
-# ============================================
 
 resource "aws_iam_role" "lambda_role" {
-  name               = "${var.function_name}-lambda-role"
+  name = "${var.function_name}-lambda-role"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -66,15 +60,12 @@ resource "aws_iam_role_policy_attachment" "lambda_vpc_execution" {
 
 resource "aws_iam_role_policy_attachment" "additional_policies" {
   for_each = toset(var.additional_policy_arns)
-  
+
   role       = aws_iam_role.lambda_role.name
   policy_arn = each.value
 }
 
 
-# ============================================
-# Lambda Function
-# ============================================
 
 resource "aws_lambda_function" "function" {
   filename         = data.archive_file.lambda_zip.output_path
@@ -116,9 +107,6 @@ resource "aws_lambda_function" "function" {
   )
 }
 
-# ============================================
-# Lambda Function URL
-# ============================================
 
 resource "aws_lambda_function_url" "function_url" {
   count              = var.enable_function_url ? 1 : 0
@@ -135,9 +123,6 @@ resource "aws_lambda_function_url" "function_url" {
   }
 }
 
-# ============================================
-# Lambda Alias
-# ============================================
 
 resource "aws_lambda_alias" "function_alias" {
   count            = var.create_alias ? 1 : 0

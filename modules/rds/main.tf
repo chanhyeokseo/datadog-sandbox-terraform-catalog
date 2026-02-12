@@ -1,48 +1,45 @@
-# ============================================
-# RDS Instance Module
-# ============================================
 
 locals {
   engine_config = {
     postgres = {
-      engine               = "postgres"
-      engine_version       = var.engine_version != "" ? var.engine_version : "16.11"
-      port                 = 5432
-      parameter_family     = "postgres16"
-      license_model        = null
-      supports_db_name     = true
+      engine           = "postgres"
+      engine_version   = var.engine_version != "" ? var.engine_version : "16.11"
+      port             = 5432
+      parameter_family = "postgres16"
+      license_model    = null
+      supports_db_name = true
     }
     mysql = {
-      engine               = "mysql"
-      engine_version       = var.engine_version != "" ? var.engine_version : "8.0"
-      port                 = 3306
-      parameter_family     = "mysql8.0"
-      license_model        = null
-      supports_db_name     = true
+      engine           = "mysql"
+      engine_version   = var.engine_version != "" ? var.engine_version : "8.0"
+      port             = 3306
+      parameter_family = "mysql8.0"
+      license_model    = null
+      supports_db_name = true
     }
     oracle = {
-      engine               = "oracle-se2"
-      engine_version       = var.engine_version != "" ? var.engine_version : "19"
-      port                 = 1521
-      parameter_family     = "oracle-se2-19"
-      license_model        = "license-included"
-      supports_db_name     = false
+      engine           = "oracle-se2"
+      engine_version   = var.engine_version != "" ? var.engine_version : "19"
+      port             = 1521
+      parameter_family = "oracle-se2-19"
+      license_model    = "license-included"
+      supports_db_name = false
     }
     sqlserver = {
-      engine               = "sqlserver-ex"
-      engine_version       = var.engine_version != "" ? var.engine_version : "16.00"
-      port                 = 1433
-      parameter_family     = "sqlserver-ex-16.0"
-      license_model        = "license-included"
-      supports_db_name     = false
+      engine           = "sqlserver-ex"
+      engine_version   = var.engine_version != "" ? var.engine_version : "16.00"
+      port             = 1433
+      parameter_family = "sqlserver-ex-16.0"
+      license_model    = "license-included"
+      supports_db_name = false
     }
     docdb = {
-      engine               = "docdb"
-      engine_version       = var.engine_version != "" ? var.engine_version : "5.0"
-      port                 = 27017
-      parameter_family     = "docdb5.0"
-      license_model        = null
-      supports_db_name     = false
+      engine           = "docdb"
+      engine_version   = var.engine_version != "" ? var.engine_version : "5.0"
+      port             = 27017
+      parameter_family = "docdb5.0"
+      license_model    = null
+      supports_db_name = false
     }
   }
 
@@ -51,9 +48,6 @@ locals {
   is_postgres     = var.rds_type == "postgres"
 }
 
-# ============================================
-# DB Subnet Group
-# ============================================
 resource "aws_db_subnet_group" "main" {
   count = local.is_docdb ? 0 : 1
 
@@ -70,9 +64,6 @@ resource "aws_db_subnet_group" "main" {
   )
 }
 
-# ============================================
-# DocumentDB Subnet Group
-# ============================================
 resource "aws_docdb_subnet_group" "main" {
   count = local.is_docdb ? 1 : 0
 
@@ -89,9 +80,6 @@ resource "aws_docdb_subnet_group" "main" {
   )
 }
 
-# ============================================
-# Security Group for Database
-# ============================================
 resource "aws_security_group" "db" {
   name        = "${var.name_prefix}-${var.rds_type}-sg"
   description = "Security group for ${var.name_prefix} ${var.rds_type} database"
@@ -128,9 +116,6 @@ resource "aws_security_group_rule" "db_egress" {
   description       = "Allow all outbound traffic"
 }
 
-# ============================================
-# RDS Instance (for PostgreSQL, MySQL, Oracle, SQL Server)
-# ============================================
 resource "aws_db_instance" "main" {
   count = local.is_docdb ? 0 : 1
 
@@ -171,9 +156,6 @@ resource "aws_db_instance" "main" {
   )
 }
 
-# ============================================
-# DocumentDB Cluster (for Amazon DocumentDB)
-# ============================================
 resource "aws_docdb_cluster" "main" {
   count = local.is_docdb ? 1 : 0
 

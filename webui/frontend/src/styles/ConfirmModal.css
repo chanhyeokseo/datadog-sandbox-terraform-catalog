@@ -132,3 +132,119 @@ body.light-mode .confirm-modal-btn.cancel:hover {
   color: #212529;
   border-color: rgba(0, 0, 0, 0.3);
 }
+
+.rdp-modal {
+  background: var(--panel-bg);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  border: 1px solid var(--panel-border);
+  box-shadow: var(--glass-shadow-strong),
+              0 0 80px rgba(139, 127, 199, 0.2),
+              inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  border-radius: 0;
+  padding: 28px 32px;
+  min-width: 400px;
+  max-width: 520px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+body.light-mode .rdp-modal {
+  background: rgba(255, 255, 255, 0.9);
+  border-color: rgba(139, 127, 199, 0.2);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.1),
+              0 0 60px rgba(139, 127, 199, 0.1),
+              inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.rdp-modal-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.rdp-modal-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.rdp-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rdp-field-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+}
+
+.rdp-field-value-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rdp-field-value {
+  flex: 1;
+  padding: 8px 12px;
+  font-size: 14px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-color);
+  border-radius: 0;
+  word-break: break-all;
+  user-select: all;
+}
+
+body.light-mode .rdp-field-value {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.rdp-copy-btn {
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 0;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.rdp-copy-btn:hover {
+  background: var(--glass-bg);
+  color: var(--text-primary);
+  border-color: var(--border-color-strong);
+}
+
+.rdp-field-hint {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  padding: 8px 12px;
+  background: rgba(255, 193, 7, 0.08);
+  border: 1px solid rgba(255, 193, 7, 0.2);
+  border-radius: 0;
+}
+
+body.light-mode .rdp-field-hint {
+  background: rgba(255, 193, 7, 0.1);
+  border-color: rgba(255, 193, 7, 0.3);
+  color: #856404;
+}
+
+.rdp-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}

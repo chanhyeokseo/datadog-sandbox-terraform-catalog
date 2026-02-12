@@ -78,10 +78,20 @@ EC2_WINDOWS_EXTRA_CONFIGS = [
     ResourceVariableConfig("ec2_get_password_data", VariableType.BOOLEAN, False, "Retrieve Windows password data (for Windows AMIs only)"),
 ]
 
+DATADOG_DOCKER_AGENT_CONFIGS = [
+    ResourceVariableConfig("datadog_agent_image", VariableType.STRING, "gcr.io/datadoghq/agent:latest", "Datadog Agent Docker image (e.g. gcr.io/datadoghq/agent:7.72.1)"),
+]
+
+DATADOG_HOST_AGENT_CONFIGS = [
+    ResourceVariableConfig("datadog_agent_version", VariableType.STRING, "latest", "Datadog Agent minor version (e.g. 65.0 for 7.65.0)"),
+]
+
 RESOURCE_VARIABLE_CONFIGS: Dict[str, List[ResourceVariableConfig]] = {
     "ec2": EC2_VARIABLE_CONFIGS,
     "ec2_windows": EC2_VARIABLE_CONFIGS + EC2_WINDOWS_EXTRA_CONFIGS,
-    "ec2_forwardog": EC2_VARIABLE_CONFIGS,
+    "ec2_datadog_docker": EC2_VARIABLE_CONFIGS + DATADOG_DOCKER_AGENT_CONFIGS,
+    "ec2_datadog_host": EC2_VARIABLE_CONFIGS + DATADOG_HOST_AGENT_CONFIGS,
+    "ec2_forwardog": EC2_VARIABLE_CONFIGS + DATADOG_DOCKER_AGENT_CONFIGS,
     
     "eks": [
         ResourceVariableConfig("eks_enable_node_group", VariableType.BOOLEAN, True, "Enable Linux node group for EKS cluster"),
@@ -117,7 +127,7 @@ RESOURCE_VARIABLE_CONFIGS: Dict[str, List[ResourceVariableConfig]] = {
     
     "dbm": [
         ResourceVariableConfig("dbm_postgres_datadog_password", VariableType.STRING, "", "Datadog password for DBM Postgres monitoring"),
-    ],
+    ] + DATADOG_HOST_AGENT_CONFIGS,
 }
 
 
@@ -126,6 +136,10 @@ def get_resource_type_for_variables(resource_type: str, resource_id: str) -> str
         return "ec2_windows"
     if resource_type == "ec2" and resource_id == "ec2_forwardog":
         return "ec2_forwardog"
+    if resource_type == "ec2" and resource_id == "ec2_datadog_docker":
+        return "ec2_datadog_docker"
+    if resource_type == "ec2" and resource_id == "ec2_datadog_host":
+        return "ec2_datadog_host"
     return resource_type
 
 

@@ -7,10 +7,9 @@ locals {
     #!/bin/bash
     set -e
     
-    # Update system
-    dnf update -y
-    
     # Install Datadog Agent
+    DD_AGENT_MAJOR_VERSION=7 \
+    ${var.datadog_agent_version != "latest" ? "DD_AGENT_MINOR_VERSION=\"${var.datadog_agent_version}\"" : ""} \
     DD_API_KEY="${var.datadog_api_key}" \
     DD_SITE="${var.datadog_site}" \
     bash -c "$(curl -L https://install.datadoghq.com/scripts/install_script_agent7.sh)"

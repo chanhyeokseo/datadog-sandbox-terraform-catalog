@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Terminal as XTerm } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
@@ -16,6 +16,17 @@ const Terminal = () => {
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resourceInfo, setResourceInfo] = useState<any>(null);
+
+  const sendResize = useCallback((ws: WebSocket) => {
+    const fitAddon = fitAddonRef.current;
+    const term = xtermRef.current;
+    if (!fitAddon || !term || ws.readyState !== WebSocket.OPEN) return;
+    fitAddon.fit();
+    const dims = fitAddon.proposeDimensions();
+    if (dims) {
+      ws.send(JSON.stringify({ type: 'resize', cols: dims.cols, rows: dims.rows }));
+    }
+  }, []);
 
   useEffect(() => {
     const paramsStr = sessionStorage.getItem(`ssh_${connectionId}`);
@@ -36,8 +47,6 @@ const Terminal = () => {
         background: '#1e1e1e',
         foreground: '#d4d4d4',
       },
-      rows: 30,
-      cols: 100,
     });
 
     const fitAddon = new FitAddon();
@@ -46,10 +55,14 @@ const Terminal = () => {
     if (terminalRef.current) {
       term.open(terminalRef.current);
       fitAddon.fit();
-      fitAddonRef.current = fitAddon;
     }
 
     xtermRef.current = term;
+    fitAddonRef.current = fitAddon;
+
+    const dims = fitAddon.proposeDimensions();
+    const initCols = dims?.cols ?? 80;
+    const initRows = dims?.rows ?? 24;
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const ws = new WebSocket(`${protocol}//${window.location.host}/api/ssh/connect/${connectionId}`);
@@ -63,6 +76,8 @@ const Terminal = () => {
         username: params.username || 'ec2-user',
         key_filename: params.keyFilename ?? undefined,
         port: params.port || 22,
+        cols: initCols,
+        rows: initRows,
       }));
     };
 
@@ -77,6 +92,7 @@ const Terminal = () => {
           case 'connected':
             setConnected(true);
             term.writeln(`\r\n✅ ${msg.data}\r\n`);
+            sendResize(ws);
             break;
           case 'output':
             term.write(msg.data);
@@ -113,30 +129,25 @@ const Terminal = () => {
       }
     });
 
-    const handleResize = () => {
-      if (fitAddon && xtermRef.current) {
-        fitAddon.fit();
-        const dimensions = fitAddon.proposeDimensions();
-        if (dimensions && ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({
-            type: 'resize',
-            cols: dimensions.cols,
-            rows: dimensions.rows,
-          }));
-        }
-      }
-    };
+    const handleResize = () => sendResize(ws);
 
     window.addEventListener('resize', handleResize);
 
+    let resizeObserver: ResizeObserver | undefined;
+    if (terminalRef.current) {
+      resizeObserver = new ResizeObserver(() => sendResize(ws));
+      resizeObserver.observe(terminalRef.current);
+    }
+
     return () => {
       window.removeEventListener('resize', handleResize);
+      resizeObserver?.disconnect();
       if (ws.readyState === WebSocket.OPEN) {
         ws.close();
       }
       term.dispose();
     };
-  }, [connectionId]);
+  }, [connectionId, sendResize]);
 
   const handleClose = async () => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {

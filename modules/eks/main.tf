@@ -1,11 +1,7 @@
-# ============================================
-# EKS Cluster Module
-# ============================================
 
 data "aws_partition" "current" {}
 data "aws_caller_identity" "current" {}
 
-# Get latest EKS version using external data source
 data "external" "eks_latest_version" {
   program = ["bash", "-c", <<-EOF
     VERSION=$(aws eks describe-addon-versions --addon-name vpc-cni --region ${var.region} \
@@ -21,9 +17,6 @@ locals {
   cluster_version = var.cluster_version != "" ? var.cluster_version : data.external.eks_latest_version.result.version
 }
 
-# ============================================
-# IAM Role for EKS Cluster
-# ============================================
 
 resource "aws_iam_role" "cluster" {
   name = "${var.name_prefix}-eks-cluster-role"
@@ -60,9 +53,6 @@ resource "aws_iam_role_policy_attachment" "cluster_vpc_controller" {
   role       = aws_iam_role.cluster.name
 }
 
-# ============================================
-# EKS Cluster
-# ============================================
 
 resource "aws_eks_cluster" "main" {
   name     = local.cluster_name
@@ -94,9 +84,6 @@ resource "aws_eks_cluster" "main" {
   )
 }
 
-# ============================================
-# EKS Add-ons
-# ============================================
 
 resource "aws_eks_addon" "vpc_cni" {
   count = var.enable_cluster_addons ? 1 : 0
@@ -156,9 +143,6 @@ resource "aws_eks_addon" "kube_proxy" {
   )
 }
 
-# ============================================
-# IAM Role for Node Group
-# ============================================
 
 resource "aws_iam_role" "node" {
   count = var.enable_node_group ? 1 : 0
@@ -208,9 +192,6 @@ resource "aws_iam_role_policy_attachment" "node_ecr" {
   role       = aws_iam_role.node[0].name
 }
 
-# ============================================
-# EKS Node Group
-# ============================================
 
 resource "aws_eks_node_group" "main" {
   count = var.enable_node_group ? 1 : 0
@@ -250,9 +231,6 @@ resource "aws_eks_node_group" "main" {
   )
 }
 
-# ============================================
-# IAM Role for Windows Node Group
-# ============================================
 
 resource "aws_iam_role" "windows_node" {
   count = var.enable_windows_node_group ? 1 : 0
@@ -302,9 +280,6 @@ resource "aws_iam_role_policy_attachment" "windows_node_ecr" {
   role       = aws_iam_role.windows_node[0].name
 }
 
-# ============================================
-# EKS Windows Node Group
-# ============================================
 
 resource "aws_eks_node_group" "windows" {
   count = var.enable_windows_node_group ? 1 : 0
@@ -346,9 +321,6 @@ resource "aws_eks_node_group" "windows" {
   )
 }
 
-# ============================================
-# IAM Role for Fargate
-# ============================================
 
 resource "aws_iam_role" "fargate" {
   count = var.enable_fargate ? 1 : 0
@@ -384,9 +356,6 @@ resource "aws_iam_role_policy_attachment" "fargate_pod_execution" {
   role       = aws_iam_role.fargate[0].name
 }
 
-# ============================================
-# EKS Fargate Profile
-# ============================================
 
 resource "aws_eks_fargate_profile" "main" {
   count = var.enable_fargate ? 1 : 0
@@ -416,9 +385,6 @@ resource "aws_eks_fargate_profile" "main" {
   )
 }
 
-# ============================================
-# OIDC Provider for IRSA (IAM Roles for Service Accounts)
-# ============================================
 
 data "tls_certificate" "cluster" {
   url = aws_eks_cluster.main.identity[0].oidc[0].issuer

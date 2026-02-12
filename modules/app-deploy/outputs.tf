@@ -1,6 +1,3 @@
-# ============================================
-# App Deploy Module - Outputs
-# ============================================
 
 output "image_uri" {
   description = "Full URI of the pushed Docker image"

@@ -1,6 +1,3 @@
-# ============================================
-# Lambda Function Module - Outputs
-# ============================================
 
 output "function_name" {
   description = "Lambda function name"

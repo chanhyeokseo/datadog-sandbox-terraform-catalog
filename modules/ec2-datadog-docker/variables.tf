@@ -73,3 +73,9 @@ variable "service" {
   default     = "ec2"
 }
 
+variable "datadog_agent_image" {
+  description = "Datadog Agent Docker image"
+  type        = string
+  default     = "gcr.io/datadoghq/agent:latest"
+}
+

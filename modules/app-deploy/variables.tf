@@ -1,6 +1,3 @@
-# ============================================
-# App Deploy Module - Variables
-# ============================================
 
 variable "app_name" {
   description = "Name of the application"

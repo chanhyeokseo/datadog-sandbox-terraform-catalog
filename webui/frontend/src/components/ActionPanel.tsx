@@ -36,6 +36,7 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
   const [showDebugModal, setShowDebugModal] = useState(false);
   const [showDescriptionModal, setShowDescriptionModal] = useState(false);
   const [pendingConfirm, setPendingConfirm] = useState<{ type: string; onConfirm: () => void } | null>(null);
+  const [rdpInfo, setRdpInfo] = useState<{ ip: string; username: string; password: string } | null>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem('terraform_outputs');
@@ -241,6 +242,10 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
     }
   };
 
+  const isWindowsInstance = (resourceId: string): boolean => {
+    return resourceId.startsWith('ec2_windows');
+  };
+
   const handleConnect = async () => {
     if (!selectedResource) return;
 
@@ -248,7 +253,7 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
       const resourceOutput = outputs.find(o => o.resourceId === selectedResource.id);
       
       if (!resourceOutput || !resourceOutput.output) {
-        alert(`⚠️ No output information available.\n\nPlease click "Get Outputs" button first to fetch the outputs.`);
+        alert(`No output information available.\n\nPlease click "Get Outputs" button first to fetch the outputs.`);
         return;
       }
 
@@ -256,15 +261,15 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
       try {
         outputData = JSON.parse(resourceOutput.output);
       } catch (e) {
-        alert(`❌ Failed to parse output data.`);
+        alert(`Failed to parse output data.`);
         return;
       }
 
       let sshCommand: string | null = null;
       let instanceId: string | null = null;
       let publicIp: string | null = null;
+      let windowsPassword: string | null = null;
       
-      // New structure: outputs don't have module name prefix
       for (const [key, value] of Object.entries(outputData)) {
         const keyLower = key.toLowerCase();
         const strVal = value != null ? String(value) : '';
@@ -275,11 +280,26 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
           instanceId = strVal;
         } else if (publicIp == null && (keyLower === 'public_ip' || keyLower === 'ec2_ip' || keyLower.includes('public_ip'))) {
           publicIp = strVal;
+        } else if (windowsPassword == null && keyLower === 'windows_password') {
+          windowsPassword = strVal;
         }
       }
 
+      if (isWindowsInstance(selectedResource.id)) {
+        if (!publicIp) {
+          alert(`Public IP not found.\n\nPlease click "Get Outputs" to fetch the outputs.`);
+          return;
+        }
+        setRdpInfo({
+          ip: publicIp,
+          username: 'Administrator',
+          password: windowsPassword || '',
+        });
+        return;
+      }
+
       if (!sshCommand) {
-        alert(`❌ SSH command not found.\n\nResource: ${selectedResource.name}`);
+        alert(`SSH command not found.\n\nResource: ${selectedResource.name}`);
         return;
       }
 
@@ -287,7 +307,7 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
       const hostname = match ? match[1] : publicIp;
 
       if (!hostname) {
-        alert(`❌ Hostname not found.`);
+        alert(`Hostname not found.`);
         return;
       }
 
@@ -313,8 +333,12 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
         terminalWindow.focus();
       }
     } catch (err) {
-      alert(`❌ Connection preparation failed: ${(err as Error).message}`);
+      alert(`Connection preparation failed: ${(err as Error).message}`);
     }
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
   };
 
   const clearOutputs = () => {
@@ -420,17 +444,15 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
           <div className="action-buttons-grid">
             {runningAction ? (
               <button
-                onClick={() => {
-                  abortControllerRef.current?.abort();
-                }}
+                disabled
                 className="btn btn-stop"
-                title={`Stop the running ${runningAction} operation`}
+                title={`${runningAction} is in progress for this resource`}
               >
                 {runningAction === 'plan'
-                  ? 'Stop Planning'
+                  ? 'Planning...'
                   : runningAction === 'deploy'
-                    ? (selectedResource?.status === 'enabled' ? 'Stop Updating' : 'Stop Deploying')
-                    : 'Stop Destroying'}
+                    ? (selectedResource?.status === 'enabled' ? 'Updating...' : 'Deploying...')
+                    : 'Destroying...'}
               </button>
             ) : (
               <>
@@ -463,7 +485,7 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
                     onClick={handleConnect}
                     className="btn btn-connect"
                     disabled={!!runningAction}
-                    title={runningAction ? `${runningAction} is running for this resource` : 'Open terminal and connect via SSH'}
+                    title={runningAction ? `${runningAction} is running for this resource` : isWindowsInstance(selectedResource.id) ? 'Show RDP connection info' : 'Open terminal and connect via SSH'}
                   >
                     Connect
                   </button>
@@ -670,6 +692,46 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
           onConfirm={pendingConfirm.onConfirm}
           onCancel={() => setPendingConfirm(null)}
         />
+      )}
+      {rdpInfo && createPortal(
+        <div className="modal-overlay" onClick={() => setRdpInfo(null)}>
+          <div className="rdp-modal" onClick={(e) => e.stopPropagation()}>
+            <h3 className="rdp-modal-title">Windows RDP Connection</h3>
+            <div className="rdp-modal-fields">
+              <div className="rdp-field">
+                <label className="rdp-field-label">Host IP</label>
+                <div className="rdp-field-value-row">
+                  <code className="rdp-field-value">{rdpInfo.ip}</code>
+                  <button className="rdp-copy-btn" onClick={() => copyToClipboard(rdpInfo.ip)}>Copy</button>
+                </div>
+              </div>
+              <div className="rdp-field">
+                <label className="rdp-field-label">Username</label>
+                <div className="rdp-field-value-row">
+                  <code className="rdp-field-value">{rdpInfo.username}</code>
+                  <button className="rdp-copy-btn" onClick={() => copyToClipboard(rdpInfo.username)}>Copy</button>
+                </div>
+              </div>
+              <div className="rdp-field">
+                <label className="rdp-field-label">Password</label>
+                {rdpInfo.password ? (
+                  <div className="rdp-field-value-row">
+                    <code className="rdp-field-value">{rdpInfo.password}</code>
+                    <button className="rdp-copy-btn" onClick={() => copyToClipboard(rdpInfo.password)}>Copy</button>
+                  </div>
+                ) : (
+                  <div className="rdp-field-hint">
+                    Password not yet available. Windows instances take ~4 minutes to generate the password after launch. Click "Update" to refresh.
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="rdp-modal-actions">
+              <button className="confirm-modal-btn cancel" onClick={() => setRdpInfo(null)}>Close</button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );

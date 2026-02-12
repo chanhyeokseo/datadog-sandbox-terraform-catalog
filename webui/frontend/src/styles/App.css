@@ -757,12 +757,6 @@ body.light-mode .action-panel {
   box-shadow: 0 8px 25px rgba(220, 53, 69, 0.4);
 }
 
-.btn-stop:hover {
-  background: linear-gradient(135deg, rgba(255, 193, 7, 0.7) 0%, rgba(255, 193, 7, 0.5) 100%);
-  border-color: rgba(255, 193, 7, 0.9);
-  box-shadow: 0 8px 25px rgba(255, 193, 7, 0.5);
-  transform: translateY(-4px) scale(1.02);
-}
 
 /* btn-connect is defined in Unified.css */
 

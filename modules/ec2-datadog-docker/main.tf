@@ -34,7 +34,7 @@ locals {
       -v /proc/:/host/proc/:ro \
       -v /sys/fs/cgroup/:/host/sys/fs/cgroup:ro \
       -v /var/lib/docker/containers:/var/lib/docker/containers:ro \
-      gcr.io/datadoghq/agent:7.72.1
+      ${var.datadog_agent_image}
     
     echo "=== Datadog Docker Agent Setup Complete ==="
   EOF

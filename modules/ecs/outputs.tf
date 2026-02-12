@@ -1,6 +1,3 @@
-# ============================================
-# ECS Cluster Module Outputs
-# ============================================
 
 output "cluster_id" {
   description = "ID of the ECS cluster"
@@ -17,9 +14,6 @@ output "cluster_arn" {
   value       = aws_ecs_cluster.main.arn
 }
 
-# ============================================
-# EC2 Outputs (Conditional)
-# ============================================
 
 output "ec2_capacity_provider_name" {
   description = "Name of the EC2 capacity provider"
@@ -51,9 +45,6 @@ output "ecs_instance_profile_arn" {
   value       = var.enable_ec2 ? aws_iam_instance_profile.ecs_instance[0].arn : null
 }
 
-# ============================================
-# Task IAM Outputs (Always)
-# ============================================
 
 output "task_execution_role_arn" {
   description = "ARN of the ECS task execution role"

@@ -252,6 +252,34 @@ class TerraformParser:
         
         return list(all_vars)
     
+    def parse_instance_variable_defaults(self, resource_id: str) -> Dict[str, str]:
+        instance_dir = self._get_instance_dir(resource_id)
+        if not instance_dir:
+            return {}
+        variables_tf = instance_dir / "variables.tf"
+        if not variables_tf.exists():
+            return {}
+        defaults: Dict[str, str] = {}
+        content = variables_tf.read_text(encoding="utf-8")
+        blocks = re.split(r'(?=^variable\s+")', content, flags=re.MULTILINE)
+        for block in blocks:
+            name_match = re.match(r'variable\s+"(\w+)"', block)
+            if not name_match:
+                continue
+            var_name = name_match.group(1)
+            default_match = re.search(r'default\s*=\s*"([^"]*)"', block)
+            if default_match:
+                defaults[var_name] = default_match.group(1)
+                continue
+            default_match = re.search(r'default\s*=\s*(true|false)\b', block)
+            if default_match:
+                defaults[var_name] = default_match.group(1)
+                continue
+            default_match = re.search(r'default\s*=\s*(\d+(?:\.\d+)?)\b', block)
+            if default_match:
+                defaults[var_name] = default_match.group(1)
+        return defaults
+
     def _escape_tfvars_value(self, s: str) -> str:
         return s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n").replace("\r", "\\r")
 

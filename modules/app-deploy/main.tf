@@ -1,7 +1,3 @@
-# ============================================
-# App Deploy Module - Main
-# Docker Build & Push to ECR
-# ============================================
 
 locals {
   build_args_string = join(" ", [
@@ -11,7 +7,6 @@ locals {
   full_image_uri = "${var.ecr_repository_url}:${var.image_tag}"
 }
 
-# Calculate hash of source files to trigger rebuild on changes
 data "external" "source_hash" {
   program = ["bash", "-c", <<-EOF
     cd "${var.app_path}"
@@ -24,10 +19,10 @@ data "external" "source_hash" {
 
 resource "null_resource" "docker_build_push" {
   triggers = {
-    source_hash    = data.external.source_hash.result["hash"]
-    image_uri      = local.full_image_uri
-    dockerfile     = var.dockerfile_path
-    force_rebuild  = var.force_rebuild
+    source_hash   = data.external.source_hash.result["hash"]
+    image_uri     = local.full_image_uri
+    dockerfile    = var.dockerfile_path
+    force_rebuild = var.force_rebuild
   }
 
   provisioner "local-exec" {

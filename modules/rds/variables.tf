@@ -1,6 +1,3 @@
-# ============================================
-# RDS Module Variables
-# ============================================
 
 variable "name_prefix" {
   description = "Name prefix for RDS resources"

@@ -592,6 +592,12 @@ async def get_resource_variables(resource_id: str):
                         is_common=False,
                     ))
                     returned_names.add(config.name)
+        instance_defaults = parser.parse_instance_variable_defaults(resource_id)
+        for v in resource_vars:
+            if v.name in instance_defaults:
+                raw = instance_defaults[v.name]
+                v.value = "***" if (v.sensitive and raw) else raw
+
         instance_map = parser.get_instance_tfvars_map(resource_id)
         for v in resource_vars:
             if v.name in instance_map:

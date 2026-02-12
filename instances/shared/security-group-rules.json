@@ -1,0 +1,50 @@
+{
+  "ingress_rules": [
+    {
+      "description": "Allow RDP from my IP",
+      "from_port": 3389,
+      "to_port": 3389,
+      "protocol": "tcp",
+      "cidr_blocks": [
+        "121.167.108.81/32"
+      ],
+      "readonly": true,
+      "use_my_ip": true,
+      "original_cidr": "1.235.134.242/32"
+    },
+    {
+      "description": "Allow SSH from my IP",
+      "from_port": 22,
+      "to_port": 22,
+      "protocol": "tcp",
+      "cidr_blocks": [
+        "121.167.108.81/32"
+      ],
+      "readonly": true,
+      "use_my_ip": true,
+      "original_cidr": "1.235.134.242/32"
+    },
+    {
+      "description": "",
+      "from_port": 8000,
+      "to_port": 8000,
+      "protocol": "tcp",
+      "cidr_blocks": [
+        "121.167.108.81/32"
+      ],
+      "use_my_ip": true,
+      "original_cidr": "1.235.134.242/32"
+    }
+  ],
+  "egress_rules": [
+    {
+      "description": "Allow all outbound traffic",
+      "from_port": 0,
+      "to_port": 0,
+      "protocol": "-1",
+      "cidr_blocks": [
+        "0.0.0.0/0"
+      ]
+    }
+  ]
+}

@@ -1,6 +1,3 @@
-# ============================================
-# Lambda Function Module with Datadog Lambda Extension - Outputs
-# ============================================
 
 output "function_name" {
   description = "Lambda function name"

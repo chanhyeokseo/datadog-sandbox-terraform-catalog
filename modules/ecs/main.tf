@@ -1,6 +1,3 @@
-# ============================================
-# ECS Cluster Module
-# ============================================
 
 resource "aws_ecs_cluster" "main" {
   name = "${var.name_prefix}-ecs-cluster"
@@ -14,9 +11,6 @@ resource "aws_ecs_cluster" "main" {
   )
 }
 
-# ============================================
-# Capacity Providers Configuration
-# ============================================
 
 resource "aws_ecs_cluster_capacity_providers" "main" {
   count        = var.enable_fargate || var.enable_ec2 ? 1 : 0
@@ -61,9 +55,6 @@ resource "aws_ecs_capacity_provider" "ec2" {
   )
 }
 
-# ============================================
-# EC2 Resources
-# ============================================
 
 resource "aws_autoscaling_group" "ecs" {
   count               = var.enable_ec2 ? 1 : 0
@@ -145,9 +136,6 @@ resource "aws_launch_template" "ecs" {
   )
 }
 
-# ============================================
-# IAM Roles - EC2 Instance 
-# ============================================
 
 resource "aws_iam_role" "ecs_instance_role" {
   count = var.enable_ec2 ? 1 : 0
@@ -195,9 +183,6 @@ resource "aws_iam_instance_profile" "ecs_instance" {
   )
 }
 
-# ============================================
-# IAM Roles - Task Execution & Task
-# ============================================
 
 resource "aws_iam_role" "ecs_task_execution_role" {
   name = "${var.name_prefix}-ecs-task-execution-role"

@@ -166,7 +166,13 @@ async def ssh_websocket(websocket: WebSocket, connection_id: str):
                 loop = asyncio.get_event_loop()
                 await loop.run_in_executor(None, lambda: ssh.connect(**connect_kw))
                 
-                channel = ssh.invoke_shell()
+                init_cols = params.get('cols', 80)
+                init_rows = params.get('rows', 24)
+                channel = ssh.invoke_shell(
+                    term='xterm-256color',
+                    width=init_cols,
+                    height=init_rows,
+                )
                 channel.settimeout(0.0)
                 
                 active_connections[connection_id] = {

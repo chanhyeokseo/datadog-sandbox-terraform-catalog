@@ -1,15 +1,9 @@
-# ============================================
-# ECS Cluster Module Variables
-# ============================================
 
 variable "name_prefix" {
   description = "Name prefix for ECS resources"
   type        = string
 }
 
-# ============================================
-# Capacity Provider Flags
-# ============================================
 
 variable "enable_fargate" {
   description = "Enable Fargate capacity provider"
@@ -23,9 +17,6 @@ variable "enable_ec2" {
   default     = false
 }
 
-# ============================================
-# EC2 Configuration (required if enable_ec2 = true)
-# ============================================
 
 variable "subnet_ids" {
   description = "List of subnet IDs for ECS EC2 instances"
@@ -81,9 +72,6 @@ variable "additional_user_data" {
   default     = ""
 }
 
-# ============================================
-# Common
-# ============================================
 
 variable "common_tags" {
   description = "Common tags to apply to all resources"

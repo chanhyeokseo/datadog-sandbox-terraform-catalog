@@ -73,3 +73,9 @@ variable "service" {
   default     = "ec2"
 }
 
+variable "datadog_agent_version" {
+  description = "Datadog Agent minor version to install (e.g., 65.0 for 7.65.0)"
+  type        = string
+  default     = "latest"
+}
+

@@ -1,6 +1,3 @@
-# ============================================
-# Lambda Function Module - Variables
-# ============================================
 
 variable "function_name" {
   description = "Lambda function name"
@@ -45,7 +42,7 @@ variable "environment_variables" {
 variable "exclude_files" {
   description = "File patterns to exclude from ZIP archive"
   type        = list(string)
-  default     = [
+  default = [
     "*.md",
     ".git",
     ".gitignore",

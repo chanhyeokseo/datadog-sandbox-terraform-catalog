@@ -1,0 +1,59 @@
+variable "region" {
+  type = string
+}
+variable "ecr_repository_url" {
+  type    = string
+  default = ""
+}
+variable "project_name" {
+  type    = string
+  default = ""
+}
+variable "project_env" {
+  type    = string
+  default = ""
+}
+variable "ec2_key_name" {
+  type    = string
+  default = ""
+}
+variable "vpc_id" {
+  type    = string
+  default = ""
+}
+variable "public_subnet_id" {
+  type    = string
+  default = ""
+}
+variable "public_subnet2_id" {
+  type    = string
+  default = ""
+}
+variable "private_subnet_id" {
+  type    = string
+  default = ""
+}
+variable "creator" {
+  type    = string
+  default = ""
+}
+variable "team" {
+  type    = string
+  default = ""
+}
+variable "datadog_api_key" {
+  type    = string
+  default = ""
+}
+variable "aws_access_key_id" {
+  type    = string
+  default = ""
+}
+variable "aws_secret_access_key" {
+  type    = string
+  default = ""
+}
+variable "aws_session_token" {
+  type    = string
+  default = ""
+}

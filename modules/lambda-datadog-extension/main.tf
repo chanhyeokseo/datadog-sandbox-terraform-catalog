@@ -1,6 +1,3 @@
-# ============================================
-# Lambda Function Module with Datadog Lambda Extension
-# ============================================
 
 data "aws_region" "current" {}
 
@@ -13,7 +10,7 @@ data "archive_file" "lambda_zip" {
 
 locals {
   region = var.aws_region != "" ? var.aws_region : data.aws_region.current.id
-  
+
   datadog_env_vars = {
     DD_API_KEY                 = var.datadog_api_key != "" ? var.datadog_api_key : null
     DD_API_KEY_SECRET_ARN      = var.datadog_api_key_secret_arn != "" ? var.datadog_api_key_secret_arn : null
@@ -26,16 +23,13 @@ locals {
     DD_SERVERLESS_LOGS_ENABLED = "true"
     DD_CAPTURE_LAMBDA_PAYLOAD  = "true"
   }
-  
+
   all_environment_variables = merge(var.environment_variables, local.datadog_env_vars)
 }
 
-# ============================================
-# IAM Roles
-# ============================================
 
 resource "aws_iam_role" "lambda_role" {
-  name               = "${var.function_name}-lambda-role"
+  name = "${var.function_name}-lambda-role"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -97,9 +91,6 @@ resource "aws_iam_role_policy" "datadog_secret_access" {
 }
 
 
-# ============================================
-# Lambda Function with Datadog Lambda Extension
-# ============================================
 
 module "lambda_datadog" {
   source  = "DataDog/lambda-datadog/aws"
@@ -114,7 +105,10 @@ module "lambda_datadog" {
   timeout          = var.timeout
   memory_size      = var.memory_size
 
-  environment_variables = { for k, v in local.all_environment_variables : k => v if v != null }
+  environment_variables = {
+    for k, v in local.all_environment_variables :
+    k => v if v != null
+  }
 
   datadog_extension_layer_version = var.datadog_extension_layer_version
   datadog_python_layer_version    = var.datadog_python_layer_version
@@ -122,9 +116,6 @@ module "lambda_datadog" {
   tags = var.tags
 }
 
-# ============================================
-# Lambda Function URL
-# ============================================
 
 resource "aws_lambda_function_url" "function_url" {
   count              = var.enable_function_url ? 1 : 0

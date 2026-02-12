@@ -35,7 +35,7 @@ data "aws_ami" "amazon_linux_2023" {
 
   filter {
     name   = "name"
-    values = ["al2023-ami-*-x86_64"]
+    values = ["al2023-ami-2023.*-kernel-*-x86_64"]
   }
 
   filter {
@@ -183,18 +183,4 @@ locals {
     public_subnet2_id = data.aws_subnet.public2.id
     private_subnet_id = data.aws_subnet.private.id
   }
-}
-
-# ============================================
-# Security Group Module
-# ============================================
-module "security_group" {
-  source = "./modules/security-group"
-
-  name_prefix  = local.project_name_prefix
-  project_name = var.project_name
-  vpc_id       = local.vpc.vpc_id
-  my_ip_cidr   = local.my_ip_cidr
-
-  common_tags = local.project_common_tags
 }

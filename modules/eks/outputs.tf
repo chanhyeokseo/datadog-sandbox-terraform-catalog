@@ -1,6 +1,3 @@
-# ============================================
-# EKS Module Outputs
-# ============================================
 
 output "cluster_name" {
   description = "Name of the EKS cluster"
@@ -52,7 +49,6 @@ output "oidc_provider_url" {
   value       = aws_iam_openid_connect_provider.cluster.url
 }
 
-# Node Group Outputs
 output "node_group_name" {
   description = "Name of the EKS node group"
   value       = var.enable_node_group ? aws_eks_node_group.main[0].node_group_name : null
@@ -73,7 +69,6 @@ output "node_iam_role_arn" {
   value       = var.enable_node_group ? aws_iam_role.node[0].arn : null
 }
 
-# Windows Node Group Outputs
 output "windows_node_group_name" {
   description = "Name of the Windows EKS node group"
   value       = var.enable_windows_node_group ? aws_eks_node_group.windows[0].node_group_name : null
@@ -94,7 +89,6 @@ output "windows_node_iam_role_arn" {
   value       = var.enable_windows_node_group ? aws_iam_role.windows_node[0].arn : null
 }
 
-# Fargate Outputs
 output "fargate_profile_name" {
   description = "Name of the Fargate profile"
   value       = var.enable_fargate ? aws_eks_fargate_profile.main[0].fargate_profile_name : null
@@ -105,7 +99,6 @@ output "fargate_profile_arn" {
   value       = var.enable_fargate ? aws_eks_fargate_profile.main[0].arn : null
 }
 
-# Kubeconfig command
 output "kubeconfig_command" {
   description = "Command to update kubeconfig for kubectl access"
   value       = "aws eks update-kubeconfig --region ${var.region} --name ${aws_eks_cluster.main.name}"
