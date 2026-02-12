@@ -20,7 +20,7 @@ class ResourceVariableConfig:
 COMMON_VARIABLES = {
     'vpc_id', 'public_subnet_id', 'public_subnet2_id', 'private_subnet_id',
     'creator', 'team', 'project_name', 'project_env', 'datadog_api_key', 'region',
-    'aws_access_key_id', 'aws_secret_access_key', 'aws_session_token', 'ec2_key_name',
+    'ec2_key_name',
 }
 
 ONBOARDING_PHASES = [
@@ -29,23 +29,18 @@ ONBOARDING_PHASES = [
         ("team", "Team"),
         ("project_name", "Project name"),
         ("project_env", "Project env"),
-    ]),
-    (2, "AWS credentials", [
-        ("aws_access_key_id", "AWS Access Key ID"),
-        ("aws_secret_access_key", "AWS Secret Access Key"),
-        ("aws_session_token", "AWS Session Token (optional)"),
         ("region", "AWS Region"),
     ]),
-    (3, "EC2 key pair", [
+    (2, "EC2 key pair", [
         ("ec2_key_name", "EC2 Key Pair"),
     ]),
-    (4, "VPC configuration", [
+    (3, "VPC configuration", [
         ("vpc_id", "VPC"),
         ("public_subnet_id", "Public Subnet 1"),
         ("public_subnet2_id", "Public Subnet 2"),
         ("private_subnet_id", "Private Subnet"),
     ]),
-    (5, "Datadog API Key", [
+    (4, "Datadog API Key", [
         ("datadog_api_key", "Datadog API Key"),
     ]),
 ]

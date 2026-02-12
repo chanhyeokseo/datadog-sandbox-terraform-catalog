@@ -1,0 +1,24 @@
+# Exclude everything by default
+*
+
+# Include only what we need
+!instances/
+!webui/
+
+# Exclude unnecessary files from webui
+webui/node_modules
+webui/.git
+webui/*/node_modules
+webui/backend/__pycache__
+webui/backend/**/*.pyc
+webui/backend/.pytest_cache
+webui/frontend/dist
+webui/frontend/build
+webui/frontend/node_modules
+
+# Exclude legacy and other large directories
+legacy/
+.git/
+*.tfstate
+*.tfstate.backup
+.terraform/

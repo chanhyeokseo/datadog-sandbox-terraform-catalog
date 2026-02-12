@@ -1,7 +1,9 @@
+# Developer version - for building images
 services:
   backend:
-    # For end users - pull pre-built image
-    # TODO: Replace with your registry URL (e.g., yourusername/terraform-webui-backend:latest)
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     image: terraform-webui-backend:latest
     container_name: terraform-webui-backend
     ports:
@@ -22,6 +24,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    image: terraform-webui-frontend:latest
     container_name: terraform-webui-frontend
     ports:
       - "3000:3000"

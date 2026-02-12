@@ -19,20 +19,57 @@ class TerraformParser:
         self.terraform_dir = Path(terraform_dir)
         self.instances_dir = self.terraform_dir / "instances"
         self.deployed_modules: Set[str] = set()
+        self._config_manager = None
         
     def set_deployed_modules(self, state_output: str):
         """Parse deployed modules from terraform state"""
         self.deployed_modules.clear()
-        
+
         if not state_output or not state_output.strip():
             return
-        
+
         for line in state_output.strip().split('\n'):
             if line.startswith('module.'):
                 parts = line.split('.')
                 if len(parts) >= 2:
                     module_name = parts[1]
                     self.deployed_modules.add(module_name)
+
+    @property
+    def config_manager(self):
+        """Lazy load config manager"""
+        if self._config_manager is None:
+            from app.services.config_manager import ConfigManager
+            self._config_manager = ConfigManager(terraform_dir=str(self.terraform_dir))
+        return self._config_manager
+
+    def _sync_to_parameter_store(self):
+        """Sync root terraform.tfvars to Parameter Store"""
+        try:
+            tfvars_path = self._root_tfvars_path()
+            if not tfvars_path.exists():
+                logger.debug("Root terraform.tfvars does not exist, skipping Parameter Store sync")
+                return
+
+            # Parse all variables from tfvars file
+            variables = {}
+            with open(tfvars_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#'):
+                        match = re.match(r'^(\w+)\s*=\s*(?:"([^"]*)"|(\S+))', line)
+                        if match:
+                            key = match.group(1)
+                            value = (match.group(2) or match.group(3) or "").strip()
+                            variables[key] = value
+
+            # Save to Parameter Store
+            if variables:
+                self.config_manager.save_config(variables)
+                logger.debug(f"Synced {len(variables)} variables to Parameter Store")
+
+        except Exception as e:
+            logger.warning(f"Failed to sync to Parameter Store (non-critical): {e}")
     
     def parse_all_resources(self) -> List[TerraformResource]:
         """Parse all resources from instances directory structure"""
@@ -126,25 +163,47 @@ class TerraformParser:
     
     def get_aws_env(self) -> dict:
         result = {}
+
+        # First, read from terraform.tfvars (legacy support)
         tfvars_path = self._root_tfvars_path()
-        if not tfvars_path.exists():
-            return result
-        with open(tfvars_path, 'r', encoding='utf-8') as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith('#'):
-                    match = re.match(r'^(\w+)\s*=\s*(?:"([^"]*)"|(\S+))', line)
-                    if match:
-                        key = match.group(1)
-                        value = (match.group(2) or match.group(3) or "").strip()
-                        if key == "aws_access_key_id" and value:
-                            result["AWS_ACCESS_KEY_ID"] = value
-                        elif key == "aws_secret_access_key" and value:
-                            result["AWS_SECRET_ACCESS_KEY"] = value
-                        elif key == "aws_session_token" and value:
-                            result["AWS_SESSION_TOKEN"] = value
-                        elif key == "region" and value:
-                            result["AWS_REGION"] = value
+        if tfvars_path.exists():
+            with open(tfvars_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#'):
+                        match = re.match(r'^(\w+)\s*=\s*(?:"([^"]*)"|(\S+))', line)
+                        if match:
+                            key = match.group(1)
+                            value = (match.group(2) or match.group(3) or "").strip()
+                            if key == "aws_access_key_id" and value:
+                                result["AWS_ACCESS_KEY_ID"] = value
+                            elif key == "aws_secret_access_key" and value:
+                                result["AWS_SECRET_ACCESS_KEY"] = value
+                            elif key == "aws_session_token" and value:
+                                result["AWS_SESSION_TOKEN"] = value
+                            elif key == "region" and value:
+                                result["AWS_REGION"] = value
+
+        # Override with environment variables (preferred method)
+        if os.environ.get("AWS_ACCESS_KEY_ID"):
+            result["AWS_ACCESS_KEY_ID"] = os.environ.get("AWS_ACCESS_KEY_ID")
+        if os.environ.get("AWS_SECRET_ACCESS_KEY"):
+            result["AWS_SECRET_ACCESS_KEY"] = os.environ.get("AWS_SECRET_ACCESS_KEY")
+        if os.environ.get("AWS_SESSION_TOKEN"):
+            result["AWS_SESSION_TOKEN"] = os.environ.get("AWS_SESSION_TOKEN")
+        if os.environ.get("AWS_REGION"):
+            result["AWS_REGION"] = os.environ.get("AWS_REGION")
+
+        # Fallback: read region from tfvars if not in env
+        if "AWS_REGION" not in result and tfvars_path.exists():
+            with open(tfvars_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    if line.strip().startswith("region"):
+                        match = re.match(r'^region\s*=\s*(?:"([^"]*)"|(\S+))', line.strip())
+                        if match:
+                            result["AWS_REGION"] = (match.group(1) or match.group(2) or "").strip()
+                            break
+
         return result
 
     def _unescape_tfvars_value(self, s: str) -> str:
@@ -400,7 +459,13 @@ class TerraformParser:
             return False
         path = self._root_tfvars_path()
         logger.debug("write_root_tfvars: var=%s path=%s", var_name, path)
-        return self._write_tfvars_line(path, var_name, var_value)
+        success = self._write_tfvars_line(path, var_name, var_value)
+
+        # Sync to Parameter Store after writing
+        if success:
+            self._sync_to_parameter_store()
+
+        return success
 
     def _break_symlink_to_root(self, tfvars_path: Path) -> None:
         if not tfvars_path.is_symlink():

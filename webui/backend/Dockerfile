@@ -25,12 +25,19 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY app/ ./app/
 
+# Create Terraform working directory (instances will be cloned at runtime)
+RUN mkdir -p /app/terraform/instances
+
 # Copy entrypoint script
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 # Expose port
 EXPOSE 8000
+
+# Environment variables (can be overridden by docker-compose)
+ENV TERRAFORM_DIR=/app/terraform
+ENV USE_PARAMETER_STORE=true
 
 # Run the application
 ENTRYPOINT ["/entrypoint.sh"]

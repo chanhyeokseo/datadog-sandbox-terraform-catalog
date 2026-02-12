@@ -9,3 +9,4 @@ cryptography
 websockets==12.0
 requests
 requests-aws4auth
+boto3

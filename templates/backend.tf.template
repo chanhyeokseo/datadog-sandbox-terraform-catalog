@@ -1,0 +1,12 @@
+# S3 Backend Configuration
+# This file enables remote state storage with locking
+
+terraform {
+  backend "s3" {
+    bucket         = "{{BUCKET_NAME}}"
+    key            = "instances/{{INSTANCE_NAME}}/terraform.tfstate"
+    region         = "{{REGION}}"
+    dynamodb_table = "{{DYNAMODB_TABLE}}"
+    encrypt        = true
+  }
+}

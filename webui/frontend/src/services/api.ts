@@ -300,3 +300,99 @@ export const terraformApi = {
     }
   },
 };
+
+// Backend Setup API
+export interface BackendSetupRequest {
+  bucket_name: string;
+  table_name?: string;
+  region?: string;
+}
+
+export interface BackendSetupResult {
+  success: boolean;
+  message: string;
+  details?: any;
+  backend_files_generated?: number;
+}
+
+export interface BackendStatus {
+  configured: boolean;
+  total_instances: number;
+  instances_with_backend: number;
+  instances: Array<{
+    name: string;
+    has_backend: boolean;
+  }>;
+}
+
+export const backendApi = {
+  setupBackend: async (request: BackendSetupRequest): Promise<BackendSetupResult> => {
+    const response = await axios.post('/api/backend/setup', request);
+    return response.data;
+  },
+
+  checkBackend: async (request: BackendSetupRequest) => {
+    const response = await axios.post('/api/backend/check', request);
+    return response.data;
+  },
+
+  getStatus: async (): Promise<BackendStatus> => {
+    const response = await axios.get('/api/backend/status');
+    return response.data;
+  },
+};
+
+// Key Management API
+export interface KeyUploadRequest {
+  key_name: string;
+  private_key_content: string;
+  description?: string;
+}
+
+export interface KeyInfo {
+  name: string;
+  description?: string;
+  last_modified?: string;
+  version?: number;
+  tier?: string;
+}
+
+export const keysApi = {
+  listKeys: async () => {
+    const response = await axios.get('/api/keys/list');
+    return response.data;
+  },
+
+  uploadKey: async (request: KeyUploadRequest) => {
+    const response = await axios.post('/api/keys/upload', request);
+    return response.data;
+  },
+
+  uploadKeyFile: async (keyName: string, file: File, description?: string) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await axios.post(
+      `/api/keys/upload-file?key_name=${encodeURIComponent(keyName)}&description=${encodeURIComponent(description || '')}`,
+      formData,
+      {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      }
+    );
+    return response.data;
+  },
+
+  getKeyInfo: async (keyName: string): Promise<KeyInfo> => {
+    const response = await axios.get(`/api/keys/${keyName}`);
+    return response.data;
+  },
+
+  deleteKey: async (keyName: string) => {
+    const response = await axios.delete(`/api/keys/${keyName}`);
+    return response.data;
+  },
+
+  getStorageInfo: async () => {
+    const response = await axios.get('/api/keys/storage/info');
+    return response.data;
+  },
+};

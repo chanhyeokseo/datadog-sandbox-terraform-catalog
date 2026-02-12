@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 
-from app.routes import terraform, ssh
+from app.routes import terraform, ssh, backend, keys
 
 logging.basicConfig(
     level=logging.INFO,
@@ -25,6 +25,8 @@ app.add_middleware(
 
 app.include_router(terraform.router)
 app.include_router(ssh.router)
+app.include_router(backend.router)
+app.include_router(keys.router)
 
 
 @app.get("/")

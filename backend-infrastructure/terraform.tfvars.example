@@ -1,0 +1,7 @@
+# Backend Infrastructure Configuration
+# Copy this file to terraform.tfvars and update with your values
+
+region              = "ap-northeast-2"
+state_bucket_name   = "your-company-terraform-states"  # MUST BE GLOBALLY UNIQUE
+dynamodb_table_name = "terraform-state-locks"
+environment         = "prod"

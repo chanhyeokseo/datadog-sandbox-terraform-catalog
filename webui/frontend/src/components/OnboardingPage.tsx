@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   terraformApi,
+  backendApi,
+  keysApi,
   ConfigOnboardingStatus,
   ConfigOnboardingStep,
   ConfigOnboardingPhase,
@@ -41,6 +43,10 @@ function OnboardingPage() {
   const [vpcLoading, setVpcLoading] = useState(false);
   const [keyResult, setKeyResult] = useState<{ key_name: string; private_key: string; key_path: string; ssh_hint: string } | null>(null);
   const [keyGenerating, setKeyGenerating] = useState(false);
+  const [backendSetup, setBackendSetup] = useState<{
+    status: 'idle' | 'setting_up' | 'complete' | 'error';
+    message?: string;
+  }>({ status: 'idle' });
 
   const phases: ConfigOnboardingPhase[] = status?.phases ?? [];
   const shouldRedirect = !loading && !!(status && (!status.config_onboarding_required || (status.phases?.length === 0 && status.steps?.length === 0)));
@@ -116,16 +122,75 @@ function OnboardingPage() {
       setStatus(updated);
       if (!updated.config_onboarding_required) {
         await terraformApi.syncTfvarsToInstances().catch(() => {});
+
+        // Setup backend infrastructure automatically
+        await setupBackendInfrastructure();
+
         navigate('/', { replace: true });
         return;
       }
       const nextIncomplete = updated.phases?.findIndex(p => !p.all_filled) ?? currentPhaseIndex + 1;
       setCurrentPhaseIndex(nextIncomplete >= 0 ? nextIncomplete : phases.length - 1);
-      if (currentPhaseIndex === 3) setSubnets([]);
+      if (currentPhaseIndex === 2) setSubnets([]);
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const setupBackendInfrastructure = async () => {
+    setBackendSetup({ status: 'setting_up', message: 'Setting up S3 backend...' });
+    try {
+      // Get variables for bucket name
+      const vars = await terraformApi.getVariables();
+      const creator = vars.find(v => v.name === 'creator')?.value || 'default';
+      const team = vars.find(v => v.name === 'team')?.value || 'default';
+      const region = vars.find(v => v.name === 'region')?.value || 'ap-northeast-2';
+
+      // Generate unique bucket name with dogstac prefix (lowercase, alphanumeric and hyphens only)
+      const timestamp = Date.now().toString().slice(-8);
+      const safeCreator = creator.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+      const safeTeam = team.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+      const bucketName = `dogstac-${safeCreator}-${safeTeam}-tf-states-${timestamp}`;
+
+      // Setup backend
+      const result = await backendApi.setupBackend({
+        bucket_name: bucketName,
+        table_name: 'terraform-state-locks',
+        region: region
+      });
+
+      if (result.success) {
+        setBackendSetup({
+          status: 'complete',
+          message: `Backend configured! S3: ${bucketName}`
+        });
+
+        // Upload SSH keys to Parameter Store if they exist
+        if (keyResult) {
+          try {
+            await keysApi.uploadKey({
+              key_name: keyResult.key_name,
+              private_key_content: keyResult.private_key,
+              description: 'Auto-uploaded during onboarding'
+            });
+          } catch (keyErr) {
+            console.warn('Failed to upload key to Parameter Store:', keyErr);
+          }
+        }
+      } else {
+        setBackendSetup({
+          status: 'error',
+          message: 'Backend setup failed. You can configure it later in Settings.'
+        });
+      }
+    } catch (err) {
+      console.error('Backend setup error:', err);
+      setBackendSetup({
+        status: 'error',
+        message: 'Backend setup failed. You can configure it later in Settings.'
+      });
     }
   };
 
@@ -144,10 +209,10 @@ function OnboardingPage() {
   const isPhaseComplete = () => {
     const phase = phases[currentPhaseIndex];
     if (!phase) return false;
-    if (currentPhaseIndex === 2) {
+    if (currentPhaseIndex === 1) {
       return !!phase.variables.find(v => v.name === 'ec2_key_name')?.filled;
     }
-    if (currentPhaseIndex === 3) {
+    if (currentPhaseIndex === 2) {
       return !!(
         (phaseValues.vpc_id || phase.variables.find(v => v.name === 'vpc_id')?.filled) &&
         (phaseValues.public_subnet_id || phase.variables.find(v => v.name === 'public_subnet_id')?.filled) &&
@@ -183,8 +248,8 @@ function OnboardingPage() {
   const completedPhases = phases.filter(p => p.all_filled).length;
   const progressPercent = totalPhases ? (completedPhases / totalPhases) * 100 : 0;
   const isLastPhase = currentPhaseIndex === totalPhases - 1;
-  const isKeyPhase = currentPhaseIndex === 2;
-  const isVpcPhase = currentPhaseIndex === 3;
+  const isKeyPhase = currentPhaseIndex === 1;
+  const isVpcPhase = currentPhaseIndex === 2;
 
   const handleGenerateKeyPair = async () => {
     setError(null);
@@ -358,13 +423,23 @@ function OnboardingPage() {
         )}
 
         {error && <p className="onboarding-step-error">{error}</p>}
+
+        {backendSetup.status !== 'idle' && (
+          <div className={`onboarding-backend-status onboarding-backend-${backendSetup.status}`}>
+            {backendSetup.status === 'setting_up' && '⏳ '}
+            {backendSetup.status === 'complete' && '✅ '}
+            {backendSetup.status === 'error' && '⚠️ '}
+            {backendSetup.message}
+          </div>
+        )}
+
         <div className="onboarding-step-actions">
           <button
             onClick={saveAndNextPhase}
-            disabled={saving || !isPhaseComplete()}
+            disabled={saving || !isPhaseComplete() || backendSetup.status === 'setting_up'}
             className="onboarding-btn-primary"
           >
-            {saving ? 'Saving...' : isLastPhase && isPhaseComplete() ? 'Complete' : 'Next'}
+            {backendSetup.status === 'setting_up' ? 'Setting up backend...' : saving ? 'Saving...' : isLastPhase && isPhaseComplete() ? 'Complete' : 'Next'}
           </button>
         </div>
 

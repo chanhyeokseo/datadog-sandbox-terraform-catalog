@@ -8,8 +8,15 @@ import os
 from pathlib import Path
 from io import StringIO
 
+from app.services.key_manager import ParameterStoreKeyManager, LocalKeyManager
+
 router = APIRouter(prefix="/api/ssh", tags=["ssh"])
 logger = logging.getLogger(__name__)
+
+# Initialize key managers
+USE_PARAMETER_STORE = os.environ.get("USE_PARAMETER_STORE", "true").lower() == "true"
+ps_key_manager = ParameterStoreKeyManager() if USE_PARAMETER_STORE else None
+local_key_manager = LocalKeyManager()
 
 TERRAFORM_DIR = os.environ.get("TERRAFORM_DIR", "/terraform")
 active_connections: Dict[str, dict] = {}
@@ -74,16 +81,13 @@ def _find_key_file(resolved_path: str) -> str:
     return resolved_path
 
 
-def _load_pkey(key_path: str) -> Optional[paramiko.PKey]:
-    path = Path(key_path)
-    if not path.exists():
-        return None
-    raw = path.read_text(encoding="utf-8")
-    if "BEGIN RSA PRIVATE KEY" in raw:
+def _load_pkey_from_content(pem_content: str) -> Optional[paramiko.PKey]:
+    """Load paramiko key from PEM string content"""
+    if "BEGIN RSA PRIVATE KEY" in pem_content:
         try:
             from cryptography.hazmat.primitives import serialization
             from cryptography.hazmat.backends import default_backend
-            key = serialization.load_pem_private_key(raw.encode(), password=None, backend=default_backend())
+            key = serialization.load_pem_private_key(pem_content.encode(), password=None, backend=default_backend())
             openssh_bytes = key.private_bytes(
                 encoding=serialization.Encoding.PEM,
                 format=serialization.PrivateFormat.OpenSSH,
@@ -92,13 +96,48 @@ def _load_pkey(key_path: str) -> Optional[paramiko.PKey]:
             return paramiko.RSAKey.from_private_key(StringIO(openssh_bytes.decode()))
         except Exception as e:
             logger.debug("RSA to OpenSSH conversion for SSH: %s", e)
+
     try:
-        return paramiko.RSAKey.from_private_key_file(key_path)
+        return paramiko.RSAKey.from_private_key(StringIO(pem_content))
     except paramiko.SSHException:
         try:
-            return paramiko.Ed25519Key.from_private_key_file(key_path)
+            return paramiko.Ed25519Key.from_private_key(StringIO(pem_content))
         except paramiko.SSHException:
             return None
+
+
+def _load_pkey(key_path: str) -> Optional[paramiko.PKey]:
+    """
+    Load private key from Parameter Store or local file
+    Priority: Parameter Store > Local File
+    """
+    # Extract key name from path
+    key_name = Path(key_path).stem
+
+    # Try Parameter Store first
+    if ps_key_manager:
+        try:
+            pem_content = ps_key_manager.get_key(key_name)
+            if pem_content:
+                logger.info(f"Loaded key '{key_name}' from Parameter Store")
+                return _load_pkey_from_content(pem_content)
+        except Exception as e:
+            logger.warning(f"Failed to load key from Parameter Store: {e}")
+
+    # Fallback to local file
+    path = Path(key_path)
+    if not path.exists():
+        # Try local key manager as last resort
+        pem_content = local_key_manager.get_key(key_name)
+        if pem_content:
+            logger.info(f"Loaded key '{key_name}' from local file system")
+            return _load_pkey_from_content(pem_content)
+        return None
+
+    # Load from file path directly
+    raw = path.read_text(encoding="utf-8")
+    logger.info(f"Loaded key from file: {key_path}")
+    return _load_pkey_from_content(raw)
 
 
 @router.websocket("/connect/{connection_id}")
