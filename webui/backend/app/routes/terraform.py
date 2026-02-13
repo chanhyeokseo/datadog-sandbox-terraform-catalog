@@ -30,15 +30,20 @@ def get_resource_lock(resource_id: str) -> asyncio.Lock:
 
 
 def _var_files_for_resource(resource_id: str) -> Optional[List[str]]:
-    if resource_id == "security_group":
-        return None
-    var_files = [str(runner.terraform_dir / "terraform.tfvars")]
+    """
+    Build list of -var-file paths for terraform commands
+    Each instance uses ONLY its own directory's terraform.tfvars
+    (Root tfvars is synced to instances during onboarding)
+    """
     resource_dir = runner.get_resource_directory(resource_id)
-    if resource_dir:
-        inst_tfvars = resource_dir / "terraform.tfvars"
-        if inst_tfvars.exists():
-            var_files.append(str(inst_tfvars))
-    return var_files
+    if not resource_dir:
+        return None
+
+    inst_tfvars = resource_dir / "terraform.tfvars"
+    if inst_tfvars.exists():
+        return [str(inst_tfvars)]
+
+    return None
 
 
 @router.get("/init/{resource_id}/status")
@@ -534,6 +539,27 @@ async def sync_tfvars_to_instances():
         raise
     except Exception as e:
         logger.exception("Error syncing tfvars to instances: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/onboarding/sync-to-parameter-store")
+async def sync_to_parameter_store():
+    """
+    Sync terraform.tfvars to Parameter Store
+    Should be called after onboarding is complete
+    """
+    try:
+        success = parser.sync_to_parameter_store()
+        if not success:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to sync configuration to Parameter Store"
+            )
+        return {"success": True, "message": "Configuration synced to Parameter Store"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Error syncing to Parameter Store: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 

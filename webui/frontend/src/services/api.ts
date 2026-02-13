@@ -109,6 +109,11 @@ export const terraformApi = {
     return response.data;
   },
 
+  syncToParameterStore: async (): Promise<ApiResponse> => {
+    const response = await api.post<ApiResponse>('/onboarding/sync-to-parameter-store');
+    return response.data;
+  },
+
   getAwsVpcs: async (region: string): Promise<{ vpcs: AwsVpc[] }> => {
     const response = await api.get<{ vpcs: AwsVpc[] }>('/aws/vpcs', { params: { region } });
     return response.data;
@@ -326,6 +331,11 @@ export interface BackendStatus {
 }
 
 export const backendApi = {
+  getSuggestedBucketName: async (creator: string, team: string): Promise<{ bucket_name: string; table_name: string; bucket_pattern: string; table_pattern: string }> => {
+    const response = await axios.post('/api/backend/suggest-bucket-name', { creator, team });
+    return response.data;
+  },
+
   setupBackend: async (request: BackendSetupRequest): Promise<BackendSetupResult> => {
     const response = await axios.post('/api/backend/setup', request);
     return response.data;
@@ -338,6 +348,11 @@ export const backendApi = {
 
   getStatus: async (): Promise<BackendStatus> => {
     const response = await axios.get('/api/backend/status');
+    return response.data;
+  },
+
+  rebuildBackendForInstance: async (instanceName: string, request: BackendSetupRequest): Promise<{ success: boolean; instance: string; backend_file: string }> => {
+    const response = await axios.post(`/api/backend/generate/${instanceName}`, request);
     return response.data;
   },
 };

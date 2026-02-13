@@ -8,7 +8,6 @@ import OnboardingPage from './components/OnboardingPage';
 function OnboardingGuard({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
-  const [onboardingComplete, setOnboardingComplete] = useState(false);
 
   useEffect(() => {
     const checkOnboardingStatus = async () => {
@@ -16,7 +15,6 @@ function OnboardingGuard({ children }: { children: React.ReactNode }) {
         const response = await fetch('/api/backend/onboarding/status');
         const data = await response.json();
 
-        setOnboardingComplete(data.onboarding_complete);
         setLoading(false);
 
         // If onboarding is not complete and we're on main page, redirect to onboarding

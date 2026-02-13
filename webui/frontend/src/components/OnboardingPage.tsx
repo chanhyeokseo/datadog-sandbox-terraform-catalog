@@ -121,7 +121,13 @@ function OnboardingPage() {
       const updated = await terraformApi.getConfigOnboardingStatus();
       setStatus(updated);
       if (!updated.config_onboarding_required) {
+        // Sync tfvars to all instances
         await terraformApi.syncTfvarsToInstances().catch(() => {});
+
+        // Sync configuration to Parameter Store (for persistence)
+        await terraformApi.syncToParameterStore().catch((err) => {
+          console.warn('Failed to sync to Parameter Store:', err);
+        });
 
         // Setup backend infrastructure automatically
         await setupBackendInfrastructure();
@@ -148,16 +154,13 @@ function OnboardingPage() {
       const team = vars.find(v => v.name === 'team')?.value || 'default';
       const region = vars.find(v => v.name === 'region')?.value || 'ap-northeast-2';
 
-      // Generate unique bucket name with dogstac prefix (lowercase, alphanumeric and hyphens only)
-      const timestamp = Date.now().toString().slice(-8);
-      const safeCreator = creator.toLowerCase().replace(/[^a-z0-9-]/g, '-');
-      const safeTeam = team.toLowerCase().replace(/[^a-z0-9-]/g, '-');
-      const bucketName = `dogstac-${safeCreator}-${safeTeam}-tf-states-${timestamp}`;
+      // Get suggested bucket and table names from backend (uses AWS credential hash)
+      const { bucket_name: bucketName, table_name: tableName } = await backendApi.getSuggestedBucketName(creator, team);
 
       // Setup backend
       const result = await backendApi.setupBackend({
         bucket_name: bucketName,
-        table_name: 'terraform-state-locks',
+        table_name: tableName,
         region: region
       });
 

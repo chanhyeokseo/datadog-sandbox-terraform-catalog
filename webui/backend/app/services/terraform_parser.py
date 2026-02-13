@@ -43,13 +43,13 @@ class TerraformParser:
             self._config_manager = ConfigManager(terraform_dir=str(self.terraform_dir))
         return self._config_manager
 
-    def _sync_to_parameter_store(self):
-        """Sync root terraform.tfvars to Parameter Store"""
+    def sync_to_parameter_store(self):
+        """Sync root terraform.tfvars to Parameter Store - call this after onboarding is complete"""
         try:
             tfvars_path = self._root_tfvars_path()
             if not tfvars_path.exists():
-                logger.debug("Root terraform.tfvars does not exist, skipping Parameter Store sync")
-                return
+                logger.warning("Root terraform.tfvars does not exist, cannot sync to Parameter Store")
+                return False
 
             # Parse all variables from tfvars file
             variables = {}
@@ -65,11 +65,20 @@ class TerraformParser:
 
             # Save to Parameter Store
             if variables:
-                self.config_manager.save_config(variables)
-                logger.debug(f"Synced {len(variables)} variables to Parameter Store")
+                success = self.config_manager.save_config(variables)
+                if success:
+                    logger.info(f"✅ Synced {len(variables)} variables to Parameter Store")
+                    return True
+                else:
+                    logger.error("❌ Failed to save config to Parameter Store")
+                    return False
+            else:
+                logger.warning("No variables found in terraform.tfvars")
+                return False
 
         except Exception as e:
-            logger.warning(f"Failed to sync to Parameter Store (non-critical): {e}")
+            logger.error(f"Failed to sync to Parameter Store: {e}")
+            return False
     
     def parse_all_resources(self) -> List[TerraformResource]:
         """Parse all resources from instances directory structure"""
@@ -461,9 +470,12 @@ class TerraformParser:
         logger.debug("write_root_tfvars: var=%s path=%s", var_name, path)
         success = self._write_tfvars_line(path, var_name, var_value)
 
-        # Sync to Parameter Store after writing
+        # Sync to S3 after successful write
         if success:
-            self._sync_to_parameter_store()
+            self._sync_root_tfvars_to_s3()
+
+        # Note: Parameter Store sync removed from here
+        # Call sync_to_parameter_store() manually after onboarding is complete
 
         return success
 
@@ -498,7 +510,13 @@ class TerraformParser:
         root_path = self._root_tfvars_path()
         if path.resolve() == root_path.resolve():
             return False
-        return self._write_tfvars_line(path, var_name, var_value)
+        success = self._write_tfvars_line(path, var_name, var_value)
+
+        # Sync to S3 after successful write
+        if success:
+            self._sync_instance_tfvars_to_s3(resource_id, path)
+
+        return success
 
     def _filter_common_only_lines(self, content: str) -> str:
         from app.config import get_root_allowed_variable_names
@@ -531,6 +549,10 @@ class TerraformParser:
         content = self._filter_common_only_lines(raw_content)
         dir_map = get_resource_directory_map(self.instances_dir)
         ok = False
+
+        # Sync root tfvars to S3 first
+        self._sync_root_tfvars_to_s3()
+
         for _resource_id, dir_name in dir_map.items():
             instance_dir = self.instances_dir / dir_name
             if not instance_dir.is_dir():
@@ -539,6 +561,8 @@ class TerraformParser:
             try:
                 dst.write_text(content, encoding="utf-8")
                 ok = True
+                # Sync each instance tfvars to S3
+                self._sync_instance_tfvars_to_s3(_resource_id, dst)
             except OSError:
                 pass
         return ok
@@ -576,4 +600,56 @@ class TerraformParser:
             tfvars_path.unlink()
             return True
         except OSError:
+            return False
+
+    def _get_s3_bucket_name(self) -> Optional[str]:
+        """Get S3 bucket name for config storage"""
+        try:
+            from app.services.config_manager import ConfigManager
+            config_manager = ConfigManager(terraform_dir=str(self.terraform_dir))
+            creator, team = config_manager._get_creator_team_from_tfvars()
+            return config_manager.generate_bucket_name(creator, team)
+        except Exception as e:
+            logger.debug(f"Could not determine S3 bucket name: {e}")
+            return None
+
+    def _sync_root_tfvars_to_s3(self) -> bool:
+        """Upload root terraform.tfvars to S3"""
+        try:
+            bucket_name = self._get_s3_bucket_name()
+            if not bucket_name:
+                logger.debug("S3 bucket name not available, skipping S3 sync")
+                return False
+
+            from app.services.s3_config_manager import S3ConfigManager
+            s3_manager = S3ConfigManager(bucket_name)
+            success = s3_manager.upload_root_tfvars(self.terraform_dir)
+
+            if success:
+                logger.debug(f"✓ Synced root tfvars to S3: {bucket_name}")
+            return success
+        except Exception as e:
+            logger.warning(f"Failed to sync root tfvars to S3: {e}")
+            return False
+
+    def _sync_instance_tfvars_to_s3(self, resource_id: str, tfvars_path: Path) -> bool:
+        """Upload instance terraform.tfvars to S3"""
+        try:
+            bucket_name = self._get_s3_bucket_name()
+            if not bucket_name:
+                logger.debug("S3 bucket name not available, skipping S3 sync")
+                return False
+
+            instance_dir = tfvars_path.parent
+            instance_name = instance_dir.name
+
+            from app.services.s3_config_manager import S3ConfigManager
+            s3_manager = S3ConfigManager(bucket_name)
+            success = s3_manager.upload_instance_tfvars(instance_dir, instance_name)
+
+            if success:
+                logger.debug(f"✓ Synced instance tfvars to S3: {instance_name}")
+            return success
+        except Exception as e:
+            logger.warning(f"Failed to sync instance tfvars to S3: {e}")
             return False

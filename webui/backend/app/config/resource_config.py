@@ -47,6 +47,8 @@ ONBOARDING_PHASES = [
 
 EXCLUDED_VARIABLES = {
     'ec2_key_name',
+    'aws_access_key_id',      # Managed via environment variables
+    'aws_secret_access_key',  # Managed via environment variables
 }
 
 REQUIRED_CONFIG_VARIABLES = [

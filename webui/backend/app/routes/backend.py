@@ -11,6 +11,7 @@ from pathlib import Path
 
 from app.services.backend_manager import BackendManager
 from app.services.config_manager import ConfigManager
+from app.services.instance_discovery import get_resource_directory_map
 
 router = APIRouter(prefix="/api/backend", tags=["backend"])
 logger = logging.getLogger(__name__)
@@ -28,6 +29,40 @@ class BackendCheckRequest(BaseModel):
     bucket_name: str
     table_name: Optional[str] = "terraform-state-locks"
     region: Optional[str] = "ap-northeast-2"
+
+
+class BucketNameRequest(BaseModel):
+    creator: str
+    team: str
+
+
+@router.post("/suggest-bucket-name")
+async def suggest_bucket_name(request: BucketNameRequest):
+    """
+    Generate suggested S3 bucket and DynamoDB table names using AWS credential hash
+    This ensures names match Parameter Store naming convention
+    """
+    try:
+        config_manager = ConfigManager(terraform_dir=TERRAFORM_DIR)
+        bucket_name = config_manager.generate_bucket_name(
+            creator=request.creator,
+            team=request.team
+        )
+        table_name = config_manager.generate_dynamodb_table_name(
+            creator=request.creator,
+            team=request.team
+        )
+
+        return {
+            "bucket_name": bucket_name,
+            "table_name": table_name,
+            "bucket_pattern": "dogstac-<creator>-<hash>",
+            "table_pattern": "dogstac-<hash>-locks"
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to generate backend names: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/setup")
@@ -153,26 +188,34 @@ async def get_backend_status():
     }
 
 
-@router.post("/generate/{instance_name}")
+@router.post("/generate/{resource_id}")
 async def generate_backend_for_instance(
-    instance_name: str,
+    resource_id: str,
     request: BackendSetupRequest
 ):
     """Generate backend.tf for a specific instance"""
     try:
         instances_dir = Path(TERRAFORM_DIR) / "instances"
-        instance_dir = instances_dir / instance_name
+
+        # Map resource_id to actual directory name
+        resource_dir_map = get_resource_directory_map(instances_dir)
+        dir_name = resource_dir_map.get(resource_id)
+
+        if not dir_name:
+            raise HTTPException(status_code=404, detail=f"Resource {resource_id} not found")
+
+        instance_dir = instances_dir / dir_name
 
         if not instance_dir.exists():
-            raise HTTPException(status_code=404, detail=f"Instance {instance_name} not found")
+            raise HTTPException(status_code=404, detail=f"Instance directory {dir_name} not found")
 
         if not (instance_dir / "main.tf").exists():
-            raise HTTPException(status_code=400, detail=f"{instance_name} is not a valid instance")
+            raise HTTPException(status_code=400, detail=f"{dir_name} is not a valid instance")
 
         manager = BackendManager(region=request.region)
         backend_content = manager.generate_backend_config(
             bucket_name=request.bucket_name,
-            instance_name=instance_name,
+            instance_name=resource_id,
             table_name=request.table_name
         )
 
@@ -181,14 +224,14 @@ async def generate_backend_for_instance(
 
         return {
             "success": True,
-            "instance": instance_name,
+            "instance": resource_id,
             "backend_file": str(backend_file)
         }
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to generate backend for {instance_name}: {e}")
+        logger.error(f"Failed to generate backend for {resource_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -25,8 +25,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY app/ ./app/
 
-# Create Terraform working directory (instances will be cloned at runtime)
-RUN mkdir -p /app/terraform/instances
+# Create Terraform working directory (instances and modules will be populated via sparse clone at runtime)
+RUN mkdir -p /app/terraform
 
 # Copy entrypoint script
 COPY entrypoint.sh /entrypoint.sh

@@ -147,11 +147,13 @@ class BackendManager:
                     {
                         'ID': 'delete-old-versions',
                         'Status': 'Enabled',
+                        'Filter': {'Prefix': ''},
                         'NoncurrentVersionExpiration': {'NoncurrentDays': 90}
                     },
                     {
                         'ID': 'abort-incomplete-uploads',
                         'Status': 'Enabled',
+                        'Filter': {'Prefix': ''},
                         'AbortIncompleteMultipartUpload': {'DaysAfterInitiation': 7}
                     }
                 ]
