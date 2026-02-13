@@ -21,7 +21,7 @@ locals {
 }
 
 module "lambda_python_example" {
-  source = "../../modules/lambda"
+  source = "git::https://github.com/chanhyeokseo/datadog-sandbox-terraform-catalog.git//modules/lambda?ref=webui-dev"
 
   function_name = "${local.project_name_prefix}-python-example-app"
   source_dir    = "${path.module}/../../apps/lambda/python/example-app"

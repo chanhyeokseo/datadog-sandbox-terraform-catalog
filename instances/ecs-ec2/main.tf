@@ -40,7 +40,7 @@ locals {
 }
 
 module "ecs_ec2" {
-  source = "../../modules/ecs"
+  source = "git::https://github.com/chanhyeokseo/datadog-sandbox-terraform-catalog.git//modules/ecs?ref=webui-dev"
 
   name_prefix    = "${local.project_name_prefix}-ec2"
   enable_fargate = false

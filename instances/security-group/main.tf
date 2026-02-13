@@ -30,7 +30,7 @@ locals {
 }
 
 module "security_group" {
-  source = "../../modules/security-group"
+  source = "git::https://github.com/chanhyeokseo/datadog-sandbox-terraform-catalog.git//modules/security-group?ref=webui-dev"
 
   name_prefix   = local.project_name_prefix
   project_name  = var.project_name

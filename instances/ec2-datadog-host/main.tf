@@ -45,7 +45,7 @@ locals {
 }
 
 module "ec2_datadog_host" {
-  source = "../../modules/ec2-datadog-host"
+  source = "git::https://github.com/chanhyeokseo/datadog-sandbox-terraform-catalog.git//modules/ec2-datadog-host?ref=webui-dev"
 
   name_prefix        = local.project_name_prefix
   instance_type      = var.ec2_instance_type
