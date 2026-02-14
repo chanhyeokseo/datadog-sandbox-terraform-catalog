@@ -8,11 +8,11 @@
 module "ecs_fargate" {
   source = "./modules/ecs"
 
-  name_prefix    = "${local.project_name_prefix}-fargate"
+  name_prefix    = "${local.name_prefix}-fargate"
   enable_fargate = var.ecs_enable_fargate
   enable_ec2     = false
 
-  common_tags = local.project_common_tags
+  common_tags = local.common_tags
 }
 
 output "ecs_fargate_cluster_name" {
@@ -31,7 +31,7 @@ output "ecs_fargate_cluster_arn" {
 module "ecs_ec2" {
   source = "./modules/ecs"
 
-  name_prefix = "${local.project_name_prefix}-ec2"
+  name_prefix = "${local.name_prefix}-ec2"
 
   # Fargate Configuration (optional, set to true if you want to use Fargate)
   enable_fargate = false
@@ -46,7 +46,7 @@ module "ecs_ec2" {
   ec2_max_size         = 3
   ec2_desired_capacity = 1
 
-  common_tags = local.project_common_tags
+  common_tags = local.common_tags
 }
 
 output "ecs_ec2_cluster_name" {

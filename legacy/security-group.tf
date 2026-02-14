@@ -31,15 +31,14 @@ variable "sg_egress_rules" {
 module "security_group" {
   source = "./modules/security-group"
 
-  name_prefix  = local.project_name_prefix
-  project_name = var.project_name
+  name_prefix  = local.name_prefix
   vpc_id       = local.vpc.vpc_id
   my_ip_cidr   = local.my_ip_cidr
 
   ingress_rules = var.sg_ingress_rules
   egress_rules  = var.sg_egress_rules
 
-  common_tags = local.project_common_tags
+  common_tags = local.common_tags
 }
 
 # Output security group rules for WebUI

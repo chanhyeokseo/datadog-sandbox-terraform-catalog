@@ -18,25 +18,22 @@ data "http" "my_ip" {
 }
 
 locals {
-  project_name_prefix = "${var.project_name}-${var.project_env}"
-  my_ip_cidr          = "${chomp(data.http.my_ip.response_body)}/32"
-  project_common_tags = {
-    Project     = var.project_name
-    Environment = var.project_env
-    ManagedBy   = "Terraform"
-    creator     = var.creator
-    team        = var.team
+  name_prefix = "${var.creator}-${var.team}"
+  my_ip_cidr  = "${chomp(data.http.my_ip.response_body)}/32"
+  common_tags = {
+    ManagedBy = "Terraform"
+    creator   = var.creator
+    team      = var.team
   }
 }
 
 module "security_group" {
   source = "git::https://github.com/chanhyeokseo/datadog-sandbox-terraform-catalog.git//modules/security-group?ref=webui-dev"
 
-  name_prefix   = local.project_name_prefix
-  project_name  = var.project_name
+  name_prefix   = local.name_prefix
   vpc_id        = var.vpc_id
   my_ip_cidr    = local.my_ip_cidr
-  common_tags   = local.project_common_tags
+  common_tags   = local.common_tags
   ingress_rules = var.sg_ingress_rules
   egress_rules  = var.sg_egress_rules
 }

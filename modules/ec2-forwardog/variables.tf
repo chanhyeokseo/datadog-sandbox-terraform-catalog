@@ -51,16 +51,6 @@ variable "datadog_site" {
   default     = "datadoghq.com"
 }
 
-variable "project_name" {
-  description = "Project name for tagging"
-  type        = string
-}
-
-variable "environment" {
-  description = "Environment name for tagging"
-  type        = string
-}
-
 variable "common_tags" {
   description = "Common tags to apply to all resources"
   type        = map(string)

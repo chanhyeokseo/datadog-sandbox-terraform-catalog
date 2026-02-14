@@ -23,13 +23,11 @@ data "aws_subnet" "private" {
 }
 
 locals {
-  project_name_prefix = "${var.project_name}-${var.project_env}"
-  project_common_tags = {
-    Project     = var.project_name
-    Environment = var.project_env
-    ManagedBy   = "Terraform"
-    creator     = var.creator
-    team        = var.team
+  name_prefix = "${var.creator}-${var.team}"
+  common_tags = {
+    ManagedBy = "Terraform"
+    creator   = var.creator
+    team      = var.team
   }
   vpc = {
     vpc_id            = data.aws_vpc.main.id
@@ -42,7 +40,7 @@ locals {
 module "eks_cluster" {
   source = "git::https://github.com/chanhyeokseo/datadog-sandbox-terraform-catalog.git//modules/eks?ref=webui-dev"
 
-  name_prefix = local.project_name_prefix
+  name_prefix = local.name_prefix
   region      = var.region
   vpc_id      = local.vpc.vpc_id
   subnet_ids  = [local.vpc.public_subnet_id, local.vpc.public_subnet2_id]
@@ -70,5 +68,5 @@ module "eks_cluster" {
 
   endpoint_public_access  = true
   endpoint_private_access = true
-  common_tags             = local.project_common_tags
+  common_tags             = local.common_tags
 }

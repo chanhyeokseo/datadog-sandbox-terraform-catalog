@@ -23,17 +23,6 @@ variable "private_subnet_id" {
   type        = string
 }
 
-# Project-specific Resources
-variable "project_name" {
-  description = "Project or personal identifier (e.g., chanhyeok)"
-  type        = string
-}
-
-variable "project_env" {
-  description = "Environment for project resources (e.g., dev, test, prod)"
-  type        = string
-}
-
 variable "region" {
   description = "AWS region"
   type        = string

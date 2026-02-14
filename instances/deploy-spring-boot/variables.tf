@@ -5,14 +5,6 @@ variable "ecr_repository_url" {
   type    = string
   default = ""
 }
-variable "project_name" {
-  type    = string
-  default = ""
-}
-variable "project_env" {
-  type    = string
-  default = ""
-}
 variable "ec2_key_name" {
   type    = string
   default = ""

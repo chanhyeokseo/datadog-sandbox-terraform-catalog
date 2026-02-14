@@ -10,13 +10,9 @@ public_subnet_id  = "subnet-xxxxxxxxx"
 public_subnet2_id = "subnet-xxxxxxxxx"
 private_subnet_id = "subnet-xxxxxxxxx"
 
-# Required tagging policy
+# Required tagging policy (used as resource naming prefix: {creator}-{team})
 creator = "firstname.lastname"
 team    = "technical-support-engineering"
-
-# Personal project settings
-project_name = "your-name"
-project_env  = "test"
 
 # EC2 configuration
 # Replace with your AWS EC2 key pair name

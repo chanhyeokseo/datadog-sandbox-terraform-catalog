@@ -10,12 +10,6 @@ variable "public_subnet2_id" {
 variable "private_subnet_id" {
   type = string
 }
-variable "project_name" {
-  type = string
-}
-variable "project_env" {
-  type = string
-}
 variable "region" {
   type = string
 }

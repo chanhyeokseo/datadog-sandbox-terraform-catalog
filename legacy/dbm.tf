@@ -11,7 +11,7 @@
 module "dbm_postgres_ec2" {
   source = "./modules/ec2-datadog-host"
 
-  name_prefix        = "${local.project_name_prefix}-dbm-postgres"
+  name_prefix        = "${local.name_prefix}-dbm-postgres"
   instance_type      = var.ec2_instance_type
   subnet_id          = local.vpc.public_subnet_id
   security_group_ids = [module.security_group.security_group_id]
@@ -20,16 +20,16 @@ module "dbm_postgres_ec2" {
 
   datadog_api_key = var.datadog_api_key
   datadog_site    = var.datadog_site
-  project_name    = var.project_name
-  environment     = var.project_env
+  creator = var.creator
+  team    = var.team
 
-  common_tags = local.project_common_tags
+  common_tags = local.common_tags
 }
 
 module "dbm_postgres_rds" {
   source = "./modules/rds"
 
-  name_prefix = "${local.project_name_prefix}-dbm"
+  name_prefix = "${local.name_prefix}-dbm"
   rds_type    = "postgres"
 
   db_name     = "datadog"
@@ -43,7 +43,7 @@ module "dbm_postgres_rds" {
   vpc_id                  = local.vpc.vpc_id
   allowed_security_groups = [module.security_group.security_group_id]
 
-  common_tags = local.project_common_tags
+  common_tags = local.common_tags
 }
 
 output "dbm_postgres_ec2_ssh" {

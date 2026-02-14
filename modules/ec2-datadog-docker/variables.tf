@@ -51,13 +51,13 @@ variable "datadog_site" {
   default     = "datadoghq.com"
 }
 
-variable "project_name" {
-  description = "Project name for tagging"
+variable "creator" {
+  description = "Creator identifier for tagging"
   type        = string
 }
 
-variable "environment" {
-  description = "Environment name for tagging"
+variable "team" {
+  description = "Team name for tagging"
   type        = string
 }
 

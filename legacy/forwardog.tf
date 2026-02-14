@@ -5,7 +5,7 @@
 module "ec2_forwardog" {
   source = "./modules/ec2-forwardog"
 
-  name_prefix        = local.project_name_prefix
+  name_prefix        = local.name_prefix
   instance_type      = "t3.medium"
   subnet_id          = local.vpc.public_subnet_id
   security_group_ids = [module.security_group.security_group_id]
@@ -14,10 +14,8 @@ module "ec2_forwardog" {
 
   datadog_api_key = var.datadog_api_key
   datadog_site    = var.datadog_site
-  project_name    = var.project_name
-  environment     = var.project_env
 
-  common_tags = local.project_common_tags
+  common_tags = local.common_tags
 }
 
 # Forwardog Outputs

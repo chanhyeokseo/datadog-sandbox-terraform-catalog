@@ -5,7 +5,7 @@ moved {
 
 resource "aws_security_group" "main" {
   name        = "${var.name_prefix}-personal-sg"
-  description = "Personal security group for ${var.project_name} EC2 access"
+  description = "Personal security group for ${var.name_prefix}"
   vpc_id      = var.vpc_id
 
   dynamic "ingress" {

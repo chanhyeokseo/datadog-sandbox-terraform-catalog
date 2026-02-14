@@ -143,14 +143,12 @@ data "aws_ami" "ecs_optimized" {
 # Local Values
 # ============================================
 locals {
-  project_name_prefix = "${var.project_name}-${var.project_env}"
+  name_prefix = "${var.creator}-${var.team}"
 
-  project_common_tags = {
-    Project     = var.project_name
-    Environment = var.project_env
-    ManagedBy   = "Terraform"
-    creator     = var.creator
-    team        = var.team
+  common_tags = {
+    ManagedBy = "Terraform"
+    creator   = var.creator
+    team      = var.team
   }
 
   my_ip_cidr = "${chomp(data.http.my_ip.response_body)}/32"

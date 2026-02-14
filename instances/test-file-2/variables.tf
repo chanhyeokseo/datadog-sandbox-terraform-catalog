@@ -1,11 +1,3 @@
-variable "project_name" {
-  type    = string
-  default = ""
-}
-variable "project_env" {
-  type    = string
-  default = ""
-}
 variable "region" {
   type    = string
   default = ""

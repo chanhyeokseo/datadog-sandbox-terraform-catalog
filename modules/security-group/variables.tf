@@ -1,10 +1,5 @@
 variable "name_prefix" {
-  description = "Name prefix for security group (e.g., project-env)"
-  type        = string
-}
-
-variable "project_name" {
-  description = "Project name for description (e.g., chanhyeok)"
+  description = "Name prefix for security group (e.g., creator-team)"
   type        = string
 }
 

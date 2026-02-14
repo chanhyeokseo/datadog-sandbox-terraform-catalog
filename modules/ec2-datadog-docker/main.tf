@@ -29,7 +29,7 @@ locals {
       -e DD_API_KEY="${var.datadog_api_key}" \
       -e DD_SITE="${var.datadog_site}" \
       -e DD_DOGSTATSD_NON_LOCAL_TRAFFIC=true \
-      -e DD_TAGS="env:${var.environment},project:${var.project_name},terraform:true,instance_type:${var.instance_type}" \
+      -e DD_TAGS="creator:${var.creator},team:${var.team},terraform:true,instance_type:${var.instance_type}" \
       -v /var/run/docker.sock:/var/run/docker.sock:ro \
       -v /proc/:/host/proc/:ro \
       -v /sys/fs/cgroup/:/host/sys/fs/cgroup:ro \

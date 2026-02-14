@@ -7,13 +7,13 @@
 # ============================================
 module "ec2_basic" {
   source             = "./modules/ec2-basic"
-  name_prefix        = local.project_name_prefix
+  name_prefix        = local.name_prefix
   instance_type      = var.ec2_instance_type
   subnet_id          = local.vpc.public_subnet_id
   security_group_ids = [module.security_group.security_group_id]
   key_name           = var.ec2_key_name
   custom_ami_id      = data.aws_ami.amazon_linux_2023.id
-  common_tags        = local.project_common_tags
+  common_tags        = local.common_tags
 }
 
 # EC2 Linux Basic Outputs
@@ -38,7 +38,7 @@ output "ec2_basic_ssh_command" {
 module "ec2_datadog_host" {
   source = "./modules/ec2-datadog-host"
 
-  name_prefix        = local.project_name_prefix
+  name_prefix        = local.name_prefix
   instance_type      = var.ec2_instance_type
   subnet_id          = local.vpc.public_subnet_id
   security_group_ids = [module.security_group.security_group_id]
@@ -47,10 +47,10 @@ module "ec2_datadog_host" {
 
   datadog_api_key = var.datadog_api_key
   datadog_site    = var.datadog_site
-  project_name    = var.project_name
-  environment     = var.project_env
+  creator = var.creator
+  team    = var.team
 
-  common_tags = local.project_common_tags
+  common_tags = local.common_tags
 }
 
 # EC2 Datadog Host Outputs
@@ -75,7 +75,7 @@ output "ec2_datadog_host_ssh_command" {
 module "ec2_datadog_docker" {
   source = "./modules/ec2-datadog-docker"
 
-  name_prefix        = local.project_name_prefix
+  name_prefix        = local.name_prefix
   instance_type      = "t3.medium"
   subnet_id          = local.vpc.public_subnet_id
   security_group_ids = [module.security_group.security_group_id]
@@ -84,10 +84,10 @@ module "ec2_datadog_docker" {
 
   datadog_api_key = var.datadog_api_key
   datadog_site    = var.datadog_site
-  project_name    = var.project_name
-  environment     = var.project_env
+  creator = var.creator
+  team    = var.team
 
-  common_tags = local.project_common_tags
+  common_tags = local.common_tags
 }
 
 # EC2 Datadog Docker Outputs
@@ -112,7 +112,7 @@ output "ec2_datadog_docker_ssh_command" {
 module "ec2_windows" {
   source = "./modules/ec2-basic"
 
-  name_prefix        = "${local.project_name_prefix}-windows"
+  name_prefix        = "${local.name_prefix}-windows"
   instance_type      = "t3.medium"
   subnet_id          = local.vpc.public_subnet_id
   security_group_ids = [module.security_group.security_group_id]
@@ -120,7 +120,7 @@ module "ec2_windows" {
   custom_ami_id      = data.aws_ami.windows_2025.id
   get_password_data  = true
 
-  common_tags = local.project_common_tags
+  common_tags = local.common_tags
 }
 
 # EC2 Windows Instance Outputs
@@ -151,7 +151,7 @@ output "ec2_windows_password" {
 module "ec2_windows_2016" {
   source = "./modules/ec2-basic"
 
-  name_prefix        = "${local.project_name_prefix}-windows-2016"
+  name_prefix        = "${local.name_prefix}-windows-2016"
   instance_type      = "t3.medium"
   subnet_id          = local.vpc.public_subnet_id
   security_group_ids = [module.security_group.security_group_id]
@@ -159,7 +159,7 @@ module "ec2_windows_2016" {
   custom_ami_id      = data.aws_ami.windows_2016.id
   get_password_data  = true
 
-  common_tags = local.project_common_tags
+  common_tags = local.common_tags
 }
 
 # EC2 Windows 2016 Instance Outputs
@@ -190,7 +190,7 @@ output "ec2_windows_2016_password" {
 module "ec2_windows_2022" {
   source = "./modules/ec2-basic"
 
-  name_prefix        = "${local.project_name_prefix}-windows-2022"
+  name_prefix        = "${local.name_prefix}-windows-2022"
   instance_type      = "t3.medium"
   subnet_id          = local.vpc.public_subnet_id
   security_group_ids = [module.security_group.security_group_id]
@@ -198,7 +198,7 @@ module "ec2_windows_2022" {
   custom_ami_id      = data.aws_ami.windows_2022.id
   get_password_data  = true
 
-  common_tags = local.project_common_tags
+  common_tags = local.common_tags
 }
 
 # EC2 Windows 2022 Instance Outputs

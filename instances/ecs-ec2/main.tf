@@ -29,20 +29,18 @@ data "aws_subnet" "public2" {
 }
 
 locals {
-  project_name_prefix = "${var.project_name}-${var.project_env}"
-  project_common_tags = {
-    Project     = var.project_name
-    Environment = var.project_env
-    ManagedBy   = "Terraform"
-    creator     = var.creator
-    team        = var.team
+  name_prefix = "${var.creator}-${var.team}"
+  common_tags = {
+    ManagedBy = "Terraform"
+    creator   = var.creator
+    team      = var.team
   }
 }
 
 module "ecs_ec2" {
   source = "git::https://github.com/chanhyeokseo/datadog-sandbox-terraform-catalog.git//modules/ecs?ref=webui-dev"
 
-  name_prefix    = "${local.project_name_prefix}-ec2"
+  name_prefix    = "${local.name_prefix}-ec2"
   enable_fargate = false
   enable_ec2     = var.ecs_enable_ec2
 
@@ -55,5 +53,5 @@ module "ecs_ec2" {
   ec2_max_size         = 3
   ec2_desired_capacity = 1
 
-  common_tags = local.project_common_tags
+  common_tags = local.common_tags
 }

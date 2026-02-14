@@ -32,13 +32,11 @@ data "aws_subnet" "private" {
 }
 
 locals {
-  project_name_prefix = "${var.project_name}-${var.project_env}"
-  project_common_tags = {
-    Project     = var.project_name
-    Environment = var.project_env
-    ManagedBy   = "Terraform"
-    creator     = var.creator
-    team        = var.team
+  name_prefix = "${var.creator}-${var.team}"
+  common_tags = {
+    ManagedBy = "Terraform"
+    creator   = var.creator
+    team      = var.team
   }
   vpc = {
     vpc_id            = data.aws_vpc.main.id
@@ -50,7 +48,7 @@ locals {
 module "dbm_postgres_ec2" {
   source = "git::https://github.com/chanhyeokseo/datadog-sandbox-terraform-catalog.git//modules/ec2-datadog-host?ref=webui-dev"
 
-  name_prefix        = "${local.project_name_prefix}-dbm-postgres"
+  name_prefix        = "${local.name_prefix}-dbm-postgres"
   instance_type      = var.ec2_instance_type
   subnet_id          = local.vpc.public_subnet_id
   security_group_ids = var.security_group_ids
@@ -59,15 +57,15 @@ module "dbm_postgres_ec2" {
   datadog_api_key       = var.datadog_api_key
   datadog_site          = var.datadog_site
   datadog_agent_version = var.datadog_agent_version
-  project_name          = var.project_name
-  environment           = var.project_env
-  common_tags           = local.project_common_tags
+  creator               = var.creator
+  team                  = var.team
+  common_tags           = local.common_tags
 }
 
 module "dbm_postgres_rds" {
   source = "git::https://github.com/chanhyeokseo/datadog-sandbox-terraform-catalog.git//modules/rds?ref=webui-dev"
 
-  name_prefix             = "${local.project_name_prefix}-dbm-postgres"
+  name_prefix             = "${local.name_prefix}-dbm-postgres"
   rds_type                = "postgres"
   db_name                 = "datadog"
   db_username             = var.rds_username
@@ -77,5 +75,5 @@ module "dbm_postgres_rds" {
   subnet_ids              = [local.vpc.private_subnet_id, local.vpc.public_subnet_id]
   vpc_id                  = local.vpc.vpc_id
   allowed_security_groups = var.security_group_ids
-  common_tags             = local.project_common_tags
+  common_tags             = local.common_tags
 }

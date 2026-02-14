@@ -10,21 +10,19 @@ Values are set in `terraform.tfvars` and passed to the root module and `instance
 |----------|---------|---------|
 | `creator` | Resource creator (firstname.lastname) | `"firstname.lastname"` |
 | `team` | Team name | `"technical-support-engineering"` |
-| `project_name` | Project or personal identifier | `"myproject"` |
-| `project_env` | Environment | `"dev"`, `"test"`, `"prod"` |
 | `ec2_key_name` | EC2 key pair name for SSH | Set by onboarding; format `creator-team` |
 | `region` | AWS region | `"ap-northeast-2"` |
 | `vpc_id`, `public_subnet_id`, `public_subnet2_id`, `private_subnet_id` | Network IDs from onboarding | |
 
 ## Naming Rules
 
-### Project name prefix
+### Name prefix
 
 Used for resource names and tags across instances:
 
-- **Formula:** `{project_name}-{project_env}`
-- **Example:** `myproject-dev`
-- **Defined in:** `instances/shared` locals → `project_name_prefix`, `project_common_tags`
+- **Formula:** `{creator}-{team}`
+- **Example:** `firstname.lastname-technical-support-engineering`
+- **Defined in:** `instances/shared` locals → `name_prefix`, `common_tags`
 
 ### EC2 key pair name
 
@@ -107,7 +105,7 @@ The UI shows one entry per instance (e.g. `dbm_autoconfig_postgres`), not per mo
 
 Each instance under `instances/<name>/` can declare its own `variables.tf`. Common variables passed from root or shared:
 
-- From **shared:** `project_name_prefix`, `project_common_tags`, `security_group_id`, `public_subnet_id`, `public_subnet2_id`, `private_subnet_id`, `vpc_id`, `ec2_key_name`
+- From **shared:** `name_prefix`, `common_tags`, `security_group_id`, `public_subnet_id`, `public_subnet2_id`, `private_subnet_id`, `vpc_id`, `ec2_key_name`
 - From **root:** `region`, `ec2_instance_type`, `creator`, `team`, and service-specific variables (e.g. `datadog_api_key`, `rds_password`)
 
 Use the same variable names as in `variables.tf` (root) and `instances/shared/variables.tf` so that `terraform.tfvars` and the Web UI variable list stay consistent.
@@ -133,7 +131,7 @@ All modules under `modules/` follow these rules:
 
 ## Summary
 
-1. **Prefix:** `{project_name}-{project_env}` for resource naming and tags.
+1. **Prefix:** `{creator}-{team}` for resource naming and tags.
 2. **EC2 key name:** `{creator}-{team}`; stored in `ec2_key_name`, file at `keys/{ec2_key_name}.pem`.
 3. **EC2/SSH outputs:** Always expose `ssh_command`, `instance_id`, and `public_ip` for instances that support SSH so the Web UI Connect flow works without errors.
 4. **Variables:** Align with root and shared variable names; set values in `terraform.tfvars`.

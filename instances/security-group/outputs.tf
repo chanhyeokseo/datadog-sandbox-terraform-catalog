@@ -1,8 +1,8 @@
-output "project_name_prefix" {
-  value = local.project_name_prefix
+output "name_prefix" {
+  value = local.name_prefix
 }
-output "project_common_tags" {
-  value = local.project_common_tags
+output "common_tags" {
+  value = local.common_tags
 }
 output "security_group_id" {
   value = module.security_group.security_group_id

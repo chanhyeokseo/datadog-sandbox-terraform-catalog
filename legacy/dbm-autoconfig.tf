@@ -13,7 +13,7 @@
 module "dbm_autoconfig_ec2" {
   source = "./modules/ec2-datadog-host"
 
-  name_prefix        = "${local.project_name_prefix}-dbm-autoconfig"
+  name_prefix        = "${local.name_prefix}-dbm-autoconfig"
   instance_type      = var.ec2_instance_type
   subnet_id          = local.vpc.public_subnet_id
   security_group_ids = [module.security_group.security_group_id]
@@ -22,16 +22,16 @@ module "dbm_autoconfig_ec2" {
 
   datadog_api_key = var.datadog_api_key
   datadog_site    = var.datadog_site
-  project_name    = var.project_name
-  environment     = var.project_env
+  creator = var.creator
+  team    = var.team
 
-  common_tags = local.project_common_tags
+  common_tags = local.common_tags
 }
 
 module "dbm_autoconfig_rds" {
   source = "./modules/rds"
 
-  name_prefix = "${local.project_name_prefix}-dbm-autoconfig"
+  name_prefix = "${local.name_prefix}-dbm-autoconfig"
   rds_type    = "postgres"
 
   db_name     = "datadog"
@@ -45,7 +45,7 @@ module "dbm_autoconfig_rds" {
   vpc_id                  = local.vpc.vpc_id
   allowed_security_groups = [module.security_group.security_group_id]
 
-  common_tags = local.project_common_tags
+  common_tags = local.common_tags
 }
 
 resource "null_resource" "dbm_autoconfig_setup" {
@@ -147,9 +147,9 @@ resource "null_resource" "dbm_autoconfig_setup" {
             instance_endpoint: ${module.dbm_autoconfig_rds.db_endpoint}
             region: ${var.region}
           tags:
-            - "dbinstanceidentifier:${local.project_name_prefix}-dbm-autoconfig-postgres"
-            - "env:${var.project_env}"
-            - "project:${var.project_name}"
+            - "dbinstanceidentifier:${local.name_prefix}-dbm-autoconfig-postgres"
+            - "env:${var.team}"
+            - "creator:${var.creator}"
       EOYAML
       EOF
       ,

@@ -17,8 +17,8 @@ locals {
     # Configure the agent with custom tags
     cat >> /etc/datadog-agent/datadog.yaml <<EOL
     tags:
-      - env:${var.environment}
-      - project:${var.project_name}
+      - creator:${var.creator}
+      - team:${var.team}
       - terraform:true
       - instance_type:${var.instance_type}
     EOL

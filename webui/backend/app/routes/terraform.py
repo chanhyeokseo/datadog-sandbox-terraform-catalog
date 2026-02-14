@@ -897,9 +897,7 @@ async def update_eks_config(config: Dict):
         from pathlib import Path
         
         eks_config_file = runner.instances_dir / "eks-cluster" / "eks-config.auto.tfvars"
-        
-        if not eks_config_file.exists():
-            raise HTTPException(status_code=404, detail="EKS config file not found")
+        eks_config_file.parent.mkdir(parents=True, exist_ok=True)
         
         lines = [
             f"enable_node_group   = {str(config.get('enable_node_group', True)).lower()}",

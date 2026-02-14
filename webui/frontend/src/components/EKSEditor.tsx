@@ -129,6 +129,27 @@ const EKSEditor = ({ onClose, onSave }: EKSEditorProps) => {
     }
   };
 
+  const handleCreateDefault = async () => {
+    try {
+      setSaving(true);
+      const response = await fetch('/api/terraform/eks/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to create EKS configuration');
+      }
+
+      setConfigError(null);
+    } catch (error) {
+      alert(`❌ Failed to create: ${(error as Error).message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const updateConfig = (updates: Partial<EKSConfig>) => {
     setConfig(prev => ({ ...prev, ...updates }));
   };
@@ -145,14 +166,16 @@ const EKSEditor = ({ onClose, onSave }: EKSEditorProps) => {
     return (
       <div className="modal-overlay" onClick={onClose}>
         <div className="eks-editor" onClick={(e) => e.stopPropagation()}>
-          <div className="eks-header">
+          <div className="editor-header">
             <h2>EKS Configuration</h2>
-            <button className="close-button" onClick={onClose}>&times;</button>
+            <button onClick={onClose} className="close-button">&times;</button>
           </div>
           <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
             <p style={{ marginBottom: '12px' }}>No EKS configuration found.</p>
             <p style={{ fontSize: '13px' }}>Deploy the EKS resource first, or click Save to create a default configuration.</p>
-            <button className="btn-primary" style={{ marginTop: '20px' }} onClick={handleSave}>Create Default Config</button>
+            <button className="btn-primary" style={{ marginTop: '20px' }} onClick={handleCreateDefault} disabled={saving}>
+              {saving ? 'Creating...' : 'Create Default Config'}
+            </button>
           </div>
         </div>
       </div>

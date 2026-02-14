@@ -13,8 +13,8 @@ locals {
 
   # Common environment variables
   lambda_common_env = {
-    ENVIRONMENT  = var.project_env
-    PROJECT_NAME = var.project_name
+    CREATOR = var.creator
+    TEAM    = var.team
   }
 
   # Common Function URL settings
@@ -30,7 +30,7 @@ locals {
 module "lambda_python_example" {
   source = "./modules/lambda"
 
-  function_name = "${local.project_name_prefix}-python-example-app"
+  function_name = "${local.name_prefix}-python-example-app"
   source_dir    = "${path.module}/apps/lambda/python/example-app"
   handler       = local.lambda_defaults.handler
   runtime       = local.lambda_defaults.runtime
@@ -48,9 +48,9 @@ module "lambda_python_example" {
   function_url_auth_type = local.lambda_function_url_config.auth_type
 
   tags = merge(
-    local.project_common_tags,
+    local.common_tags,
     {
-      Name        = "${local.project_name_prefix}-python-example-app"
+      Name        = "${local.name_prefix}-python-example-app"
       Application = "python-example-app"
       Function    = "simple-example"
     }
@@ -74,7 +74,7 @@ output "lambda_python_example_function_url" {
 module "lambda_python_tracing_example" {
   source = "./modules/lambda-datadog-extension"
 
-  function_name = "${local.project_name_prefix}-python-tracing-example-app"
+  function_name = "${local.name_prefix}-python-tracing-example-app"
   source_dir    = "${path.module}/apps/lambda/python/tracing-example-app"
   handler       = local.lambda_defaults.handler
   runtime       = local.lambda_defaults.runtime
@@ -92,7 +92,7 @@ module "lambda_python_tracing_example" {
   datadog_extension_layer_version = 91
   datadog_python_layer_version    = 120
   datadog_api_key                 = var.datadog_api_key
-  datadog_env                     = var.project_env
+  datadog_env                     = var.team
   datadog_service                 = "python-tracing-example-app"
   datadog_site                    = var.datadog_site
   datadog_version                 = "1.0.0"
@@ -103,9 +103,9 @@ module "lambda_python_tracing_example" {
   function_url_auth_type = local.lambda_function_url_config.auth_type
 
   tags = merge(
-    local.project_common_tags,
+    local.common_tags,
     {
-      Name        = "${local.project_name_prefix}-python-tracing-example-app"
+      Name        = "${local.name_prefix}-python-tracing-example-app"
       Application = "python-tracing-example-app"
       Function    = "tracing-example"
       Tracing     = "enabled"

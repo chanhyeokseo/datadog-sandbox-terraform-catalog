@@ -1,12 +1,6 @@
 variable "region" {
   type = string
 }
-variable "project_name" {
-  type = string
-}
-variable "project_env" {
-  type = string
-}
 variable "creator" {
   type = string
 }

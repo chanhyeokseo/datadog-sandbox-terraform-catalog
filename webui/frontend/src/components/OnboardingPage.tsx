@@ -424,7 +424,7 @@ function OnboardingPage() {
             ))}
             {currentPhaseIndex === 0 && (
               <p className="onboarding-resource-naming-note">
-                Resources will be named with the prefix <strong>{'{project_name}-{project_env}'}</strong> (e.g. myproject-dev). Tags and name_prefix use this format across instances.
+                Resources will be named with the prefix <strong>{'{creator}-{team}'}</strong> (e.g. firstname.lastname-my-team). Tags and name_prefix use this format across instances.
               </p>
             )}
           </div>

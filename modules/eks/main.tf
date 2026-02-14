@@ -193,6 +193,50 @@ resource "aws_iam_role_policy_attachment" "node_ecr" {
 }
 
 
+resource "aws_launch_template" "linux_node" {
+  count = var.enable_node_group ? 1 : 0
+
+  name_prefix = "${var.name_prefix}-linux-node-"
+
+  block_device_mappings {
+    device_name = "/dev/xvda"
+    ebs {
+      volume_size = var.node_disk_size
+      volume_type = "gp3"
+    }
+  }
+
+  tag_specifications {
+    resource_type = "instance"
+    tags = merge(
+      var.common_tags,
+      {
+        Name    = "${var.name_prefix}-node"
+        service = var.service
+      }
+    )
+  }
+
+  tag_specifications {
+    resource_type = "volume"
+    tags = merge(
+      var.common_tags,
+      {
+        Name    = "${var.name_prefix}-node-volume"
+        service = var.service
+      }
+    )
+  }
+
+  tags = merge(
+    var.common_tags,
+    {
+      Name    = "${var.name_prefix}-linux-node-lt"
+      service = var.service
+    }
+  )
+}
+
 resource "aws_eks_node_group" "main" {
   count = var.enable_node_group ? 1 : 0
 
@@ -203,8 +247,12 @@ resource "aws_eks_node_group" "main" {
 
   instance_types = var.node_instance_types
   capacity_type  = var.node_capacity_type
-  disk_size      = var.node_disk_size
   ami_type       = var.node_ami_type
+
+  launch_template {
+    id      = aws_launch_template.linux_node[0].id
+    version = aws_launch_template.linux_node[0].latest_version
+  }
 
   scaling_config {
     desired_size = var.node_desired_size
@@ -281,6 +329,50 @@ resource "aws_iam_role_policy_attachment" "windows_node_ecr" {
 }
 
 
+resource "aws_launch_template" "windows_node" {
+  count = var.enable_windows_node_group ? 1 : 0
+
+  name_prefix = "${var.name_prefix}-windows-node-"
+
+  block_device_mappings {
+    device_name = "/dev/sda1"
+    ebs {
+      volume_size = var.windows_node_disk_size
+      volume_type = "gp3"
+    }
+  }
+
+  tag_specifications {
+    resource_type = "instance"
+    tags = merge(
+      var.common_tags,
+      {
+        Name    = "${var.name_prefix}-windows-node"
+        service = var.service
+      }
+    )
+  }
+
+  tag_specifications {
+    resource_type = "volume"
+    tags = merge(
+      var.common_tags,
+      {
+        Name    = "${var.name_prefix}-windows-node-volume"
+        service = var.service
+      }
+    )
+  }
+
+  tags = merge(
+    var.common_tags,
+    {
+      Name    = "${var.name_prefix}-windows-node-lt"
+      service = var.service
+    }
+  )
+}
+
 resource "aws_eks_node_group" "windows" {
   count = var.enable_windows_node_group ? 1 : 0
 
@@ -291,8 +383,12 @@ resource "aws_eks_node_group" "windows" {
 
   instance_types = var.windows_node_instance_types
   capacity_type  = var.windows_node_capacity_type
-  disk_size      = var.windows_node_disk_size
   ami_type       = var.windows_node_ami_type
+
+  launch_template {
+    id      = aws_launch_template.windows_node[0].id
+    version = aws_launch_template.windows_node[0].latest_version
+  }
 
   scaling_config {
     desired_size = var.windows_node_desired_size
@@ -304,7 +400,6 @@ resource "aws_eks_node_group" "windows" {
     max_unavailable = 1
   }
 
-  # Windows nodes require Linux nodes to be running first for CoreDNS
   depends_on = [
     aws_iam_role_policy_attachment.windows_node_worker,
     aws_iam_role_policy_attachment.windows_node_cni,

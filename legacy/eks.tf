@@ -4,7 +4,7 @@
 module "eks_cluster" {
   source = "./modules/eks"
 
-  name_prefix = local.project_name_prefix
+  name_prefix = local.name_prefix
   region      = var.region
 
   vpc_id     = local.vpc.vpc_id
@@ -37,7 +37,7 @@ module "eks_cluster" {
   endpoint_public_access  = true
   endpoint_private_access = true
 
-  common_tags = local.project_common_tags
+  common_tags = local.common_tags
 }
 
 # EKS Cluster Outputs
