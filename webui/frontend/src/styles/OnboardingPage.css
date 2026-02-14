@@ -378,3 +378,22 @@ body.light-mode .onboarding-backend-error {
   background: rgba(239, 68, 68, 0.15);
   color: #dc2626;
 }
+
+.onboarding-name-prefix-status {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.82rem;
+}
+
+.onboarding-name-prefix-checking {
+  color: #60a5fa;
+}
+
+.onboarding-name-prefix-available {
+  color: #4ade80;
+}
+
+.onboarding-name-prefix-taken,
+.onboarding-name-prefix-invalid {
+  color: #f87171;
+}

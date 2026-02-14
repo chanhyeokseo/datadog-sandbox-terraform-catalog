@@ -10,7 +10,7 @@ provider "aws" {
 }
 
 locals {
-  name_prefix = "${var.creator}-${var.team}"
+  name_prefix = var.name_prefix
   common_tags = {
     ManagedBy = "Terraform"
     creator   = var.creator

@@ -555,19 +555,24 @@ async def sync_tfvars_to_instances():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/check-name-prefix/{prefix}")
+async def check_name_prefix(prefix: str):
+    try:
+        from app.services.config_manager import ConfigManager
+        config_manager = ConfigManager(terraform_dir=runner.terraform_dir)
+        result = config_manager.check_name_prefix_available(prefix)
+        return result
+    except Exception as e:
+        logger.error(f"Error checking name_prefix: {e}")
+        return {"available": True, "error": str(e)}
+
+
 @router.post("/onboarding/sync-to-parameter-store")
 async def sync_to_parameter_store():
-    """
-    Sync terraform.tfvars to Parameter Store
-    Should be called after onboarding is complete
-    """
     try:
         success = parser.sync_to_parameter_store()
         if not success:
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to sync configuration to Parameter Store"
-            )
+            raise HTTPException(status_code=500, detail="Failed to sync configuration to Parameter Store")
         return {"success": True, "message": "Configuration synced to Parameter Store"}
     except HTTPException:
         raise

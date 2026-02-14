@@ -694,8 +694,8 @@ class TerraformParser:
         try:
             from app.services.config_manager import ConfigManager
             config_manager = ConfigManager(terraform_dir=str(self.terraform_dir))
-            creator, team = config_manager._get_creator_team_from_tfvars()
-            return config_manager.generate_bucket_name(creator, team)
+            name_prefix = config_manager._get_name_prefix_from_tfvars()
+            return config_manager.generate_bucket_name(name_prefix)
         except Exception as e:
             logger.debug(f"Could not determine S3 bucket name: {e}")
             return None

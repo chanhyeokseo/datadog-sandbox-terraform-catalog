@@ -32,34 +32,21 @@ class BackendCheckRequest(BaseModel):
 
 
 class BucketNameRequest(BaseModel):
-    creator: str
-    team: str
+    name_prefix: str
 
 
 @router.post("/suggest-bucket-name")
 async def suggest_bucket_name(request: BucketNameRequest):
-    """
-    Generate suggested S3 bucket and DynamoDB table names using AWS credential hash
-    This ensures names match Parameter Store naming convention
-    """
     try:
         config_manager = ConfigManager(terraform_dir=TERRAFORM_DIR)
-        bucket_name = config_manager.generate_bucket_name(
-            creator=request.creator,
-            team=request.team
-        )
-        table_name = config_manager.generate_dynamodb_table_name(
-            creator=request.creator,
-            team=request.team
-        )
-
+        bucket_name = config_manager.generate_bucket_name(request.name_prefix)
+        table_name = config_manager.generate_dynamodb_table_name()
         return {
             "bucket_name": bucket_name,
             "table_name": table_name,
-            "bucket_pattern": "dogstac-<creator>-<hash>",
-            "table_pattern": "dogstac-<hash>-locks"
+            "bucket_pattern": "dogstac-<name_prefix>-<hash>",
+            "table_pattern": "dogstac-<hash>-locks",
         }
-
     except Exception as e:
         logger.error(f"Failed to generate backend names: {e}")
         raise HTTPException(status_code=500, detail=str(e))

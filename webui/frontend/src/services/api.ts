@@ -338,8 +338,13 @@ export interface BackendStatus {
 }
 
 export const backendApi = {
-  getSuggestedBucketName: async (creator: string, team: string): Promise<{ bucket_name: string; table_name: string; bucket_pattern: string; table_pattern: string }> => {
-    const response = await axios.post('/api/backend/suggest-bucket-name', { creator, team });
+  getSuggestedBucketName: async (namePrefix: string): Promise<{ bucket_name: string; table_name: string; bucket_pattern: string; table_pattern: string }> => {
+    const response = await axios.post('/api/backend/suggest-bucket-name', { name_prefix: namePrefix });
+    return response.data;
+  },
+
+  checkNamePrefix: async (prefix: string): Promise<{ available: boolean; error?: string }> => {
+    const response = await axios.get(`/api/terraform/check-name-prefix/${encodeURIComponent(prefix)}`);
     return response.data;
   },
 

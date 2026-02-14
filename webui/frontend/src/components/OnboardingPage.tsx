@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   terraformApi,
@@ -47,6 +47,33 @@ function OnboardingPage() {
     status: 'idle' | 'setting_up' | 'complete' | 'error';
     message?: string;
   }>({ status: 'idle' });
+  const [namePrefixStatus, setNamePrefixStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle');
+  const namePrefixTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const checkNamePrefixAvailability = useCallback((prefix: string) => {
+    if (namePrefixTimerRef.current) clearTimeout(namePrefixTimerRef.current);
+    if (!prefix) {
+      setNamePrefixStatus('idle');
+      return;
+    }
+    if (!/^[0-9A-Za-z][0-9A-Za-z_-]*$/.test(prefix)) {
+      setNamePrefixStatus('invalid');
+      return;
+    }
+    if (prefix.length < 2) {
+      setNamePrefixStatus('idle');
+      return;
+    }
+    setNamePrefixStatus('checking');
+    namePrefixTimerRef.current = setTimeout(async () => {
+      try {
+        const result = await backendApi.checkNamePrefix(prefix);
+        setNamePrefixStatus(result.available ? 'available' : 'taken');
+      } catch {
+        setNamePrefixStatus('idle');
+      }
+    }, 500);
+  }, []);
 
   const phases: ConfigOnboardingPhase[] = status?.phases ?? [];
   const shouldRedirect = !loading && !!(status && (!status.config_onboarding_required || (status.phases?.length === 0 && status.steps?.length === 0)));
@@ -153,14 +180,11 @@ function OnboardingPage() {
   const setupBackendInfrastructure = async () => {
     setBackendSetup({ status: 'setting_up', message: 'Setting up S3 backend...' });
     try {
-      // Get variables for bucket name
       const vars = await terraformApi.getVariables();
-      const creator = vars.find(v => v.name === 'creator')?.value || 'default';
-      const team = vars.find(v => v.name === 'team')?.value || 'default';
+      const namePrefix = vars.find(v => v.name === 'name_prefix')?.value || 'default';
       const region = vars.find(v => v.name === 'region')?.value || 'ap-northeast-2';
 
-      // Get suggested bucket and table names from backend (uses AWS credential hash)
-      const { bucket_name: bucketName, table_name: tableName } = await backendApi.getSuggestedBucketName(creator, team);
+      const { bucket_name: bucketName, table_name: tableName } = await backendApi.getSuggestedBucketName(namePrefix);
 
       // Setup backend
       const result = await backendApi.setupBackend({
@@ -228,6 +252,7 @@ function OnboardingPage() {
         (phaseValues.private_subnet_id || phase.variables.find(v => v.name === 'private_subnet_id')?.filled)
       );
     }
+    if (currentPhaseIndex === 0 && (namePrefixStatus === 'taken' || namePrefixStatus === 'invalid')) return false;
     return phase.variables.every((v: ConfigOnboardingStep) => {
       const val = phaseValues[v.name];
       if (v.name === 'aws_session_token') return true;
@@ -412,19 +437,34 @@ function OnboardingPage() {
                     </datalist>
                   </>
                 ) : (
-                  <input
-                    type={variable.sensitive ? 'password' : 'text'}
-                    value={phaseValues[variable.name] ?? ''}
-                    onChange={(e) => setPhaseValues(p => ({ ...p, [variable.name]: e.target.value }))}
-                    className="onboarding-step-input"
-                    placeholder={getPlaceholder(variable) ?? `Enter ${variable.label.toLowerCase()}`}
-                  />
+                  <>
+                    <input
+                      type={variable.sensitive ? 'password' : 'text'}
+                      value={phaseValues[variable.name] ?? ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setPhaseValues(p => ({ ...p, [variable.name]: val }));
+                        if (variable.name === 'name_prefix') checkNamePrefixAvailability(val);
+                      }}
+                      className="onboarding-step-input"
+                      placeholder={getPlaceholder(variable) ?? `Enter ${variable.label.toLowerCase()}`}
+                      maxLength={variable.name === 'name_prefix' ? 20 : undefined}
+                    />
+                    {variable.name === 'name_prefix' && namePrefixStatus !== 'idle' && (
+                      <span className={`onboarding-name-prefix-status onboarding-name-prefix-${namePrefixStatus}`}>
+                        {namePrefixStatus === 'checking' && 'Checking availability...'}
+                        {namePrefixStatus === 'available' && 'Available'}
+                        {namePrefixStatus === 'taken' && 'Already taken'}
+                        {namePrefixStatus === 'invalid' && 'Only A-Z a-z 0-9 _ - allowed, must start with alphanumeric'}
+                      </span>
+                    )}
+                  </>
                 )}
               </div>
             ))}
             {currentPhaseIndex === 0 && (
               <p className="onboarding-resource-naming-note">
-                Resources will be named with the prefix <strong>{'{creator}-{team}'}</strong> (e.g. firstname.lastname-my-team). Tags and name_prefix use this format across instances.
+                All resources will be named with <strong>name_prefix</strong> (e.g. my-sandbox-ec2, my-sandbox-eks-cluster). Max 20 chars, only A-Z a-z 0-9 _ - allowed.
               </p>
             )}
           </div>

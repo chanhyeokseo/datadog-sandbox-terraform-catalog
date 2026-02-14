@@ -75,7 +75,7 @@ class TerraformRunner:
         try:
             logger.debug(f"Running terraform init in {resource_dir}")
             process = await asyncio.create_subprocess_exec(
-                "terraform", "init", "-no-color",
+                "terraform", "init", "-no-color", "-input=false",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=str(resource_dir),
@@ -120,7 +120,7 @@ class TerraformRunner:
 
         yield f"Initialized terraform\n"
 
-        cmd = ["terraform", "apply", "-no-color"]
+        cmd = ["terraform", "apply", "-no-color", "-input=false"]
 
         if var_files:
             for f in var_files:
@@ -176,7 +176,7 @@ class TerraformRunner:
 
         yield f"Initialized terraform\n"
 
-        cmd = ["terraform", "destroy", "-no-color"]
+        cmd = ["terraform", "destroy", "-no-color", "-input=false"]
 
         if var_files:
             for f in var_files:
@@ -245,7 +245,7 @@ class TerraformRunner:
 
         yield f"Initialized terraform\n"
 
-        cmd = ["terraform", "plan", "-no-color", "-lock=false", "-compact-warnings"]
+        cmd = ["terraform", "plan", "-no-color", "-input=false", "-lock=false", "-compact-warnings"]
 
         if var_files:
             for f in var_files:

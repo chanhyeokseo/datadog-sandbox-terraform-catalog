@@ -143,7 +143,7 @@ data "aws_ami" "ecs_optimized" {
 # Local Values
 # ============================================
 locals {
-  name_prefix = "${var.creator}-${var.team}"
+  name_prefix = var.name_prefix
 
   common_tags = {
     ManagedBy = "Terraform"

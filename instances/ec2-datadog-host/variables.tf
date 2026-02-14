@@ -16,6 +16,9 @@ variable "creator" {
 variable "team" {
   type = string
 }
+variable "name_prefix" {
+  type = string
+}
 variable "datadog_api_key" {
   type    = string
   default = ""

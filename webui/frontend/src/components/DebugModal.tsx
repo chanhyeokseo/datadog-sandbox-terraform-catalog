@@ -83,14 +83,12 @@ const DebugModal = ({ resourceId, resourceName, resourceFilePath, onClose, onAct
     try {
       // Get current configuration
       const vars = await terraformApi.getVariables();
-      const creator = vars.find(v => v.name === 'creator')?.value || 'default';
-      const team = vars.find(v => v.name === 'team')?.value || 'default';
+      const namePrefix = vars.find(v => v.name === 'name_prefix')?.value || 'default';
       const region = vars.find(v => v.name === 'region')?.value || 'ap-northeast-2';
 
       onActionUpdate(resultId, 'Fetching suggested backend configuration...\n');
 
-      // Get suggested bucket and table names from backend (uses AWS credential hash)
-      const { bucket_name: bucketName, table_name: tableName } = await backendApi.getSuggestedBucketName(creator, team);
+      const { bucket_name: bucketName, table_name: tableName } = await backendApi.getSuggestedBucketName(namePrefix);
 
       onActionUpdate(resultId, `Using bucket: ${bucketName}\n`);
       onActionUpdate(resultId, `Using DynamoDB table: ${tableName}\n`);
@@ -130,15 +128,13 @@ const DebugModal = ({ resourceId, resourceName, resourceFilePath, onClose, onAct
     try {
       // Get current configuration
       const vars = await terraformApi.getVariables();
-      const creator = vars.find(v => v.name === 'creator')?.value || 'default';
-      const team = vars.find(v => v.name === 'team')?.value || 'default';
+      const namePrefix = vars.find(v => v.name === 'name_prefix')?.value || 'default';
       const region = vars.find(v => v.name === 'region')?.value || 'ap-northeast-2';
 
       onActionUpdate(resultId, '🔄 Starting S3 bucket recreation...\n\n');
       onActionUpdate(resultId, 'Step 1: Generating backend names with AWS credential hash...\n');
 
-      // Get suggested bucket and table names from backend (uses AWS credential hash)
-      const { bucket_name: bucketName, table_name: tableName } = await backendApi.getSuggestedBucketName(creator, team);
+      const { bucket_name: bucketName, table_name: tableName } = await backendApi.getSuggestedBucketName(namePrefix);
 
       onActionUpdate(resultId, `✓ Bucket name: ${bucketName}\n`);
       onActionUpdate(resultId, `✓ DynamoDB table name: ${tableName}\n\n`);

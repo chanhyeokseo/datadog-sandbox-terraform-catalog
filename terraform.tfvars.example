@@ -10,7 +10,10 @@ public_subnet_id  = "subnet-xxxxxxxxx"
 public_subnet2_id = "subnet-xxxxxxxxx"
 private_subnet_id = "subnet-xxxxxxxxx"
 
-# Required tagging policy (used as resource naming prefix: {creator}-{team})
+# Resource naming prefix (max 20 chars, only A-Z a-z 0-9 _ -)
+name_prefix = "my-sandbox"
+
+# Required tagging policy
 creator = "firstname.lastname"
 team    = "technical-support-engineering"
 

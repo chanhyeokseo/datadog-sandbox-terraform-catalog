@@ -42,29 +42,15 @@ def write_tfvars_file(variables: dict, tfvars_path: Path):
 
 
 def get_s3_bucket_name():
-    """Get S3 bucket name from ConfigManager"""
     from app.services.config_manager import ConfigManager
 
     try:
-        # Try to get creator and team from existing tfvars or environment
-        terraform_dir = os.environ.get('TERRAFORM_DIR', '/app/terraform')
-        tfvars_path = Path(terraform_dir) / 'terraform.tfvars'
-
-        creator = os.environ.get('CREATOR', 'default')
-        team = os.environ.get('TEAM', 'default')
-
-        # If tfvars exists, try to read creator/team from it
-        if tfvars_path.exists():
-            config_manager = ConfigManager()
-            creator_from_tfvars, team_from_tfvars = config_manager._get_creator_team_from_tfvars()
-            if creator_from_tfvars != 'default':
-                creator = creator_from_tfvars
-            if team_from_tfvars != 'default':
-                team = team_from_tfvars
-
         config_manager = ConfigManager()
-        bucket_name = config_manager.generate_bucket_name(creator, team)
-        return bucket_name
+        name_prefix = config_manager._get_name_prefix_from_tfvars()
+        if name_prefix == 'default':
+            logger.debug("No name_prefix configured, skipping bucket name generation")
+            return None
+        return config_manager.generate_bucket_name(name_prefix)
     except Exception as e:
         logger.warning(f"Could not determine S3 bucket name: {e}")
         return None
@@ -117,14 +103,14 @@ def regenerate_backend_files():
         return
 
     config_manager = ConfigManager(terraform_dir=str(terraform_dir))
-    creator, team = config_manager._get_creator_team_from_tfvars()
+    name_prefix = config_manager._get_name_prefix_from_tfvars()
 
-    if creator == 'default' and team == 'default':
-        logger.debug("No creator/team configured, skipping backend.tf regeneration")
+    if name_prefix == 'default':
+        logger.debug("No name_prefix configured, skipping backend.tf regeneration")
         return
 
-    bucket_name = config_manager.generate_bucket_name(creator, team)
-    table_name = config_manager.generate_dynamodb_table_name(creator, team)
+    bucket_name = config_manager.generate_bucket_name(name_prefix)
+    table_name = config_manager.generate_dynamodb_table_name()
     region = os.environ.get('AWS_REGION', 'ap-northeast-2')
 
     import boto3

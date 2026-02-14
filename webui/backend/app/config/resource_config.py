@@ -19,12 +19,13 @@ class ResourceVariableConfig:
 
 COMMON_VARIABLES = {
     'vpc_id', 'public_subnet_id', 'public_subnet2_id', 'private_subnet_id',
-    'creator', 'team', 'datadog_api_key', 'region',
+    'name_prefix', 'creator', 'team', 'datadog_api_key', 'region',
     'ec2_key_name',
 }
 
 ONBOARDING_PHASES = [
-    (1, "Creator & team", [
+    (1, "Naming & tagging", [
+        ("name_prefix", "Name Prefix"),
         ("creator", "Creator"),
         ("team", "Team"),
         ("region", "AWS Region"),

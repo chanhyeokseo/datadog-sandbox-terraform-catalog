@@ -18,7 +18,7 @@ data "http" "my_ip" {
 }
 
 locals {
-  name_prefix = "${var.creator}-${var.team}"
+  name_prefix = var.name_prefix
   my_ip_cidr  = "${chomp(data.http.my_ip.response_body)}/32"
   common_tags = {
     ManagedBy = "Terraform"

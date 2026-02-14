@@ -19,6 +19,9 @@ variable "creator" {
 variable "team" {
   type = string
 }
+variable "name_prefix" {
+  type = string
+}
 variable "ec2_instance_type" {
   type    = string
   default = "t3.micro"

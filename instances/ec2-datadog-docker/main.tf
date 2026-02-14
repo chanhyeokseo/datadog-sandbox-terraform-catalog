@@ -25,12 +25,12 @@ data "aws_subnet" "public" {
   id = var.public_subnet_id
 }
 data "aws_security_group" "personal_sg" {
-  name   = "${var.creator}-${var.team}-personal-sg"
+  name   = "${var.name_prefix}-personal-sg"
   vpc_id = var.vpc_id
 }
 
 locals {
-  name_prefix = "${var.creator}-${var.team}"
+  name_prefix = var.name_prefix
   common_tags = {
     ManagedBy = "Terraform"
     creator   = var.creator

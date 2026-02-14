@@ -2,6 +2,17 @@
 # Variables
 # ============================================
 
+# Resource Naming
+variable "name_prefix" {
+  description = "Short prefix for all resource names (e.g., chanhyeok-sandbox). Only [A-Za-z0-9_-], max 20 chars."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[0-9A-Za-z][0-9A-Za-z_-]*$", var.name_prefix)) && length(var.name_prefix) <= 20
+    error_message = "name_prefix must match [0-9A-Za-z_-], start with alphanumeric, and be at most 20 characters."
+  }
+}
+
 # Shared/VPC Resources
 variable "vpc_id" {
   description = "ID of existing VPC to use (e.g., vpc-xxxxxxxxx)"

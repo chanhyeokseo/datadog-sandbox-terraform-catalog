@@ -1,10 +1,8 @@
-"""
-Configuration Manager for storing/loading terraform variables to/from AWS Parameter Store
-"""
 import json
 import logging
 import os
 import hashlib
+import re
 from typing import Dict, Optional
 from pathlib import Path
 
@@ -12,54 +10,40 @@ logger = logging.getLogger(__name__)
 
 
 class ConfigManager:
-    """Manages terraform configuration in AWS Parameter Store"""
 
     def __init__(self, terraform_dir: str = None):
         self.terraform_dir = Path(terraform_dir) if terraform_dir else Path(os.environ.get('TERRAFORM_DIR', '/app/terraform'))
         self._boto3_client = None
         self._parameter_name_cache = None
 
-    def _get_creator_team_from_tfvars(self) -> tuple:
-        """Read creator and team from terraform.tfvars"""
+    def _read_tfvar(self, key: str, default: str = "default") -> str:
         tfvars_path = self.terraform_dir / 'terraform.tfvars'
-        creator = 'default'
-        team = 'default'
+        if not tfvars_path.exists():
+            return default
+        try:
+            with open(tfvars_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#'):
+                        match = re.match(r'^(\w+)\s*=\s*(?:"([^"]*)"|(\S+))', line)
+                        if match and match.group(1) == key:
+                            return (match.group(2) or match.group(3) or "").strip() or default
+        except Exception as e:
+            logger.warning(f"Failed to read {key} from tfvars: {e}")
+        return default
 
-        if tfvars_path.exists():
-            try:
-                with open(tfvars_path, 'r', encoding='utf-8') as f:
-                    import re
-                    for line in f:
-                        line = line.strip()
-                        if line and not line.startswith('#'):
-                            match = re.match(r'^(\w+)\s*=\s*(?:"([^"]*)"|(\S+))', line)
-                            if match:
-                                key = match.group(1)
-                                value = (match.group(2) or match.group(3) or "").strip()
-                                if key == 'creator':
-                                    creator = value
-                                elif key == 'team':
-                                    team = value
-            except Exception as e:
-                logger.warning(f"Failed to read creator/team from tfvars: {e}")
+    def _get_name_prefix_from_tfvars(self) -> str:
+        return self._read_tfvar('name_prefix')
 
-        return creator, team
+    def _get_creator_team_from_tfvars(self) -> tuple:
+        return self._read_tfvar('creator'), self._read_tfvar('team')
 
     def _get_credentials_hash(self) -> str:
-        """
-        Generate hash from AWS Access Key ID for namespacing
-        Uses only Access Key ID (public identifier) for practical rotation support
-        """
         access_key = os.environ.get('AWS_ACCESS_KEY_ID', '')
-
         if not access_key:
             logger.debug("No AWS_ACCESS_KEY_ID found, using 'default' hash")
             return 'default'
-
-        # SHA256 hash, use first 12 characters (sufficient uniqueness, readable length)
-        hash_obj = hashlib.sha256(access_key.encode('utf-8'))
-        hash_value = hash_obj.hexdigest()[:12]
-
+        hash_value = hashlib.sha256(access_key.encode('utf-8')).hexdigest()[:12]
         logger.debug(f"Generated credentials hash: {hash_value}")
         return hash_value
 
@@ -67,10 +51,9 @@ class ConfigManager:
     def _namespace_prefix(self) -> str:
         if not hasattr(self, '_namespace_prefix_cache') or self._namespace_prefix_cache is None:
             creds_hash = self._get_credentials_hash()
-            creator, team = self._get_creator_team_from_tfvars()
-            safe_creator = ''.join(c if c.isalnum() or c in '-_' else '-' for c in creator)[:64]
-            safe_team = ''.join(c if c.isalnum() or c in '-_' else '-' for c in team)[:64]
-            self._namespace_prefix_cache = f"/dogstac-{creds_hash}/{safe_creator}-{safe_team}"
+            name_prefix = self._get_name_prefix_from_tfvars()
+            safe_prefix = ''.join(c if c.isalnum() or c in '-_' else '-' for c in name_prefix)[:64]
+            self._namespace_prefix_cache = f"/dogstac-{safe_prefix}/{creds_hash}"
             logger.debug(f"Namespace prefix: {self._namespace_prefix_cache}")
         return self._namespace_prefix_cache
 
@@ -87,141 +70,107 @@ class ConfigManager:
 
     @property
     def ssm_client(self):
-        """Lazy load boto3 SSM client"""
         if self._boto3_client is None:
             try:
                 import boto3
-                import os
-
-                # Get region from environment or default
                 region = os.environ.get('AWS_REGION') or os.environ.get('AWS_DEFAULT_REGION') or 'ap-northeast-2'
-
                 self._boto3_client = boto3.client('ssm', region_name=region)
             except Exception as e:
                 logger.warning(f"Failed to create SSM client: {e}")
                 return None
         return self._boto3_client
 
+    def check_name_prefix_available(self, prefix: str) -> Dict:
+        if not self.ssm_client:
+            return {"available": True, "error": "SSM client not available, skipping check"}
+        try:
+            safe = ''.join(c if c.isalnum() or c in '-_' else '-' for c in prefix)[:64]
+            search_path = f"/dogstac-{safe}"
+            response = self.ssm_client.get_parameters_by_path(
+                Path=search_path, Recursive=True, MaxResults=1,
+            )
+            if response.get('Parameters'):
+                logger.debug(f"name_prefix '{prefix}' is already in use")
+                return {"available": False}
+            logger.debug(f"name_prefix '{prefix}' is available")
+            return {"available": True}
+        except Exception as e:
+            logger.warning(f"Error checking name_prefix availability: {e}")
+            return {"available": True, "error": str(e)}
+
     def save_config(self, variables: Dict[str, str]) -> bool:
-        """
-        Save terraform variables to Parameter Store as JSON
-
-        Args:
-            variables: Dictionary of variable name -> value
-
-        Returns:
-            True if successful, False otherwise
-        """
         if not self.ssm_client:
             logger.warning("SSM client not available, skipping Parameter Store save")
             return False
-
         try:
-            # Convert dict to JSON string
             config_json = json.dumps(variables, indent=2)
-
-            # Save to Parameter Store
             self.ssm_client.put_parameter(
                 Name=self.parameter_name,
                 Value=config_json,
                 Type='SecureString',
                 Overwrite=True,
-                Description='Terraform WebUI configuration variables'
+                Description='Terraform WebUI configuration variables',
             )
-
             logger.info(f"Saved {len(variables)} variables to Parameter Store: {self.parameter_name}")
             return True
-
         except Exception as e:
             logger.error(f"Failed to save config to Parameter Store: {e}")
             return False
 
     def load_config(self) -> Optional[Dict[str, str]]:
-        """
-        Load terraform variables from Parameter Store with auto-discovery
-
-        Strategy:
-        1. If terraform.tfvars exists, use exact path based on creator/team
-        2. If not, search under /dogstac-<hash> prefix to auto-discover
-
-        Returns:
-            Dictionary of variable name -> value, or None if not found/error
-        """
         if not self.ssm_client:
             logger.warning("SSM client not available, cannot load from Parameter Store")
             return None
 
         tfvars_path = self.terraform_dir / 'terraform.tfvars'
 
-        # Try exact path first (when terraform.tfvars exists)
         if tfvars_path.exists():
             try:
-                response = self.ssm_client.get_parameter(
-                    Name=self.parameter_name,
-                    WithDecryption=True
-                )
-
-                config_json = response['Parameter']['Value']
-                variables = json.loads(config_json)
-
+                response = self.ssm_client.get_parameter(Name=self.parameter_name, WithDecryption=True)
+                variables = json.loads(response['Parameter']['Value'])
                 logger.info(f"Loaded {len(variables)} variables from Parameter Store: {self.parameter_name}")
                 return variables
-
             except self.ssm_client.exceptions.ParameterNotFound:
-                logger.info(f"Parameter not found: {self.parameter_name} (first run or not yet configured)")
+                logger.info(f"Parameter not found: {self.parameter_name}")
                 return None
             except Exception as e:
                 logger.error(f"Failed to load config from Parameter Store: {e}")
                 return None
 
-        # Auto-discovery: search under /dogstac-<hash> when terraform.tfvars doesn't exist
         logger.info("terraform.tfvars not found, attempting auto-discovery...")
-
         try:
             creds_hash = self._get_credentials_hash()
-            search_path = f"/dogstac-{creds_hash}"
-
-            logger.debug(f"Searching for config under: {search_path}")
-
-            response = self.ssm_client.get_parameters_by_path(
-                Path=search_path,
-                Recursive=True,
-                WithDecryption=True
-            )
-
-            if not response['Parameters']:
-                logger.info(f"No parameters found under {search_path} (first run or not yet configured)")
-                return None
-
-            # Use the first parameter found (typically only one exists per hash)
-            param = response['Parameters'][0]
-            config_json = param['Value']
-            variables = json.loads(config_json)
-
-            logger.info(f"✅ Auto-discovered config at: {param['Name']} ({len(variables)} variables)")
-            return variables
-
+            paginator = self.ssm_client.get_paginator('describe_parameters')
+            for page in paginator.paginate(
+                ParameterFilters=[{
+                    'Key': 'Name',
+                    'Option': 'BeginsWith',
+                    'Values': ['/dogstac-'],
+                }],
+            ):
+                for param in page.get('Parameters', []):
+                    name = param['Name']
+                    if f"/{creds_hash}/" in name and name.endswith('/config/variables'):
+                        logger.debug(f"Auto-discovery matched: {name}")
+                        resp = self.ssm_client.get_parameter(Name=name, WithDecryption=True)
+                        variables = json.loads(resp['Parameter']['Value'])
+                        logger.info(f"Auto-discovered config at: {name} ({len(variables)} variables)")
+                        return variables
+            logger.info("No matching parameters found during auto-discovery")
+            return None
         except Exception as e:
             logger.warning(f"Auto-discovery failed: {e}")
             return None
 
     def delete_config(self) -> bool:
-        """
-        Delete configuration from Parameter Store
-
-        Returns:
-            True if successful, False otherwise
-        """
         if not self.ssm_client:
             logger.warning("SSM client not available")
             return False
-
         try:
             self.ssm_client.delete_parameter(Name=self.parameter_name)
             logger.info(f"Deleted config from Parameter Store: {self.parameter_name}")
             return True
         except self.ssm_client.exceptions.ParameterNotFound:
-            logger.info(f"Parameter not found (already deleted): {self.parameter_name}")
             return True
         except Exception as e:
             logger.error(f"Failed to delete config from Parameter Store: {e}")
@@ -246,7 +195,7 @@ class ConfigManager:
                 Type='SecureString',
                 Tier=tier,
                 Overwrite=True,
-                Description=f'SSH key for EC2 (key_name={key_name})'
+                Description=f'SSH key for EC2 (key_name={key_name})',
             )
             logger.info(f"Saved key to Parameter Store: {self.key_parameter_name}")
             return True
@@ -259,17 +208,13 @@ class ConfigManager:
             logger.warning("SSM client not available, cannot load key")
             return None
         try:
-            response = self.ssm_client.get_parameter(
-                Name=self.key_parameter_name,
-                WithDecryption=True
-            )
+            response = self.ssm_client.get_parameter(Name=self.key_parameter_name, WithDecryption=True)
             raw = response['Parameter']['Value']
             try:
                 data = json.loads(raw)
                 logger.info(f"Loaded key '{data.get('key_name', '')}' from Parameter Store: {self.key_parameter_name}")
                 return data
             except json.JSONDecodeError:
-                logger.info(f"Loaded raw key from Parameter Store: {self.key_parameter_name}")
                 return {"key_name": "", "private_key": raw}
         except Exception as e:
             if "ParameterNotFound" in str(type(e).__name__) or "ParameterNotFound" in str(e):
@@ -278,48 +223,16 @@ class ConfigManager:
                 logger.warning(f"Failed to load key from Parameter Store: {e}")
             return None
 
-    def generate_bucket_name(self, creator: str, team: str) -> str:
-        """
-        Generate S3 bucket name using AWS credential hash
-        Format: dogstac-<creator>-<hash>
-        (Max 63 chars: dogstac=7, creator=max 32, hash=12, hyphens=2 = max 53 chars)
-
-        Args:
-            creator: Creator name (used in bucket name, truncated if needed)
-            team: Team name (not used)
-
-        Returns:
-            Generated bucket name with hash
-        """
+    def generate_bucket_name(self, name_prefix: str) -> str:
         creds_hash = self._get_credentials_hash()
-
-        # Sanitize creator name for S3 bucket
-        safe_creator = creator.lower().replace('_', '-')
-        safe_creator = ''.join(c if c.isalnum() or c == '-' else '-' for c in safe_creator)
-        safe_creator = safe_creator[:32]  # Limit length
-
-        # Format: dogstac-{creator}-{hash}
-        bucket_name = f"dogstac-{safe_creator}-{creds_hash}"
-
+        safe = name_prefix.lower().replace('_', '-')
+        safe = ''.join(c if c.isalnum() or c == '-' else '-' for c in safe)[:32]
+        bucket_name = f"dogstac-{safe}-{creds_hash}"
         logger.info(f"Generated bucket name: {bucket_name}")
         return bucket_name
 
-    def generate_dynamodb_table_name(self, creator: str, team: str) -> str:
-        """
-        Generate DynamoDB table name using AWS credential hash
-        Format: dogstac-<hash>-locks
-
-        Args:
-            creator: Creator name (not used due to length constraints)
-            team: Team name (not used due to length constraints)
-
-        Returns:
-            Generated table name with hash
-        """
+    def generate_dynamodb_table_name(self) -> str:
         creds_hash = self._get_credentials_hash()
-
-        # Simple format for table name
         table_name = f"dogstac-{creds_hash}-locks"
-
         logger.info(f"Generated DynamoDB table name: {table_name}")
         return table_name
