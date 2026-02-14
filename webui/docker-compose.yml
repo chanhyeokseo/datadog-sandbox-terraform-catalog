@@ -14,6 +14,9 @@ services:
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
       - AWS_REGION=${AWS_REGION:-ap-northeast-2}
+      - FORCE_REINIT=${FORCE_REINIT:-false}
+    volumes:
+      - ${TERRAFORM_DATA_PATH:-./terraform-data}:/app/terraform
     restart: unless-stopped
     networks:
       - terraform-network

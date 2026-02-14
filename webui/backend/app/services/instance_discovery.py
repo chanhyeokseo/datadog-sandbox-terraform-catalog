@@ -21,7 +21,7 @@ def get_resource_id_for_instance(instance_dir: Path) -> str:
 
 
 def get_resource_type_from_dir(dir_name: str) -> ResourceType:
-    if dir_name == "shared":
+    if dir_name == "security-group":
         return ResourceType.SECURITY_GROUP
     if dir_name.startswith("ec2-"):
         return ResourceType.EC2

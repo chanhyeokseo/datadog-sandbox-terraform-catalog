@@ -180,16 +180,25 @@ export const terraformApi = {
     return response.data;
   },
 
+  forceUnlock: async (resourceId: string, lockId: string): Promise<ApiResponse> => {
+    const response = await api.post<ApiResponse>(`/force-unlock/${resourceId}`, { lock_id: lockId });
+    return response.data;
+  },
+
+  refreshResourceStatus: async (resourceId: string): Promise<{ resource_id: string; status: string }> => {
+    const response = await api.post<{ resource_id: string; status: string }>(`/resources/${resourceId}/refresh-status`);
+    return response.data;
+  },
+
   streamApplyResource: async (
     resourceId: string,
     autoApprove: boolean = false,
     onData: (chunk: string) => void,
     onComplete: (success: boolean) => void,
-    skipInit: boolean = false,
     signal?: AbortSignal
   ): Promise<void> => {
     const response = await fetch(
-      `${API_BASE_URL}/apply/stream/${resourceId}?auto_approve=${autoApprove}&skip_init=${skipInit}`,
+      `${API_BASE_URL}/apply/stream/${resourceId}?auto_approve=${autoApprove}`,
       { signal }
     );
 
@@ -227,11 +236,10 @@ export const terraformApi = {
     autoApprove: boolean = false,
     onData: (chunk: string) => void,
     onComplete: (success: boolean) => void,
-    skipInit: boolean = false,
     signal?: AbortSignal
   ): Promise<void> => {
     const response = await fetch(
-      `${API_BASE_URL}/destroy/stream/${resourceId}?auto_approve=${autoApprove}&skip_init=${skipInit}`,
+      `${API_BASE_URL}/destroy/stream/${resourceId}?auto_approve=${autoApprove}`,
       { signal }
     );
 
@@ -268,11 +276,10 @@ export const terraformApi = {
     resourceId: string,
     onData: (chunk: string) => void,
     onComplete: (success: boolean) => void,
-    skipInit: boolean = false,
     signal?: AbortSignal
   ): Promise<void> => {
     const response = await fetch(
-      `${API_BASE_URL}/plan/stream/${resourceId}?skip_init=${skipInit}`,
+      `${API_BASE_URL}/plan/stream/${resourceId}`,
       { signal }
     );
 

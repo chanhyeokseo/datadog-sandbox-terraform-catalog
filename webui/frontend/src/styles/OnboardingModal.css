@@ -56,7 +56,7 @@
 
 .onboarding-alert {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 12px;
   padding: 16px;
   background: rgba(255, 193, 7, 0.1);

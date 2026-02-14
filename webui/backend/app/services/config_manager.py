@@ -64,23 +64,26 @@ class ConfigManager:
         return hash_value
 
     @property
-    def parameter_name(self) -> str:
-        """
-        Generate parameter name based on AWS credentials hash and creator/team
-        Format: /dogstac-<hash>/<creator>-<team>/config/variables
-        """
-        if self._parameter_name_cache is None:
+    def _namespace_prefix(self) -> str:
+        if not hasattr(self, '_namespace_prefix_cache') or self._namespace_prefix_cache is None:
             creds_hash = self._get_credentials_hash()
             creator, team = self._get_creator_team_from_tfvars()
-
-            # Sanitize names for use in parameter store path
             safe_creator = ''.join(c if c.isalnum() or c in '-_' else '-' for c in creator)[:64]
             safe_team = ''.join(c if c.isalnum() or c in '-_' else '-' for c in team)[:64]
+            self._namespace_prefix_cache = f"/dogstac-{creds_hash}/{safe_creator}-{safe_team}"
+            logger.debug(f"Namespace prefix: {self._namespace_prefix_cache}")
+        return self._namespace_prefix_cache
 
-            self._parameter_name_cache = f"/dogstac-{creds_hash}/{safe_creator}-{safe_team}/config/variables"
+    @property
+    def parameter_name(self) -> str:
+        if self._parameter_name_cache is None:
+            self._parameter_name_cache = f"{self._namespace_prefix}/config/variables"
             logger.debug(f"Using Parameter Store key: {self._parameter_name_cache}")
-
         return self._parameter_name_cache
+
+    @property
+    def key_parameter_name(self) -> str:
+        return f"{self._namespace_prefix}/key"
 
     @property
     def ssm_client(self):
@@ -121,7 +124,7 @@ class ConfigManager:
             self.ssm_client.put_parameter(
                 Name=self.parameter_name,
                 Value=config_json,
-                Type='String',  # Use 'SecureString' if encryption needed at rest
+                Type='SecureString',
                 Overwrite=True,
                 Description='Terraform WebUI configuration variables'
             )
@@ -225,13 +228,55 @@ class ConfigManager:
             return False
 
     def config_exists(self) -> bool:
-        """
-        Check if configuration exists in Parameter Store
-
-        Returns:
-            True if exists, False otherwise
-        """
         return self.load_config() is not None
+
+    def save_key(self, private_key_content: str, key_name: str = "") -> bool:
+        if not self.ssm_client:
+            logger.warning("SSM client not available, skipping key save")
+            return False
+        try:
+            value = private_key_content
+            if key_name:
+                value = json.dumps({"key_name": key_name, "private_key": private_key_content})
+            size_kb = len(value.encode('utf-8')) / 1024
+            tier = "Advanced" if size_kb > 4 else "Standard"
+            self.ssm_client.put_parameter(
+                Name=self.key_parameter_name,
+                Value=value,
+                Type='SecureString',
+                Tier=tier,
+                Overwrite=True,
+                Description=f'SSH key for EC2 (key_name={key_name})'
+            )
+            logger.info(f"Saved key to Parameter Store: {self.key_parameter_name}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to save key to Parameter Store: {e}")
+            return False
+
+    def load_key(self) -> Optional[Dict[str, str]]:
+        if not self.ssm_client:
+            logger.warning("SSM client not available, cannot load key")
+            return None
+        try:
+            response = self.ssm_client.get_parameter(
+                Name=self.key_parameter_name,
+                WithDecryption=True
+            )
+            raw = response['Parameter']['Value']
+            try:
+                data = json.loads(raw)
+                logger.info(f"Loaded key '{data.get('key_name', '')}' from Parameter Store: {self.key_parameter_name}")
+                return data
+            except json.JSONDecodeError:
+                logger.info(f"Loaded raw key from Parameter Store: {self.key_parameter_name}")
+                return {"key_name": "", "private_key": raw}
+        except Exception as e:
+            if "ParameterNotFound" in str(type(e).__name__) or "ParameterNotFound" in str(e):
+                logger.debug(f"Key not found in Parameter Store: {self.key_parameter_name}")
+            else:
+                logger.warning(f"Failed to load key from Parameter Store: {e}")
+            return None
 
     def generate_bucket_name(self, creator: str, team: str) -> str:
         """

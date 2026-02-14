@@ -85,7 +85,7 @@ function OnboardingPage() {
   };
 
   useEffect(() => {
-    if (currentPhaseIndex !== 3 || !status) return;
+    if (currentPhaseIndex !== 2 || !status) return;
     loadVpcs();
   }, [currentPhaseIndex, status]);
 
@@ -100,6 +100,10 @@ function OnboardingPage() {
       setLoading(false);
       const firstIncomplete = data.phases?.findIndex(p => !p.all_filled) ?? 0;
       setCurrentPhaseIndex(firstIncomplete >= 0 ? firstIncomplete : 0);
+      const teamVar = data.steps?.find(s => s.name === 'team');
+      if (teamVar && !teamVar.filled) {
+        setPhaseValues(prev => ({ ...prev, team: 'technical-support-engineering' }));
+      }
     } catch (err) {
       setError((err as Error).message);
       setLoading(false);
@@ -132,6 +136,7 @@ function OnboardingPage() {
         // Setup backend infrastructure automatically
         await setupBackendInfrastructure();
 
+        localStorage.removeItem('onboarding_dismissed');
         navigate('/', { replace: true });
         return;
       }

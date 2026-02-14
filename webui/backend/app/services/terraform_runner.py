@@ -36,13 +36,6 @@ class TerraformRunner:
                 working_dir = resource_dir
         return await self._run_command(["terraform", "output", "-json"], cwd=working_dir, env_extra=env_extra)
 
-    async def state_list(self, resource_id: Optional[str] = None, env_extra: Optional[Dict[str, str]] = None) -> tuple[bool, str]:
-        working_dir = self.terraform_dir
-        if resource_id:
-            resource_dir = self.get_resource_directory(resource_id)
-            if resource_dir and resource_dir.exists():
-                working_dir = resource_dir
-        return await self._run_command(["terraform", "state", "list"], cwd=working_dir, env_extra=env_extra)
     
     def _build_env(self, env_extra: Optional[Dict[str, str]] = None) -> Optional[dict]:
         if not env_extra:
@@ -78,9 +71,6 @@ class TerraformRunner:
             return False, str(e)
     
     async def ensure_terraform_init(self, resource_dir: Path, env_extra: Optional[Dict[str, str]] = None) -> tuple[bool, str]:
-        terraform_dir = resource_dir / ".terraform"
-        if terraform_dir.exists():
-            return True, "Already initialized"
         env = self._build_env(env_extra)
         try:
             logger.debug(f"Running terraform init in {resource_dir}")
@@ -106,7 +96,7 @@ class TerraformRunner:
             logger.error(f"Error running terraform init: {e}")
             return False, str(e)
     
-    async def stream_apply(self, resource_id: str, auto_approve: bool = False, var_files: Optional[List[str]] = None, skip_init: bool = False, env_extra: Optional[Dict[str, str]] = None) -> AsyncIterator[str]:
+    async def stream_apply(self, resource_id: str, auto_approve: bool = False, var_files: Optional[List[str]] = None, env_extra: Optional[Dict[str, str]] = None) -> AsyncIterator[str]:
         """Stream terraform apply for a specific resource directory"""
         resource_dir = self.get_resource_directory(resource_id)
         
@@ -120,21 +110,15 @@ class TerraformRunner:
             yield f"{EXIT_SENTINEL_PREFIX}1\n"
             return
 
-        if skip_init:
-            yield f"Skipping initialization (resource already initialized from browser cache)\n"
-        else:
-            yield f"Checking terraform initialization in: {resource_dir}\n"
-            init_success, init_output = await self.ensure_terraform_init(resource_dir, env_extra=env_extra)
+        yield f"Checking terraform initialization in: {resource_dir}\n"
+        init_success, init_output = await self.ensure_terraform_init(resource_dir, env_extra=env_extra)
 
-            if not init_success:
-                yield f"Error: Failed to initialize terraform\n{init_output}\n"
-                yield f"{EXIT_SENTINEL_PREFIX}1\n"
-                return
+        if not init_success:
+            yield f"Error: Failed to initialize terraform\n{init_output}\n"
+            yield f"{EXIT_SENTINEL_PREFIX}1\n"
+            return
 
-            if "Already initialized" not in init_output:
-                yield f"Initialized terraform:\n{init_output}\n"
-            else:
-                yield f"✓ Resource is already initialized\n"
+        yield f"Initialized terraform\n"
 
         cmd = ["terraform", "apply", "-no-color"]
 
@@ -168,7 +152,7 @@ class TerraformRunner:
             yield f"Error: {str(e)}\n"
             yield f"{EXIT_SENTINEL_PREFIX}1\n"
     
-    async def stream_destroy(self, resource_id: str, auto_approve: bool = False, var_files: Optional[List[str]] = None, skip_init: bool = False, env_extra: Optional[Dict[str, str]] = None) -> AsyncIterator[str]:
+    async def stream_destroy(self, resource_id: str, auto_approve: bool = False, var_files: Optional[List[str]] = None, env_extra: Optional[Dict[str, str]] = None) -> AsyncIterator[str]:
         """Stream terraform destroy for a specific resource directory"""
         resource_dir = self.get_resource_directory(resource_id)
         
@@ -182,21 +166,15 @@ class TerraformRunner:
             yield f"{EXIT_SENTINEL_PREFIX}1\n"
             return
 
-        if skip_init:
-            yield f"Skipping initialization (resource already initialized from browser cache)\n"
-        else:
-            yield f"Checking terraform initialization in: {resource_dir}\n"
-            init_success, init_output = await self.ensure_terraform_init(resource_dir, env_extra=env_extra)
+        yield f"Checking terraform initialization in: {resource_dir}\n"
+        init_success, init_output = await self.ensure_terraform_init(resource_dir, env_extra=env_extra)
 
-            if not init_success:
-                yield f"Error: Failed to initialize terraform\n{init_output}\n"
-                yield f"{EXIT_SENTINEL_PREFIX}1\n"
-                return
+        if not init_success:
+            yield f"Error: Failed to initialize terraform\n{init_output}\n"
+            yield f"{EXIT_SENTINEL_PREFIX}1\n"
+            return
 
-            if "Already initialized" not in init_output:
-                yield f"Initialized terraform:\n{init_output}\n"
-            else:
-                yield f"✓ Resource is already initialized\n"
+        yield f"Initialized terraform\n"
 
         cmd = ["terraform", "destroy", "-no-color"]
 
@@ -230,7 +208,20 @@ class TerraformRunner:
             yield f"Error: {str(e)}\n"
             yield f"{EXIT_SENTINEL_PREFIX}1\n"
 
-    async def stream_plan(self, resource_id: str, var_files: Optional[List[str]] = None, skip_init: bool = False, env_extra: Optional[Dict[str, str]] = None) -> AsyncIterator[str]:
+    async def force_unlock(self, resource_id: str, lock_id: str, env_extra: Optional[Dict[str, str]] = None) -> tuple[bool, str]:
+        resource_dir = self.get_resource_directory(resource_id)
+        if not resource_dir or not resource_dir.exists():
+            return False, f"Resource directory not found: {resource_id}"
+        init_ok, init_out = await self.ensure_terraform_init(resource_dir, env_extra=env_extra)
+        if not init_ok:
+            return False, f"Terraform init failed: {init_out}"
+        return await self._run_command(
+            ["terraform", "force-unlock", "-force", lock_id],
+            cwd=resource_dir,
+            env_extra=env_extra,
+        )
+
+    async def stream_plan(self, resource_id: str, var_files: Optional[List[str]] = None, env_extra: Optional[Dict[str, str]] = None) -> AsyncIterator[str]:
         """Stream terraform plan for a specific resource directory"""
         resource_dir = self.get_resource_directory(resource_id)
 
@@ -244,21 +235,15 @@ class TerraformRunner:
             yield f"{EXIT_SENTINEL_PREFIX}1\n"
             return
 
-        if skip_init:
-            yield f"Skipping initialization (resource already initialized from browser cache)\n"
-        else:
-            yield f"Checking terraform initialization in: {resource_dir}\n"
-            init_success, init_output = await self.ensure_terraform_init(resource_dir, env_extra=env_extra)
+        yield f"Checking terraform initialization in: {resource_dir}\n"
+        init_success, init_output = await self.ensure_terraform_init(resource_dir, env_extra=env_extra)
 
-            if not init_success:
-                yield f"Error: Failed to initialize terraform\n{init_output}\n"
-                yield f"{EXIT_SENTINEL_PREFIX}1\n"
-                return
+        if not init_success:
+            yield f"Error: Failed to initialize terraform\n{init_output}\n"
+            yield f"{EXIT_SENTINEL_PREFIX}1\n"
+            return
 
-            if "Already initialized" not in init_output:
-                yield f"Initialized terraform:\n{init_output}\n"
-            else:
-                yield f"✓ Resource is already initialized\n"
+        yield f"Initialized terraform\n"
 
         cmd = ["terraform", "plan", "-no-color", "-lock=false", "-compact-warnings"]
 

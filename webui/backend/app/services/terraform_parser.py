@@ -1,8 +1,12 @@
+import json
 import logging
 import os
 import re
-from typing import List, Dict, Optional, Set
+from typing import List, Dict, Optional
 from pathlib import Path
+
+import boto3
+from botocore.exceptions import ClientError
 
 logger = logging.getLogger(__name__)
 from app.models.schemas import TerraformResource, ResourceStatus, TerraformVariable
@@ -18,22 +22,7 @@ class TerraformParser:
     def __init__(self, terraform_dir: str):
         self.terraform_dir = Path(terraform_dir)
         self.instances_dir = self.terraform_dir / "instances"
-        self.deployed_modules: Set[str] = set()
         self._config_manager = None
-        
-    def set_deployed_modules(self, state_output: str):
-        """Parse deployed modules from terraform state"""
-        self.deployed_modules.clear()
-
-        if not state_output or not state_output.strip():
-            return
-
-        for line in state_output.strip().split('\n'):
-            if line.startswith('module.'):
-                parts = line.split('.')
-                if len(parts) >= 2:
-                    module_name = parts[1]
-                    self.deployed_modules.add(module_name)
 
     @property
     def config_manager(self):
@@ -63,52 +52,68 @@ class TerraformParser:
                             value = (match.group(2) or match.group(3) or "").strip()
                             variables[key] = value
 
-            # Save to Parameter Store
-            if variables:
-                success = self.config_manager.save_config(variables)
-                if success:
-                    logger.info(f"✅ Synced {len(variables)} variables to Parameter Store")
-                    return True
-                else:
-                    logger.error("❌ Failed to save config to Parameter Store")
-                    return False
-            else:
+            if not variables:
                 logger.warning("No variables found in terraform.tfvars")
                 return False
+
+            success = self.config_manager.save_config(variables)
+            if not success:
+                logger.error("Failed to save config to Parameter Store")
+                return False
+
+            logger.info(f"Synced {len(variables)} variables to Parameter Store")
+
+            key_name = variables.get("ec2_key_name", "")
+            if key_name:
+                pem_path = self.terraform_dir / "keys" / f"{key_name}.pem"
+                if pem_path.exists():
+                    try:
+                        pem_content = pem_path.read_text(encoding="utf-8")
+                        self.config_manager.save_key(pem_content, key_name=key_name)
+                    except Exception as e:
+                        logger.warning(f"Failed to save key to Parameter Store during sync: {e}")
+
+            return True
 
         except Exception as e:
             logger.error(f"Failed to sync to Parameter Store: {e}")
             return False
     
     def parse_all_resources(self) -> List[TerraformResource]:
-        """Parse all resources from instances directory structure"""
         resources = []
-        
+
         if not self.instances_dir.exists():
             return resources
-        
-        # Iterate through each instance directory
+
+        s3_statuses = self._fetch_all_s3_statuses()
+        logger.debug("S3 status cache built: %s", {k: v.value for k, v in s3_statuses.items()})
+
         for instance_dir in sorted(self.instances_dir.iterdir()):
             if not instance_dir.is_dir():
                 continue
-            
+
             dir_name = instance_dir.name
             resource_type = get_resource_type_from_dir(dir_name)
             main_tf = instance_dir / "main.tf"
             if main_tf.exists():
-                resource = self._parse_instance_directory(instance_dir, resource_type)
+                resource = self._parse_instance_directory(instance_dir, resource_type, s3_statuses)
                 if resource:
                     resources.append(resource)
-        
+
         return resources
-    
-    def _parse_instance_directory(self, instance_dir: Path, resource_type) -> Optional[TerraformResource]:
+
+    def _parse_instance_directory(self, instance_dir: Path, resource_type, s3_statuses: Dict[str, ResourceStatus] = None) -> Optional[TerraformResource]:
         main_tf = instance_dir / "main.tf"
         with open(main_tf, "r", encoding="utf-8") as f:
             lines = f.readlines()
         resource_id = get_resource_id_for_instance(instance_dir)
         module_name = resource_id
-        status = self._check_resource_status(instance_dir)
+
+        if s3_statuses and instance_dir.name in s3_statuses:
+            status = s3_statuses[instance_dir.name]
+        else:
+            status = self._check_resource_status_local(instance_dir)
+
         description = self._extract_description_from_directory(instance_dir)
         resource = TerraformResource(
             id=resource_id,
@@ -120,34 +125,116 @@ class TerraformParser:
             status=status,
             description=description
         )
-        
+
         return resource
-    
-    def _check_resource_status(self, instance_dir: Path) -> ResourceStatus:
-        """Check if resource is deployed by examining terraform.tfstate"""
+
+    def _resolve_s3_bucket_name(self) -> Optional[str]:
+        bucket = self._get_s3_bucket_name()
+        if bucket:
+            return bucket
+        if not self.instances_dir.exists():
+            return None
+        for instance_dir in self.instances_dir.iterdir():
+            if not instance_dir.is_dir():
+                continue
+            backend_tf = instance_dir / "backend.tf"
+            if not backend_tf.exists():
+                continue
+            try:
+                content = backend_tf.read_text(encoding="utf-8")
+                match = re.search(r'bucket\s*=\s*"([^"]+)"', content)
+                if match:
+                    return match.group(1)
+            except Exception:
+                continue
+        return None
+
+    def _fetch_all_s3_statuses(self) -> Dict[str, ResourceStatus]:
+        statuses: Dict[str, ResourceStatus] = {}
+        if not self.instances_dir.exists():
+            return statuses
+
+        bucket_name = self._resolve_s3_bucket_name()
+        if not bucket_name:
+            logger.debug("Cannot determine S3 bucket name, skipping S3 status fetch")
+            return statuses
+
+        aws_env = self.get_aws_env()
+        region = (aws_env.get("AWS_REGION") or os.environ.get("AWS_REGION") or "ap-northeast-2")
+        client_kwargs: Dict[str, str] = {"region_name": region}
+        if aws_env.get("AWS_ACCESS_KEY_ID"):
+            client_kwargs["aws_access_key_id"] = aws_env["AWS_ACCESS_KEY_ID"]
+            client_kwargs["aws_secret_access_key"] = aws_env.get("AWS_SECRET_ACCESS_KEY", "")
+            if aws_env.get("AWS_SESSION_TOKEN"):
+                client_kwargs["aws_session_token"] = aws_env["AWS_SESSION_TOKEN"]
+        try:
+            s3_client = boto3.client("s3", **client_kwargs)
+        except Exception as e:
+            logger.warning("Failed to create S3 client for status check: %s", e)
+            return statuses
+
+        s3_state_keys: Dict[str, str] = {}
+        try:
+            paginator = s3_client.get_paginator("list_objects_v2")
+            for page in paginator.paginate(Bucket=bucket_name, Prefix="instances/"):
+                for obj in page.get("Contents", []):
+                    key = obj["Key"]
+                    if key.endswith("/terraform.tfstate"):
+                        parts = key.split("/")
+                        if len(parts) == 3:
+                            s3_state_keys[parts[1]] = key
+        except ClientError as e:
+            logger.warning("Failed to list S3 state files: %s", e)
+            return statuses
+
+        logger.debug("S3 state files found: %s", list(s3_state_keys.keys()))
+
+        for instance_dir in sorted(self.instances_dir.iterdir()):
+            if not instance_dir.is_dir() or not (instance_dir / "main.tf").exists():
+                continue
+
+            dir_name = instance_dir.name
+            resource_id = get_resource_id_for_instance(instance_dir)
+
+            s3_key = s3_state_keys.get(resource_id) or s3_state_keys.get(dir_name)
+
+            if not s3_key:
+                statuses[dir_name] = ResourceStatus.DISABLED
+                logger.debug("S3 status: %s -> DISABLED (no state file)", dir_name)
+                continue
+
+            try:
+                response = s3_client.get_object(Bucket=bucket_name, Key=s3_key)
+                state_data = json.loads(response["Body"].read())
+                resources = state_data.get("resources", [])
+                actual_resources = [r for r in resources if r.get("mode") != "data"]
+                if actual_resources:
+                    statuses[dir_name] = ResourceStatus.ENABLED
+                    logger.debug("S3 status: %s -> ENABLED (%d resources)", dir_name, len(actual_resources))
+                else:
+                    statuses[dir_name] = ResourceStatus.DISABLED
+                    logger.debug("S3 status: %s -> DISABLED (empty state)", dir_name)
+            except Exception as e:
+                logger.debug("S3 status: %s -> DISABLED (error: %s)", dir_name, e)
+                statuses[dir_name] = ResourceStatus.DISABLED
+
+        return statuses
+
+    def _check_resource_status_local(self, instance_dir: Path) -> ResourceStatus:
         tfstate_path = instance_dir / "terraform.tfstate"
-        
+
         if not tfstate_path.exists():
             return ResourceStatus.DISABLED
-        
+
         try:
-            import json
-            with open(tfstate_path, 'r') as f:
+            with open(tfstate_path, "r") as f:
                 state_data = json.load(f)
-            
-            # Check if state has resources
-            resources = state_data.get('resources', [])
-            
-            # Filter out data sources, only check actual resources
-            actual_resources = [r for r in resources if r.get('mode') != 'data']
-            
-            if len(actual_resources) > 0:
+            resources = state_data.get("resources", [])
+            actual_resources = [r for r in resources if r.get("mode") != "data"]
+            if actual_resources:
                 return ResourceStatus.ENABLED
-            else:
-                return ResourceStatus.DISABLED
-                
-        except Exception as e:
-            # If we can't parse the state, assume disabled
+            return ResourceStatus.DISABLED
+        except Exception:
             return ResourceStatus.DISABLED
     
     _UPPER_WORDS = {"ec2", "ecs", "ecr", "rds", "eks", "dbm", "ssh", "aws", "vpc", "iam", "alb", "nlb", "api", "ip", "rds"}

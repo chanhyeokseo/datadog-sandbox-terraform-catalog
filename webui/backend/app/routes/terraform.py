@@ -352,22 +352,18 @@ async def create_aws_key_pair():
             private_key = _convert_rsa_pem_to_openssh(private_key)
         except Exception as conv_err:
             logger.debug(f"Key format conversion skipped: {conv_err}")
+        try:
+            parser.config_manager.save_key(private_key, key_name=kname)
+        except Exception as e:
+            logger.warning(f"Failed to upload key to Parameter Store: {e}")
         keys_dir = parser.terraform_dir / "keys"
         try:
             keys_dir.mkdir(parents=True, exist_ok=True)
-        except OSError as e:
-            logger.exception("Failed to create keys directory")
-            raise HTTPException(status_code=500, detail=f"Cannot create keys directory: {e}")
-        pem_path = keys_dir / f"{kname}.pem"
-        try:
+            pem_path = keys_dir / f"{kname}.pem"
             pem_path.write_text(private_key, encoding="utf-8")
-        except OSError as e:
-            logger.exception("Failed to write .pem file")
-            raise HTTPException(status_code=500, detail=f"Cannot write key file: {e}")
-        try:
             pem_path.chmod(0o600)
-        except OSError:
-            pass
+        except OSError as e:
+            logger.debug(f"Local key file write failed (non-critical): {e}")
         try:
             parser.write_root_tfvars("ec2_key_name", kname)
         except Exception as e:
@@ -390,37 +386,38 @@ async def create_aws_key_pair():
 @router.get("/onboarding/status")
 async def get_onboarding_status():
     try:
-        from pathlib import Path
-        
-        shared_dir = runner.instances_dir / "shared"
-        shared_tfstate = shared_dir / "terraform.tfstate"
-        
-        if not shared_dir.exists():
+        resources = parser.parse_all_resources()
+        sg_resource = next(
+            (r for r in resources if r.type.value == "security_group"),
+            None
+        )
+
+        if not sg_resource:
             return {
                 "onboarding_required": True,
-                "reason": "shared_directory_missing",
-                "message": "Shared resources directory not found"
+                "reason": "security_group_missing",
+                "message": "Security Group resource not found"
             }
-        
-        if not shared_tfstate.exists() or shared_tfstate.stat().st_size == 0:
+
+        if sg_resource.status.value == "enabled":
             return {
-                "onboarding_required": True,
-                "reason": "shared_not_deployed",
-                "message": "Shared resources must be deployed first",
-                "next_steps": [
-                    "1. Select 'shared' resource from the list",
-                    "2. Click PLAN to preview changes",
-                    "3. Click APPLY to deploy shared resources",
-                    "4. Wait for deployment to complete",
-                    "5. You can then deploy other resources"
-                ]
+                "onboarding_required": False,
+                "message": "Security Group is deployed. You can deploy other resources."
             }
-        
+
         return {
-            "onboarding_required": False,
-            "message": "Shared resources are deployed. You can deploy other resources."
+            "onboarding_required": True,
+            "reason": "security_group_not_deployed",
+            "message": "Security Group must be deployed first",
+            "next_steps": [
+                "1. Select the Security Group from the list",
+                "2. Click PLAN to preview changes",
+                "3. Click DEPLOY to provision the Security Group",
+                "4. Wait for the deployment to complete",
+                "5. You can then deploy other resources"
+            ]
         }
-        
+
     except Exception as e:
         logger.error(f"Error checking onboarding status: {e}")
         return {
@@ -434,12 +431,28 @@ async def get_onboarding_status():
 async def get_resources():
     try:
         resources = parser.parse_all_resources()
-        
         logger.info(f"Loaded {len(resources)} resources with current states")
-        
         return resources
     except Exception as e:
         logger.error(f"Error getting resources: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/resources/{resource_id}/refresh-status")
+async def refresh_resource_status(resource_id: str):
+    try:
+        s3_statuses = parser._fetch_all_s3_statuses()
+        target = parser.get_resource_by_id(resource_id)
+        if not target:
+            raise HTTPException(status_code=404, detail="Resource not found")
+        resource_dir = runner.get_resource_directory(resource_id)
+        dir_name = resource_dir.name if resource_dir else resource_id
+        status = s3_statuses.get(dir_name, target.status)
+        return {"resource_id": resource_id, "status": status.value if hasattr(status, 'value') else str(status)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error refreshing resource status: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -655,14 +668,6 @@ async def get_resource_description(resource_id: str):
 @router.get("/state", response_model=TerraformStateResponse)
 async def get_state():
     try:
-        try:
-            aws_env = parser.get_aws_env()
-            success, state_output = await runner.state_list(env_extra=aws_env)
-            if success and state_output:
-                parser.set_deployed_modules(state_output)
-        except Exception as e:
-            logger.debug(f"Failed to list terraform state, proceeding without deployed module info: {e}")
-        
         resources = parser.parse_all_resources()
         variables = parser.parse_variables()
         return TerraformStateResponse(resources=resources, variables=variables)
@@ -672,7 +677,7 @@ async def get_state():
 
 
 @router.get("/plan/stream/{resource_id}")
-async def terraform_plan_stream_resource(resource_id: str, skip_init: bool = False):
+async def terraform_plan_stream_resource(resource_id: str):
     try:
         target_resource = parser.get_resource_by_id(resource_id)
         
@@ -682,9 +687,9 @@ async def terraform_plan_stream_resource(resource_id: str, skip_init: bool = Fal
         var_files = _var_files_for_resource(resource_id)
         aws_env = parser.get_aws_env()
         async def stream_generator():
-            logger.info(f"Starting plan for resource {resource_id}, skip_init={skip_init}")
+            logger.info(f"Starting plan for resource {resource_id}")
             try:
-                async for chunk in runner.stream_plan(resource_id=resource_id, var_files=var_files, skip_init=skip_init, env_extra=aws_env):
+                async for chunk in runner.stream_plan(resource_id=resource_id, var_files=var_files, env_extra=aws_env):
                     yield chunk
             finally:
                 logger.info(f"Completed plan for resource {resource_id}")
@@ -699,7 +704,7 @@ async def terraform_plan_stream_resource(resource_id: str, skip_init: bool = Fal
 
 
 @router.get("/apply/stream/{resource_id}")
-async def terraform_apply_stream_resource(resource_id: str, auto_approve: bool = False, skip_init: bool = False):
+async def terraform_apply_stream_resource(resource_id: str, auto_approve: bool = False):
     import json
     import asyncio
     
@@ -761,13 +766,12 @@ async def terraform_apply_stream_resource(resource_id: str, auto_approve: bool =
         async def locked_stream():
             resource_lock = get_resource_lock(resource_id)
             async with resource_lock:
-                logger.info(f"Acquired lock for {resource_id} (apply), skip_init={skip_init}")
+                logger.info(f"Acquired lock for {resource_id} (apply)")
                 try:
                     async for chunk in runner.stream_apply(
                         resource_id=resource_id,
                         auto_approve=auto_approve,
                         var_files=var_files,
-                        skip_init=skip_init,
                         env_extra=aws_env
                     ):
                         yield chunk
@@ -783,8 +787,21 @@ async def terraform_apply_stream_resource(resource_id: str, auto_approve: bool =
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/force-unlock/{resource_id}")
+async def terraform_force_unlock(resource_id: str, body: dict):
+    lock_id = body.get("lock_id", "").strip()
+    if not lock_id:
+        raise HTTPException(status_code=400, detail="lock_id is required")
+    target = parser.get_resource_by_id(resource_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="Resource not found")
+    aws_env = parser.get_aws_env()
+    success, output = await runner.force_unlock(resource_id, lock_id, env_extra=aws_env)
+    return {"success": success, "output": output}
+
+
 @router.get("/destroy/stream/{resource_id}")
-async def terraform_destroy_stream_resource(resource_id: str, auto_approve: bool = False, skip_init: bool = False):
+async def terraform_destroy_stream_resource(resource_id: str, auto_approve: bool = False):
     try:
         target_resource = parser.get_resource_by_id(resource_id)
         
@@ -796,13 +813,12 @@ async def terraform_destroy_stream_resource(resource_id: str, auto_approve: bool
         async def locked_stream():
             resource_lock = get_resource_lock(resource_id)
             async with resource_lock:
-                logger.info(f"Acquired lock for {resource_id} (destroy), skip_init={skip_init}")
+                logger.info(f"Acquired lock for {resource_id} (destroy)")
                 try:
                     async for chunk in runner.stream_destroy(
                         resource_id=resource_id,
                         auto_approve=auto_approve,
                         var_files=var_files,
-                        skip_init=skip_init,
                         env_extra=aws_env
                     ):
                         yield chunk

@@ -225,7 +225,7 @@ function App() {
           id: Date.now().toString(),
           action: 'ONBOARDING',
           status: 'success',
-          message: '✅ Shared resource selected! Click PLAN to preview, then APPLY to deploy.',
+          message: '✅ Security Group resource selected! Click PLAN to preview, and DEPLOY to deploy.',
           timestamp: new Date(),
           output: ''
         };

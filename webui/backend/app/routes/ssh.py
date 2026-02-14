@@ -8,17 +8,14 @@ import os
 from pathlib import Path
 from io import StringIO
 
-from app.services.key_manager import ParameterStoreKeyManager, LocalKeyManager
+from app.services.key_manager import LocalKeyManager
+from app.services.config_manager import ConfigManager
 
 router = APIRouter(prefix="/api/ssh", tags=["ssh"])
 logger = logging.getLogger(__name__)
 
-# Initialize key managers
-USE_PARAMETER_STORE = os.environ.get("USE_PARAMETER_STORE", "true").lower() == "true"
-ps_key_manager = ParameterStoreKeyManager() if USE_PARAMETER_STORE else None
-local_key_manager = LocalKeyManager()
-
-TERRAFORM_DIR = os.environ.get("TERRAFORM_DIR", "/terraform")
+TERRAFORM_DIR = os.environ.get("TERRAFORM_DIR", "/app/terraform")
+local_key_manager = LocalKeyManager(keys_dir=str(Path(TERRAFORM_DIR) / "keys"))
 active_connections: Dict[str, dict] = {}
 
 
@@ -107,37 +104,29 @@ def _load_pkey_from_content(pem_content: str) -> Optional[paramiko.PKey]:
 
 
 def _load_pkey(key_path: str) -> Optional[paramiko.PKey]:
-    """
-    Load private key from Parameter Store or local file
-    Priority: Parameter Store > Local File
-    """
-    # Extract key name from path
     key_name = Path(key_path).stem
 
-    # Try Parameter Store first
-    if ps_key_manager:
-        try:
-            pem_content = ps_key_manager.get_key(key_name)
-            if pem_content:
-                logger.info(f"Loaded key '{key_name}' from Parameter Store")
-                return _load_pkey_from_content(pem_content)
-        except Exception as e:
-            logger.warning(f"Failed to load key from Parameter Store: {e}")
+    try:
+        cm = ConfigManager(terraform_dir=TERRAFORM_DIR)
+        key_data = cm.load_key()
+        if key_data and key_data.get("private_key"):
+            logger.info(f"Loaded key '{key_data.get('key_name', '')}' from Parameter Store (dogstac namespace)")
+            return _load_pkey_from_content(key_data["private_key"])
+    except Exception as e:
+        logger.warning(f"Failed to load key from Parameter Store: {e}")
 
-    # Fallback to local file
     path = Path(key_path)
-    if not path.exists():
-        # Try local key manager as last resort
-        pem_content = local_key_manager.get_key(key_name)
-        if pem_content:
-            logger.info(f"Loaded key '{key_name}' from local file system")
-            return _load_pkey_from_content(pem_content)
-        return None
+    if path.exists():
+        raw = path.read_text(encoding="utf-8")
+        logger.info(f"Loaded key from file: {key_path}")
+        return _load_pkey_from_content(raw)
 
-    # Load from file path directly
-    raw = path.read_text(encoding="utf-8")
-    logger.info(f"Loaded key from file: {key_path}")
-    return _load_pkey_from_content(raw)
+    pem_content = local_key_manager.get_key(key_name)
+    if pem_content:
+        logger.info(f"Loaded key '{key_name}' from local file system")
+        return _load_pkey_from_content(pem_content)
+
+    return None
 
 
 @router.websocket("/connect/{connection_id}")
@@ -182,14 +171,13 @@ async def ssh_websocket(websocket: WebSocket, connection_id: str):
         if not existing_connection:
             pkey = _load_pkey(key_path)
             if pkey is None:
-                key_file = Path(key_path)
-                if not key_file.exists():
-                    await websocket.send_text(json.dumps({
-                        'type': 'error',
-                        'data': f'Key file not found: {key_path}. Ensure keys/ contains the .pem for ec2_key_name in terraform.tfvars, or create a key via Onboarding.'
-                    }))
-                    await websocket.close()
-                    return
+                key_name = Path(key_path).stem
+                await websocket.send_text(json.dumps({
+                    'type': 'error',
+                    'data': f'SSH key "{key_name}" not found in Parameter Store or local files. Create a key via Onboarding or upload one in Keys management.'
+                }))
+                await websocket.close()
+                return
             ssh = paramiko.SSHClient()
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
             connect_kw = {"hostname": hostname, "port": port, "username": username, "timeout": 10}

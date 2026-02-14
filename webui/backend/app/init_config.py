@@ -105,49 +105,154 @@ def sync_from_s3():
     return root_success or success_count > 0
 
 
-def init_from_parameter_store():
-    """Load configuration from Parameter Store and S3"""
+def regenerate_backend_files():
+    from app.services.config_manager import ConfigManager
+    from app.services.backend_manager import BackendManager
+    from app.services.instance_discovery import get_resource_id_for_instance
+
+    terraform_dir = Path(os.environ.get('TERRAFORM_DIR', '/app/terraform'))
+    instances_dir = terraform_dir / 'instances'
+
+    if not instances_dir.exists():
+        return
+
+    config_manager = ConfigManager(terraform_dir=str(terraform_dir))
+    creator, team = config_manager._get_creator_team_from_tfvars()
+
+    if creator == 'default' and team == 'default':
+        logger.debug("No creator/team configured, skipping backend.tf regeneration")
+        return
+
+    bucket_name = config_manager.generate_bucket_name(creator, team)
+    table_name = config_manager.generate_dynamodb_table_name(creator, team)
+    region = os.environ.get('AWS_REGION', 'ap-northeast-2')
+
+    import boto3
+    try:
+        s3_client = boto3.client('s3', region_name=region)
+        paginator = s3_client.get_paginator('list_objects_v2')
+        s3_state_keys = {}
+        for page in paginator.paginate(Bucket=bucket_name, Prefix='instances/'):
+            for obj in page.get('Contents', []):
+                key = obj['Key']
+                if key.endswith('/terraform.tfstate'):
+                    parts = key.split('/')
+                    if len(parts) == 3:
+                        s3_state_keys[parts[1]] = parts[1]
+    except Exception as e:
+        logger.debug(f"Could not list S3 state files: {e}")
+        s3_state_keys = {}
+
+    manager = BackendManager(region=region)
+    count = 0
+
+    for instance_dir in sorted(instances_dir.iterdir()):
+        if not instance_dir.is_dir() or not (instance_dir / "main.tf").exists():
+            continue
+
+        backend_tf = instance_dir / "backend.tf"
+        if backend_tf.exists():
+            continue
+
+        resource_id = get_resource_id_for_instance(instance_dir)
+        dir_name = instance_dir.name
+
+        if resource_id in s3_state_keys:
+            instance_name = resource_id
+        elif dir_name in s3_state_keys:
+            instance_name = dir_name
+        else:
+            instance_name = resource_id
+
+        backend_content = manager.generate_backend_config(
+            bucket_name=bucket_name,
+            instance_name=instance_name,
+            table_name=table_name
+        )
+        backend_tf.write_text(backend_content, encoding="utf-8")
+        count += 1
+        logger.info(f"Regenerated backend.tf for {dir_name} (key: instances/{instance_name}/terraform.tfstate)")
+
+    if count > 0:
+        logger.info(f"✓ Regenerated {count} backend.tf files")
+
+
+def restore_key_from_parameter_store():
     from app.services.config_manager import ConfigManager
 
-    logger.info("🔄 Initializing configuration...")
+    terraform_dir = Path(os.environ.get('TERRAFORM_DIR', '/app/terraform'))
+    config_manager = ConfigManager(terraform_dir=str(terraform_dir))
+    key_data = config_manager.load_key()
+    if not key_data or not key_data.get("private_key"):
+        logger.debug("No key found in Parameter Store")
+        return False
 
-    # Get terraform directory from environment
+    key_name = key_data.get("key_name", "")
+    if not key_name:
+        logger.debug("Key in Parameter Store has no key_name, skipping local restore")
+        return False
+
+    keys_dir = terraform_dir / "keys"
+    pem_path = keys_dir / f"{key_name}.pem"
+    if pem_path.exists():
+        logger.debug(f"Key '{key_name}' already exists locally")
+        return True
+
+    try:
+        keys_dir.mkdir(parents=True, exist_ok=True)
+        pem_path.write_text(key_data["private_key"], encoding="utf-8")
+        pem_path.chmod(0o600)
+        logger.info(f"Restored key '{key_name}' from Parameter Store to {pem_path}")
+        return True
+    except Exception as e:
+        logger.warning(f"Failed to restore key locally: {e}")
+        return False
+
+
+def init_from_parameter_store():
+    from app.services.config_manager import ConfigManager
+
+    logger.info("Initializing configuration...")
+
     terraform_dir = os.environ.get('TERRAFORM_DIR', '/app/terraform')
     tfvars_path = Path(terraform_dir) / 'terraform.tfvars'
 
-    # Step 1: Try to sync from S3 first (most up-to-date)
     s3_synced = sync_from_s3()
 
     if s3_synced:
-        logger.info("✅ Configuration restored from S3")
+        logger.info("Configuration restored from S3")
+        regenerate_backend_files()
+        restore_key_from_parameter_store()
         return True
 
-    # Step 2: If S3 sync failed, check if local tfvars exists
     if tfvars_path.exists():
-        logger.info(f"📄 Using existing local terraform.tfvars")
+        logger.info("Using existing local terraform.tfvars")
+        regenerate_backend_files()
+        restore_key_from_parameter_store()
         return True
 
-    # Step 3: Fall back to Parameter Store
-    logger.info("⚙️  Loading configuration from Parameter Store...")
+    logger.info("Loading configuration from Parameter Store...")
     config_manager = ConfigManager()
     variables = config_manager.load_config()
 
     if variables is None:
-        logger.info("ℹ️  No configuration found in Parameter Store (first run)")
-        logger.info("   Configuration will be created during onboarding")
+        logger.info("No configuration found in Parameter Store (first run)")
         return True
 
     if not variables:
-        logger.warning("⚠️  Empty configuration in Parameter Store")
+        logger.warning("Empty configuration in Parameter Store")
         return True
 
-    # Write to terraform.tfvars
     success = write_tfvars_file(variables, tfvars_path)
 
     if success:
-        logger.info(f"✅ Initialized config from Parameter Store ({len(variables)} variables)")
+        logger.info(f"Initialized config from Parameter Store ({len(variables)} variables)")
+        logger.info("Retrying S3 sync with resolved bucket name...")
+        sync_from_s3()
+        regenerate_backend_files()
+        restore_key_from_parameter_store()
     else:
-        logger.error("❌ Failed to initialize config from Parameter Store")
+        logger.error("Failed to initialize config from Parameter Store")
 
     return success
 

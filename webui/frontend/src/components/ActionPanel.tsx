@@ -119,10 +119,6 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
   const handleDeploy = async () => {
     if (!selectedResource) return;
 
-    // Check if resource is already initialized in localStorage
-    const initStatus = JSON.parse(localStorage.getItem('terraform_init_status') || '{}');
-    const skipInit = initStatus[selectedResource.id]?.initialized || false;
-
     const resultId = onActionStart('deploy', selectedResource.id);
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -134,8 +130,8 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
         async (success) => {
           abortControllerRef.current = null;
           onActionComplete(resultId, success, 'deploy', selectedResource.id);
-          if (success && onResourcesNeedRefresh) {
-            onResourcesNeedRefresh();
+          if (onResourcesNeedRefresh) {
+            setTimeout(() => onResourcesNeedRefresh!(), success ? 500 : 0);
           }
           if (success) {
             try {
@@ -148,7 +144,6 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
             }
           }
         },
-        skipInit,
         controller.signal
       );
     } catch (err) {
@@ -161,10 +156,6 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
   const handlePlan = async () => {
     if (!selectedResource) return;
 
-    // Check if resource is already initialized in localStorage
-    const initStatus = JSON.parse(localStorage.getItem('terraform_init_status') || '{}');
-    const skipInit = initStatus[selectedResource.id]?.initialized || false;
-
     const resultId = onActionStart('plan');
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -176,7 +167,6 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
           abortControllerRef.current = null;
           onActionComplete(resultId, success, 'plan');
         },
-        skipInit,
         controller.signal
       );
     } catch (err) {
@@ -190,9 +180,6 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
     if (!selectedResource) return;
 
     const doDestroy = async () => {
-      const initStatus = JSON.parse(localStorage.getItem('terraform_init_status') || '{}');
-      const skipInit = initStatus[selectedResource.id]?.initialized || false;
-
       const resultId = onActionStart('destroy', selectedResource.id);
       const controller = new AbortController();
       abortControllerRef.current = controller;
@@ -204,11 +191,10 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
           (success) => {
             abortControllerRef.current = null;
             onActionComplete(resultId, success, 'destroy', selectedResource.id);
-            if (success && onResourcesNeedRefresh) {
-              onResourcesNeedRefresh();
+            if (onResourcesNeedRefresh) {
+              setTimeout(() => onResourcesNeedRefresh!(), success ? 500 : 0);
             }
           },
-          skipInit,
           controller.signal
         );
       } catch (err) {

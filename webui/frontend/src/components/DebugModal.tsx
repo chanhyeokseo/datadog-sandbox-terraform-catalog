@@ -18,6 +18,8 @@ const DebugModal = ({ resourceId, resourceName, resourceFilePath, onClose, onAct
   const [loading, setLoading] = useState(true);
   const [rebuildingBackend, setRebuildingBackend] = useState(false);
   const [recreatingBucket, setRecreatingBucket] = useState(false);
+  const [lockId, setLockId] = useState('');
+  const [unlocking, setUnlocking] = useState(false);
 
   useEffect(() => {
     terraformApi.getInitStatus(resourceId)
@@ -175,6 +177,23 @@ const DebugModal = ({ resourceId, resourceName, resourceFilePath, onClose, onAct
     }
   };
 
+  const handleForceUnlock = async () => {
+    if (!lockId.trim()) return;
+    setUnlocking(true);
+    const resultId = onActionStart('force-unlock');
+    try {
+      const res = await terraformApi.forceUnlock(resourceId, lockId.trim());
+      onActionUpdate(resultId, res.output || 'Done');
+      onActionComplete(resultId, !!res.success, 'force-unlock');
+      if (res.success) setLockId('');
+    } catch (err) {
+      onActionUpdate(resultId, (err as Error).message);
+      onActionComplete(resultId, false, 'force-unlock');
+    } finally {
+      setUnlocking(false);
+    }
+  };
+
   const getCachedTimestamp = () => {
     const cache = JSON.parse(localStorage.getItem('terraform_init_status') || '{}');
     return cache[resourceId]?.timestamp;
@@ -308,10 +327,36 @@ const DebugModal = ({ resourceId, resourceName, resourceFilePath, onClose, onAct
               </ul>
             </div>
           </div>
+
+          <div className="debug-section">
+            <h4>🔓 Force Unlock State</h4>
+
+            <div className="info-box">
+              <p>If a previous operation was interrupted, the DynamoDB state lock may remain. Paste the Lock ID from the error message to release it.</p>
+            </div>
+
+            <div className="debug-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <input
+                type="text"
+                value={lockId}
+                onChange={(e) => setLockId(e.target.value)}
+                placeholder="Lock ID (e.g. ef51f82b-78ab-...)"
+                className="debug-input"
+                style={{ flex: 1, padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--border-color, #444)', background: 'var(--input-bg, #2a2a2a)', color: 'inherit', fontSize: '0.85em' }}
+              />
+              <button
+                onClick={handleForceUnlock}
+                disabled={!lockId.trim() || unlocking}
+                className="debug-btn secondary"
+              >
+                {unlocking ? 'Unlocking...' : 'Unlock'}
+              </button>
+            </div>
+          </div>
         </div>
 
         <div className="debug-footer">
-          <p className="footer-note">💡 Changes take effect immediately</p>
+          <p className="footer-note">Changes take effect immediately</p>
           <button onClick={onClose} className="btn-close-debug">Close</button>
         </div>
       </div>

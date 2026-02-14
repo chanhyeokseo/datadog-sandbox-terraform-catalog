@@ -97,6 +97,26 @@ async def setup_backend(request: BackendSetupRequest):
             )
             result["backend_files_generated"] = generated
 
+        # Upload terraform.tfvars files to S3
+        try:
+            from app.services.terraform_parser import TerraformParser
+            parser = TerraformParser(TERRAFORM_DIR)
+
+            copied = parser.copy_root_tfvars_to_instances()
+
+            result["tfvars_synced"] = {
+                "root_copied_to_instances": copied,
+                "message": "Root terraform.tfvars copied to all instances and synced to S3"
+            }
+
+            if copied:
+                logger.info("Successfully copied root tfvars to all instances and synced to S3")
+            else:
+                logger.warning("Root terraform.tfvars not found or failed to copy")
+        except Exception as e:
+            logger.warning(f"Failed to sync tfvars to S3: {e}")
+            result["tfvars_sync_error"] = str(e)
+
         return {
             "success": True,
             "message": "Backend infrastructure created successfully",
