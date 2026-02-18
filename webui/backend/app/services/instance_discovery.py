@@ -35,7 +35,7 @@ def get_resource_type_from_dir(dir_name: str) -> ResourceType:
         return ResourceType.DBM
     if dir_name.startswith("ecr-") or dir_name == "deploy-spring-boot":
         return ResourceType.ECR
-    if dir_name.startswith("test-file-"):
+    if dir_name.startswith("test-file"):
         return ResourceType.TEST
     return ResourceType.EC2
 

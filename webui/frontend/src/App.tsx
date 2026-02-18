@@ -327,23 +327,20 @@ function App() {
     );
   }
 
-  if (initialLoadPhase === 'loading') {
-    return providerReady === false
-      ? <ProviderLoadingScreen progress={providerProgress.progress} message={providerProgress.message} />
-      : (
-        <div className="app-loading-screen">
-          <div className="app-loading-content">
-            <img src="/logo.png" alt="DogSTAC" className="app-logo" />
-            <h1 className="app-loading-title">DogSTAC</h1>
-            <div className="app-loading-spinner" />
-            <p className="app-loading-text">Loading...</p>
-          </div>
+  if (initialLoadPhase === 'loading' || (initialLoadPhase === 'ready' && providerReady !== true)) {
+    if (providerReady === false) {
+      return <ProviderLoadingScreen progress={providerProgress.progress} message={providerProgress.message} />;
+    }
+    return (
+      <div className="app-loading-screen">
+        <div className="app-loading-content">
+          <img src="/logo.png" alt="DogSTAC" className="app-logo" />
+          <h1 className="app-loading-title">DogSTAC</h1>
+          <div className="app-loading-spinner" />
+          <p className="app-loading-text">Loading...</p>
         </div>
-      );
-  }
-
-  if (initialLoadPhase === 'ready' && providerReady === false) {
-    return <ProviderLoadingScreen progress={providerProgress.progress} message={providerProgress.message} />;
+      </div>
+    );
   }
 
   return (
