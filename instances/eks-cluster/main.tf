@@ -45,28 +45,28 @@ module "eks_cluster" {
   vpc_id      = local.vpc.vpc_id
   subnet_ids  = [local.vpc.public_subnet_id, local.vpc.public_subnet2_id]
 
-  enable_node_group   = true
-  node_instance_types = ["t3.medium"]
-  node_desired_size   = 2
-  node_min_size       = 1
-  node_max_size       = 4
-  node_disk_size      = 20
-  node_capacity_type  = "ON_DEMAND"
+  enable_node_group   = var.enable_node_group
+  node_instance_types = var.node_instance_types
+  node_desired_size   = var.node_desired_size
+  node_min_size       = var.node_min_size
+  node_max_size       = var.node_max_size
+  node_disk_size      = var.node_disk_size
+  node_capacity_type  = var.node_capacity_type
 
-  enable_windows_node_group   = true
-  windows_node_instance_types = ["t3.medium"]
-  windows_node_ami_type       = "WINDOWS_FULL_2022_x86_64"
-  windows_node_desired_size   = 2
-  windows_node_min_size       = 1
-  windows_node_max_size       = 4
-  windows_node_disk_size      = 50
-  windows_node_capacity_type  = "ON_DEMAND"
+  enable_windows_node_group   = var.enable_windows_node_group
+  windows_node_instance_types = var.windows_node_instance_types
+  windows_node_ami_type       = var.windows_node_ami_type
+  windows_node_desired_size   = var.windows_node_desired_size
+  windows_node_min_size       = var.windows_node_min_size
+  windows_node_max_size       = var.windows_node_max_size
+  windows_node_disk_size      = var.windows_node_disk_size
+  windows_node_capacity_type  = var.windows_node_capacity_type
 
-  enable_fargate     = true
+  enable_fargate     = var.enable_fargate
   fargate_subnet_ids = [local.vpc.private_subnet_id]
-  fargate_namespaces = ["default", "kube-system"]
+  fargate_namespaces = var.fargate_namespaces
 
-  endpoint_public_access  = true
-  endpoint_private_access = true
+  endpoint_public_access  = var.endpoint_public_access
+  endpoint_private_access = var.endpoint_private_access
   common_tags             = local.common_tags
 }

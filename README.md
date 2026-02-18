@@ -1,80 +1,69 @@
-# DogSTAC: Datadog Sandbox with Terraform AWS Catalog
+<div align="center">
 
+<img src="webui/frontend/public/logo.png" alt="DogSTAC" width="240" />
+
+# DogSTAC
+
+**Datadog Sandbox with Terraform AWS Catalog**
+
+Terraform infrastructure management through a visual web interface.
+
+---
+
+</div>
 
 ## Prerequisites
 
-- Terraform
-- AWS Account & AWS CLI configured
-- Docker (only required when building container images)
+| Requirement | Description |
+|:-----------:|-------------|
+| **Docker** | Container runtime & Docker Compose |
+| **Git** | Used internally to clone instance templates |
+| **AWS Credentials** | `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` |
 
-## Install Terraform
+> [!NOTE]
+> Terraform is pre-installed inside the backend container — no local installation needed.
 
-### macOS (Homebrew)
+## Quick Start
 
-```bash
-brew tap hashicorp/tap
-brew install hashicorp/tap/terraform
-```
+### 1. Download configuration files
 
-### Linux (Ubuntu/Debian)
+Download these two files into the same directory:
 
-```bash
-sudo apt-get update && sudo apt-get install -y gnupg software-properties-common
+- [`docker-compose.yml`](docker-compose.yml)
+- [`.env.example`](.env.example)
 
-wget -O- https://apt.releases.hashicorp.com/gpg | \
-  gpg --dearmor | \
-  sudo tee /usr/share/keyrings/hashicorp-archive-keyring.gpg > /dev/null
-
-echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] \
-  https://apt.releases.hashicorp.com $(lsb_release -cs) main" | \
-  sudo tee /etc/apt/sources.list.d/hashicorp.list
-
-sudo apt update && sudo apt install terraform
-```
-
-### Windows (Chocolatey)
-
-```powershell
-choco install terraform
-```
-
-### Verify Installation
+### 2. Configure environment
 
 ```bash
-terraform -version
+cp .env.example .env
 ```
 
-## AWS Credentials Setup
+Edit `.env` and fill in the required values:
 
-This project uses AWS credentials through one of the following methods:
+```env
+AWS_ACCESS_KEY_ID=your-access-key-id
+AWS_SECRET_ACCESS_KEY=your-secret-access-key
+AWS_REGION=ap-northeast-2
 
-### Option 1: Environment Variables
+INSTANCES_REPO_URL=https://github.com/your-org/your-repo.git
+```
+
+### 3. Start services
 
 ```bash
-export AWS_ACCESS_KEY_ID="your-access-key-id"
-export AWS_SECRET_ACCESS_KEY="your-secret-access-key"
-export AWS_DEFAULT_REGION="ap-northeast-2"
+docker compose up -d
 ```
 
-### Option 2: AWS CLI Credentials File
+### 4. Open the UI
 
-Configure AWS CLI:
-```bash
-aws configure
+```
+http://localhost:3000
 ```
 
-This creates `~/.aws/credentials` with your credentials.
+<div align="center">
 
-### Option 3: AWS Profile
+---
 
-If you use multiple AWS accounts, use named profiles:
+Backend API docs available at `http://localhost:8000/docs`
 
-```bash
-aws configure --profile your-profile-name
-```
-
-Then specify the profile:
-```bash
-export AWS_PROFILE=your-profile-name
-terraform plan
-```
+</div>

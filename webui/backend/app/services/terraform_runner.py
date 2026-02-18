@@ -71,6 +71,11 @@ class TerraformRunner:
             return False, str(e)
     
     async def ensure_terraform_init(self, resource_dir: Path, env_extra: Optional[Dict[str, str]] = None) -> tuple[bool, str]:
+        tf_dir = resource_dir / ".terraform"
+        if tf_dir.exists():
+            logger.debug(f"Terraform already initialized in {resource_dir}, skipping init")
+            return True, "Already initialized"
+
         env = self._build_env(env_extra)
         try:
             logger.debug(f"Running terraform init in {resource_dir}")

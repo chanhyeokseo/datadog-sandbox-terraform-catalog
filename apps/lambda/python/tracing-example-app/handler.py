@@ -6,7 +6,6 @@ from ddtrace import tracer
 from datadog_lambda.metric import lambda_metric
 
 def create_response(status_code, body):
-    """Create HTTP response"""
     return {
         'statusCode': status_code,
         'headers': {
@@ -16,30 +15,58 @@ def create_response(status_code, body):
         'body': json.dumps(body, indent=2)
     }
 
+def create_html_response(status_code, html):
+    return {
+        'statusCode': status_code,
+        'headers': {
+            'Content-Type': 'text/html',
+            'Access-Control-Allow-Origin': '*'
+        },
+        'body': html
+    }
+
 def get_path(event):
-    """Extract path from event"""
     raw_path = event.get('rawPath', event.get('path', '/'))
     return raw_path if raw_path else '/'
 
+ENDPOINT_DESCRIPTIONS = {
+    '/': 'Available endpoints (this page)',
+    '/add-tag': 'Add custom tags to current span',
+    '/set-error': 'Set error on current span (returns 500)',
+    '/trace-decorator': 'Create span using decorator',
+    '/manual-span': 'Manually create a span',
+    '/nested-spans': 'Create nested spans',
+    '/custom-metrics': 'Submit custom metrics',
+    '/health': 'Health check',
+    '/slow': 'Slow endpoint (2 second delay)',
+}
+
 @tracer.wrap(service="tracing-example", resource="index")
 def handle_index(context):
-    """
-    GET / - Basic endpoint
-    Generates a trace with no custom instrumentation
-    """
     lambda_metric('endpoint.index', 1, tags=['endpoint:index'])
-    
-    return create_response(200, {
-        'message': 'Hello World!',
-        'endpoint': '/',
-        'timestamp': datetime.utcnow().isoformat()
-    })
+
+    links = ""
+    for path, desc in ENDPOINT_DESCRIPTIONS.items():
+        links += f'<li><a href="{path}">{path}</a> — {desc}</li>\n'
+
+    html = (
+        "<!DOCTYPE html><html><head><meta charset='utf-8'>"
+        "<title>Tracing Example API</title>"
+        "<style>"
+        "body{font-family:system-ui,sans-serif;max-width:640px;margin:40px auto;padding:0 20px;color:#333}"
+        "h1{color:#632ca6}ul{line-height:2}a{color:#1a73e8;text-decoration:none}"
+        "a:hover{text-decoration:underline}.ts{color:#888;font-size:0.85em;margin-top:24px}"
+        "</style></head><body>"
+        "<h1>Tracing Example API</h1>"
+        "<p>Lambda function with Datadog APM tracing examples</p>"
+        f"<h2>Available Endpoints</h2><ul>{links}</ul>"
+        f"<p class='ts'>Generated at {datetime.utcnow().isoformat()}Z</p>"
+        "</body></html>"
+    )
+    return create_html_response(200, html)
 
 @tracer.wrap(service="tracing-example", resource="add_tag")
 def handle_add_tag(context):
-    """
-    GET /add-tag - Add custom tags to the current span
-    """
     span = tracer.current_span()
     if span:
         today = datetime.utcnow().date().isoformat()
@@ -65,9 +92,8 @@ def handle_set_error(context):
     span = tracer.current_span()
     if span:
         try:
-            # Simulate an error
             small_list = [1]
-            _ = small_list[1]  # IndexError
+            _ = small_list[1]
         except Exception as ex:
             span.set_tag('error', True)
             span.set_tag('error.type', type(ex).__name__)
@@ -76,7 +102,6 @@ def handle_set_error(context):
     
     lambda_metric('endpoint.set_error', 1, tags=['endpoint:set-error', 'error:true'])
     
-    # Return 500 to mark this trace as error in Datadog
     return create_response(500, {
         'error': 'Simulated Error',
         'message': 'Error set on span',
@@ -213,31 +238,6 @@ def handle_custom_metrics(context):
         'timestamp': datetime.utcnow().isoformat()
     })
 
-@tracer.wrap(service="tracing-example", resource="root")
-def handle_root(context):
-    """
-    GET / (docs) - API documentation
-    """
-    return create_response(200, {
-        'service': 'Tracing Example API',
-        'version': '1.0.0',
-        'description': 'Lambda function with Datadog APM tracing examples',
-        'endpoints': {
-            '/': 'Basic endpoint with minimal tracing',
-            '/add-tag': 'Add custom tags to current span',
-            '/set-error': 'Set error on current span',
-            '/trace-decorator': 'Create span using decorator',
-            '/manual-span': 'Manually create a span',
-            '/nested-spans': 'Create nested spans',
-            '/custom-metrics': 'Submit custom metrics',
-            '/health': 'Health check with external API call',
-            '/slow': 'Slow endpoint (2 second delay)'
-        },
-        'datadog_tracing': 'enabled',
-        'timestamp': datetime.utcnow().isoformat()
-    })
-
-# Route mapping for cleaner routing logic
 ROUTES = {
     '/': handle_index,
     '': handle_index,
@@ -259,7 +259,6 @@ def lambda_handler(event, context):
     path = get_path(event)
     http_method = event.get('requestContext', {}).get('http', {}).get('method', 'GET')
     
-    # Add custom tags to root span
     current_span = tracer.current_span()
     if current_span:
         current_span.set_tag('app.name', app_name)
@@ -267,7 +266,6 @@ def lambda_handler(event, context):
         current_span.set_tag('http.method', http_method)
         current_span.set_tag('environment', os.environ.get('ENVIRONMENT', 'unknown'))
     
-    # Submit request metric
     lambda_metric(
         metric_name='api.request',
         value=1,
@@ -275,13 +273,11 @@ def lambda_handler(event, context):
     )
     
     try:
-        # Route to appropriate handler
         handler = ROUTES.get(path)
         
         if handler:
             response = handler(context)
         else:
-            # Unknown endpoint
             lambda_metric('api.unknown_endpoint', 1, tags=[f'path:{path}'])
             response = create_response(404, {
                 'error': 'Not Found',
@@ -290,7 +286,6 @@ def lambda_handler(event, context):
                 'timestamp': datetime.utcnow().isoformat()
             })
         
-        # Tag span with response status
         if current_span:
             current_span.set_tag('http.status_code', response['statusCode'])
             if response['statusCode'] >= 400:
@@ -299,7 +294,6 @@ def lambda_handler(event, context):
         return response
         
     except Exception as e:
-        # Handle unexpected errors
         if current_span:
             current_span.set_tag('error', True)
             current_span.set_tag('error.message', str(e))

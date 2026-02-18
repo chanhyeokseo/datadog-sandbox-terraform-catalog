@@ -1,18 +1,15 @@
-# Developer version - for building images
 services:
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
-    image: terraform-webui-backend:latest
-    container_name: terraform-webui-backend
+      context: .
+      dockerfile: webui/backend/Dockerfile
+    image: dogstac/tfrunner:latest
+    container_name: dogstac-backend
     ports:
       - "8000:8000"
     environment:
       - TERRAFORM_DIR=/app/terraform
       - USE_PARAMETER_STORE=true
-      - INSTANCES_REPO_URL=${INSTANCES_REPO_URL}
-      - INSTANCES_REPO_BRANCH=${INSTANCES_REPO_BRANCH:-webui-dev}
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
@@ -20,24 +17,25 @@ services:
       - FORCE_REINIT=${FORCE_REINIT:-false}
     volumes:
       - ${TERRAFORM_DATA_PATH:-./terraform-data}:/app/terraform
+      - ./modules:/app/terraform/modules
     restart: unless-stopped
     networks:
-      - terraform-network
+      - dogstac-network
 
   frontend:
     build:
-      context: ./frontend
+      context: ./webui/frontend
       dockerfile: Dockerfile
-    image: terraform-webui-frontend:latest
-    container_name: terraform-webui-frontend
+    image: dogstac/webui:latest
+    container_name: dogstac-frontend
     ports:
       - "3000:3000"
     depends_on:
       - backend
     restart: unless-stopped
     networks:
-      - terraform-network
+      - dogstac-network
 
 networks:
-  terraform-network:
+  dogstac-network:
     driver: bridge

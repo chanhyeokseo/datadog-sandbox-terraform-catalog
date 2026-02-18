@@ -6,38 +6,31 @@ RUN apt-get update && apt-get install -y \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Terraform
 ARG TERRAFORM_VERSION=1.7.0
-RUN wget https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip && \
-    unzip terraform_${TERRAFORM_VERSION}_linux_amd64.zip && \
+ARG TARGETARCH
+RUN wget https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_${TARGETARCH}.zip && \
+    unzip terraform_${TERRAFORM_VERSION}_linux_${TARGETARCH}.zip && \
     mv terraform /usr/local/bin/ && \
-    rm terraform_${TERRAFORM_VERSION}_linux_amd64.zip
+    rm terraform_${TERRAFORM_VERSION}_linux_${TARGETARCH}.zip
 
-# Set working directory
 WORKDIR /app
 
-# Copy requirements
-COPY requirements.txt .
-
-# Install Python dependencies
+COPY webui/backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY app/ ./app/
+COPY webui/backend/app/ ./app/
 
-# Create Terraform working directory (instances and modules will be populated via sparse clone at runtime)
+COPY instances/ /app/terraform-source/instances/
+COPY apps/ /app/terraform-source/apps/
+
 RUN mkdir -p /app/terraform
 
-# Copy entrypoint script
-COPY entrypoint.sh /entrypoint.sh
+COPY webui/backend/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-# Expose port
 EXPOSE 8000
 
-# Environment variables (can be overridden by docker-compose)
 ENV TERRAFORM_DIR=/app/terraform
 ENV USE_PARAMETER_STORE=true
 
-# Run the application
 ENTRYPOINT ["/entrypoint.sh"]

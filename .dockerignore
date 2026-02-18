@@ -3,6 +3,7 @@
 
 # Include only what we need
 !instances/
+!apps/
 !webui/
 
 # Exclude unnecessary files from webui

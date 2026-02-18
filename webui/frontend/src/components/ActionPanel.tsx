@@ -29,6 +29,7 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
   const [outputs, setOutputs] = useState<OutputData[]>([]);
   const [collapsedOutputs, setCollapsedOutputs] = useState<Set<number>>(new Set());
   const [variables, setVariables] = useState<TerraformVariable[]>([]);
+  const [variablesLoading, setVariablesLoading] = useState(false);
   const [editingVar, setEditingVar] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<string>('');
   const [showSGEditor, setShowSGEditor] = useState(false);
@@ -58,12 +59,15 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
   }, [selectedResource]);
 
   const loadVariables = async (resourceId: string) => {
+    setVariablesLoading(true);
     try {
       const vars = await terraformApi.getResourceVariables(resourceId);
       setVariables(vars);
     } catch (err) {
       console.error('Failed to load variables:', err);
       setVariables([]);
+    } finally {
+      setVariablesLoading(false);
     }
   };
 
@@ -230,6 +234,39 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
 
   const isWindowsInstance = (resourceId: string): boolean => {
     return resourceId.startsWith('ec2_windows');
+  };
+
+  const handleLambdaConnect = () => {
+    if (!selectedResource) return;
+
+    const resourceOutput = outputs.find(o => o.resourceId === selectedResource.id);
+    if (!resourceOutput || !resourceOutput.output) {
+      alert('No output information available.\n\nPlease click "Get Outputs" button first to fetch the outputs.');
+      return;
+    }
+
+    let outputData: Record<string, unknown>;
+    try {
+      outputData = JSON.parse(resourceOutput.output);
+    } catch {
+      alert('Failed to parse output data.');
+      return;
+    }
+
+    let functionUrl: string | null = null;
+    for (const [key, value] of Object.entries(outputData)) {
+      if (key.toLowerCase().includes('function_url') && value) {
+        functionUrl = String(value);
+        break;
+      }
+    }
+
+    if (!functionUrl) {
+      alert('Function URL not found in outputs.\n\nMake sure the Lambda has function URL enabled.');
+      return;
+    }
+
+    window.open(functionUrl, '_blank');
   };
 
   const handleConnect = async () => {
@@ -476,29 +513,37 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
                     Connect
                   </button>
                 )}
-                
-                {selectedResource && selectedResource.type === ResourceType.SECURITY_GROUP && (
+                {selectedResource && selectedResource.status === 'enabled' && selectedResource.type === ResourceType.LAMBDA && (
                   <button
-                    onClick={() => setShowSGEditor(true)}
-                    className="btn btn-configure"
+                    onClick={handleLambdaConnect}
+                    className="btn btn-connect"
                     disabled={!!runningAction}
-                    title={runningAction ? `${runningAction} is running for this resource` : 'Customize Security Group rules'}
+                    title="Open Lambda function URL in new tab"
                   >
-                    Customize Rules
-                  </button>
-                )}
-                
-                {selectedResource && selectedResource.type === ResourceType.EKS && (
-                  <button
-                    onClick={() => setShowEKSEditor(true)}
-                    className="btn btn-configure"
-                    disabled={!!runningAction}
-                    title={runningAction ? `${runningAction} is running for this resource` : 'Configure EKS cluster settings'}
-                  >
-                    Configure Cluster
+                    Connect
                   </button>
                 )}
               </>
+            )}
+
+            {selectedResource && selectedResource.type === ResourceType.SECURITY_GROUP && (
+              <button
+                onClick={() => setShowSGEditor(true)}
+                className="btn btn-configure"
+                title="Customize Security Group rules"
+              >
+                Customize Rules
+              </button>
+            )}
+
+            {selectedResource && selectedResource.type === ResourceType.EKS && (
+              <button
+                onClick={() => setShowEKSEditor(true)}
+                className="btn btn-configure"
+                title="Configure EKS cluster settings"
+              >
+                Configure Cluster
+              </button>
             )}
           </div>
         </div>
@@ -517,6 +562,8 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
             <div className="variables-list">
               {!selectedResource ? (
                 <p className="no-variables">Select a resource to view its variables</p>
+              ) : variablesLoading ? (
+                <p className="loading-text"><span className="spinner">⟳</span> Loading variables...</p>
               ) : variables.length === 0 ? (
                 <p className="no-variables">No variables for this resource</p>
               ) : (

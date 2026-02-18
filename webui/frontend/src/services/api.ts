@@ -423,3 +423,55 @@ export const keysApi = {
     return response.data;
   },
 };
+
+export interface DangerZoneStatus {
+  enabled_count: number;
+  enabled_resources: string[];
+  hard_reset_available: boolean;
+}
+
+export interface HardResetResult {
+  success: boolean;
+  message: string;
+  details: Record<string, { success: boolean; actions: string[]; error?: string }>;
+}
+
+export const dangerZoneApi = {
+  getStatus: async (): Promise<DangerZoneStatus> => {
+    const response = await axios.get<DangerZoneStatus>('/api/danger-zone/status');
+    return response.data;
+  },
+
+  streamDestroyAll: async (
+    onData: (chunk: string) => void,
+    onComplete: (success: boolean) => void,
+    signal?: AbortSignal,
+  ): Promise<void> => {
+    const response = await fetch('/api/danger-zone/destroy-all/stream', { signal });
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+    if (!reader) throw new Error('Response body is not readable');
+    const buffer = { current: '' };
+    let exitCode: number | null = null;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        const code = processStreamChunk(buffer, chunk, onData);
+        if (code !== null) exitCode = code;
+      }
+      if (exitCode === null) exitCode = flushStreamBuffer(buffer, onData);
+      onComplete(exitCode === 0);
+    } catch (error) {
+      onData(`\nError: ${error}\n`);
+      onComplete(false);
+    }
+  },
+
+  hardReset: async (): Promise<HardResetResult> => {
+    const response = await axios.post<HardResetResult>('/api/danger-zone/hard-reset');
+    return response.data;
+  },
+};

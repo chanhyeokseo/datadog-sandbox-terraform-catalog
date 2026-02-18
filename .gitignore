@@ -120,5 +120,5 @@ tmp/
 # Uncomment if you want to track terraform.tfvars
 # !terraform.tfvars
 
-
-/Users/chanhyeok.seo/Downloads/sandbox-main/
+# Terraform Data
+terraform-data/

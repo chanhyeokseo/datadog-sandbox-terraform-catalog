@@ -6,10 +6,12 @@ import ResultsPanel from './components/ResultsPanel';
 import ConfigModal from './components/ConfigModal';
 import ConnectionsModal from './components/ConnectionsModal';
 import OnboardingModal from './components/OnboardingModal';
+import DangerZoneModal from './components/DangerZoneModal';
 import { TerraformResource, ResourceType } from './types';
 import { terraformApi as api, OnboardingStatus } from './services/api';
 import './styles/App.css';
 import './styles/Unified.css';
+import './styles/DangerZone.css';
 
 interface Result {
   id: string;
@@ -29,6 +31,7 @@ function App() {
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [showConnectionsModal, setShowConnectionsModal] = useState(false);
   const [showOnboardingModal, setShowOnboardingModal] = useState(false);
+  const [showDangerZone, setShowDangerZone] = useState(false);
   const [onboardingStatus, setOnboardingStatus] = useState<OnboardingStatus | null>(null);
   const [resourceRefreshTrigger, setResourceRefreshTrigger] = useState(0);
   const [runningResources, setRunningResources] = useState<Map<string, string>>(new Map());
@@ -341,6 +344,21 @@ function App() {
           onSelectShared={handleSelectShared}
         />
       )}
+
+      {showDangerZone && (
+        <DangerZoneModal
+          onClose={() => setShowDangerZone(false)}
+          onResourcesNeedRefresh={handleResourcesNeedRefresh}
+        />
+      )}
+
+      <button
+        className="danger-zone-fab"
+        onClick={() => setShowDangerZone(true)}
+        title="Danger Zone"
+      >
+        ⚠
+      </button>
     </div>
   );
 }

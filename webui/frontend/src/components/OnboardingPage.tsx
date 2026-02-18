@@ -10,9 +10,11 @@ import {
   AwsVpc,
   AwsSubnet,
 } from '../services/api';
+import DangerZoneModal from './DangerZoneModal';
 import '../styles/App.css';
 import '../styles/Unified.css';
 import '../styles/OnboardingPage.css';
+import '../styles/DangerZone.css';
 
 const AWS_REGIONS = [
   'ap-northeast-1', 'ap-northeast-2', 'ap-northeast-3', 'ap-south-1', 'ap-south-2',
@@ -48,6 +50,7 @@ function OnboardingPage() {
     message?: string;
   }>({ status: 'idle' });
   const [namePrefixStatus, setNamePrefixStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle');
+  const [showDangerZone, setShowDangerZone] = useState(false);
   const namePrefixTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const checkNamePrefixAvailability = useCallback((prefix: string) => {
@@ -498,6 +501,18 @@ function OnboardingPage() {
           <p className="onboarding-progress-text">{completedPhases} of {totalPhases} phases completed</p>
         </div>
       </div>
+
+      {showDangerZone && (
+        <DangerZoneModal onClose={() => setShowDangerZone(false)} />
+      )}
+
+      <button
+        className="danger-zone-fab"
+        onClick={() => setShowDangerZone(true)}
+        title="Danger Zone"
+      >
+        ⚠
+      </button>
     </div>
   );
 }

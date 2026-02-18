@@ -1,0 +1,312 @@
+.danger-zone-fab {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 1000;
+  width: 48px;
+  height: 48px;
+  border-radius: 0;
+  border: 1px solid rgba(239, 83, 80, 0.4);
+  background: linear-gradient(135deg, rgba(239, 83, 80, 0.15) 0%, rgba(239, 83, 80, 0.08) 100%);
+  backdrop-filter: blur(12px) saturate(1.4);
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
+  box-shadow: 0 4px 20px rgba(239, 83, 80, 0.2),
+              inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  color: #ef5350;
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.danger-zone-fab:hover {
+  background: linear-gradient(135deg, rgba(239, 83, 80, 0.25) 0%, rgba(239, 83, 80, 0.15) 100%);
+  border-color: rgba(239, 83, 80, 0.6);
+  box-shadow: 0 6px 28px rgba(239, 83, 80, 0.35);
+  transform: translateY(-2px);
+}
+
+body.light-mode .danger-zone-fab {
+  background: linear-gradient(135deg, rgba(239, 83, 80, 0.1) 0%, rgba(239, 83, 80, 0.05) 100%);
+  border-color: rgba(239, 83, 80, 0.3);
+  box-shadow: 0 4px 20px rgba(239, 83, 80, 0.1);
+}
+
+body.light-mode .danger-zone-fab:hover {
+  background: linear-gradient(135deg, rgba(239, 83, 80, 0.2) 0%, rgba(239, 83, 80, 0.1) 100%);
+  border-color: rgba(239, 83, 80, 0.5);
+  box-shadow: 0 6px 28px rgba(239, 83, 80, 0.2);
+}
+
+.danger-zone-modal {
+  background: var(--panel-bg);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  border: 1px solid var(--panel-border);
+  box-shadow: var(--glass-shadow-strong),
+              0 0 80px rgba(239, 83, 80, 0.15),
+              inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  border-radius: 0;
+  padding: 28px 32px;
+  min-width: 480px;
+  max-width: 600px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-height: 80vh;
+  overflow: hidden;
+}
+
+body.light-mode .danger-zone-modal {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(239, 83, 80, 0.15);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.1),
+              0 0 60px rgba(239, 83, 80, 0.08),
+              inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.danger-zone-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #ef5350;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.danger-zone-warning {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  padding: 12px 14px;
+  background: rgba(239, 83, 80, 0.06);
+  border: 1px solid rgba(239, 83, 80, 0.15);
+  border-left: 3px solid rgba(239, 83, 80, 0.5);
+}
+
+body.light-mode .danger-zone-warning {
+  background: rgba(239, 83, 80, 0.04);
+  border-color: rgba(239, 83, 80, 0.12);
+  border-left-color: rgba(239, 83, 80, 0.4);
+  color: #555;
+}
+
+.danger-zone-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.danger-zone-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.danger-zone-section-desc {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.danger-zone-divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: 4px 0;
+}
+
+.danger-zone-btn-row {
+  display: flex;
+  gap: 10px;
+}
+
+.danger-zone-btn {
+  flex: 1;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 0;
+  transition: all 0.15s ease;
+}
+
+.danger-zone-btn.destroy-all {
+  background: linear-gradient(135deg, rgba(239, 83, 80, 0.35) 0%, rgba(239, 83, 80, 0.18) 100%);
+  color: #ffffff;
+  border: 1px solid rgba(239, 83, 80, 0.5);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.danger-zone-btn.destroy-all:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(239, 83, 80, 0.5) 0%, rgba(239, 83, 80, 0.3) 100%);
+  border-color: rgba(239, 83, 80, 0.7);
+  box-shadow: 0 4px 12px rgba(239, 83, 80, 0.3);
+  transform: translateY(-2px);
+}
+
+.danger-zone-btn.hard-reset {
+  background: linear-gradient(135deg, rgba(183, 28, 28, 0.4) 0%, rgba(183, 28, 28, 0.2) 100%);
+  color: #ffffff;
+  border: 1px solid rgba(183, 28, 28, 0.5);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.danger-zone-btn.hard-reset:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(183, 28, 28, 0.55) 0%, rgba(183, 28, 28, 0.35) 100%);
+  border-color: rgba(183, 28, 28, 0.7);
+  box-shadow: 0 4px 12px rgba(183, 28, 28, 0.3);
+  transform: translateY(-2px);
+}
+
+.danger-zone-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+body.light-mode .danger-zone-btn.destroy-all {
+  background: linear-gradient(135deg, rgba(239, 83, 80, 0.18) 0%, rgba(239, 83, 80, 0.08) 100%);
+  border-color: rgba(239, 83, 80, 0.4);
+  color: #b71c1c;
+  text-shadow: none;
+}
+
+body.light-mode .danger-zone-btn.destroy-all:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(239, 83, 80, 0.28) 0%, rgba(239, 83, 80, 0.14) 100%);
+  border-color: rgba(239, 83, 80, 0.6);
+}
+
+body.light-mode .danger-zone-btn.hard-reset {
+  background: linear-gradient(135deg, rgba(183, 28, 28, 0.18) 0%, rgba(183, 28, 28, 0.08) 100%);
+  border-color: rgba(183, 28, 28, 0.4);
+  color: #b71c1c;
+  text-shadow: none;
+}
+
+body.light-mode .danger-zone-btn.hard-reset:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(183, 28, 28, 0.28) 0%, rgba(183, 28, 28, 0.14) 100%);
+  border-color: rgba(183, 28, 28, 0.6);
+}
+
+.danger-zone-log {
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 12px 14px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border-color);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+body.light-mode .danger-zone-log {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.danger-zone-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.danger-zone-close-btn {
+  padding: 8px 20px;
+  border-radius: 0;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  transition: all 0.15s ease;
+}
+
+.danger-zone-close-btn:hover {
+  background: var(--glass-bg);
+  color: var(--text-primary);
+  border-color: var(--border-color-strong);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+body.light-mode .danger-zone-close-btn {
+  color: #495057;
+  border-color: rgba(0, 0, 0, 0.2);
+}
+
+body.light-mode .danger-zone-close-btn:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: #212529;
+  border-color: rgba(0, 0, 0, 0.3);
+}
+
+.danger-zone-reset-list {
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  padding-left: 18px;
+  margin: 0;
+}
+
+.danger-zone-status-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 0;
+  margin-left: 8px;
+}
+
+.danger-zone-status-badge.available {
+  color: #4caf50;
+  background: rgba(76, 175, 80, 0.12);
+  border: 1px solid rgba(76, 175, 80, 0.3);
+}
+
+.danger-zone-status-badge.blocked {
+  color: var(--text-tertiary);
+  background: rgba(128, 128, 128, 0.12);
+  border: 1px solid rgba(128, 128, 128, 0.3);
+}
+
+.danger-zone-restart-notice {
+  padding: 14px 16px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  background: rgba(255, 193, 7, 0.08);
+  border: 1px solid rgba(255, 193, 7, 0.25);
+  border-left: 3px solid rgba(255, 193, 7, 0.6);
+}
+
+body.light-mode .danger-zone-restart-notice {
+  background: rgba(255, 193, 7, 0.06);
+  border-color: rgba(255, 193, 7, 0.2);
+  border-left-color: rgba(255, 193, 7, 0.5);
+  color: #333;
+}
+
+.danger-zone-restart-cmd {
+  display: block;
+  margin-top: 8px;
+  padding: 8px 12px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 12px;
+  color: var(--text-primary);
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border-color);
+  user-select: all;
+}
+
+body.light-mode .danger-zone-restart-cmd {
+  background: rgba(0, 0, 0, 0.04);
+}
