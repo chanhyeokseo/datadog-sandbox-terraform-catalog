@@ -6,6 +6,7 @@ echo "Starting Terraform Web UI Backend..."
 # Create terraform working directory if not exists
 mkdir -p /app/terraform
 
+
 # Check if instances data already exists
 INSTANCES_EXIST=false
 if [ -d "/app/terraform/instances" ] && [ -n "$(ls -A /app/terraform/instances 2>/dev/null)" ]; then
@@ -19,21 +20,33 @@ if [ "$FORCE_REINIT" = "true" ]; then
     INSTANCES_EXIST=false
 fi
 
-# Clone instances and modules using sparse checkout if needed
+# Sync modules and apps from image (skip if bind-mounted from host)
+if mountpoint -q /app/terraform/modules 2>/dev/null; then
+    echo "Modules: using bind mount ($(ls -1 /app/terraform/modules | wc -l) directories)"
+elif [ -d "/app/terraform-source/modules" ]; then
+    rm -rf /app/terraform/modules
+    cp -r /app/terraform-source/modules /app/terraform/
+    echo "Modules ready: $(ls -1 /app/terraform/modules | wc -l) directories"
+fi
+if mountpoint -q /app/terraform/apps 2>/dev/null; then
+    echo "Apps: using bind mount"
+elif [ -d "/app/terraform-source/apps" ]; then
+    rm -rf /app/terraform/apps
+    cp -r /app/terraform-source/apps /app/terraform/
+    echo "Apps ready"
+fi
+
+# Seed instances data if not already present (persistent volume)
 if [ "$INSTANCES_EXIST" = "true" ]; then
     echo "Using existing instances data from persistent volume"
     echo "Instances: $(ls -1 /app/terraform/instances 2>/dev/null | wc -l) directories"
 else
-    echo "Seeding terraform data from image..."
+    echo "Seeding instances from image..."
     if [ -d "/app/terraform-source/instances" ]; then
         cp -r /app/terraform-source/instances /app/terraform/
         echo "Instances ready: $(ls -1 /app/terraform/instances | wc -l) directories"
     else
         echo "WARNING: /app/terraform-source/instances not found in image"
-    fi
-    if [ -d "/app/terraform-source/apps" ]; then
-        cp -r /app/terraform-source/apps /app/terraform/
-        echo "Apps ready"
     fi
 fi
 

@@ -47,7 +47,7 @@ locals {
 }
 
 module "ec2_windows_2016" {
-  source = "git::https://github.com/chanhyeokseo/datadog-sandbox-terraform-catalog.git//modules/ec2-basic?ref=webui-dev"
+  source = "../../modules/ec2-basic"
 
   name_prefix        = "${local.name_prefix}-windows-2016"
   instance_type      = var.ec2_instance_type

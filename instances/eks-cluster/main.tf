@@ -38,7 +38,7 @@ locals {
 }
 
 module "eks_cluster" {
-  source = "git::https://github.com/chanhyeokseo/datadog-sandbox-terraform-catalog.git//modules/eks?ref=webui-dev"
+  source = "../../modules/eks"
 
   name_prefix = local.name_prefix
   region      = var.region

@@ -44,7 +44,7 @@ locals {
 }
 
 module "ec2_forwardog" {
-  source = "git::https://github.com/chanhyeokseo/datadog-sandbox-terraform-catalog.git//modules/ec2-forwardog?ref=webui-dev"
+  source = "../../modules/ec2-forwardog"
 
   name_prefix        = local.name_prefix
   instance_type      = var.ec2_instance_type

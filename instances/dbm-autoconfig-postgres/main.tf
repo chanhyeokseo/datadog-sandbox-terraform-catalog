@@ -46,7 +46,7 @@ locals {
 }
 
 module "dbm_autoconfig_ec2" {
-  source = "git::https://github.com/chanhyeokseo/datadog-sandbox-terraform-catalog.git//modules/ec2-datadog-host?ref=webui-dev"
+  source = "../../modules/ec2-datadog-host"
 
   name_prefix        = "${local.name_prefix}-dbm-autoconfig"
   instance_type      = var.ec2_instance_type
@@ -63,7 +63,7 @@ module "dbm_autoconfig_ec2" {
 }
 
 module "dbm_autoconfig_rds" {
-  source = "git::https://github.com/chanhyeokseo/datadog-sandbox-terraform-catalog.git//modules/rds?ref=webui-dev"
+  source = "../../modules/rds"
 
   name_prefix             = "${local.name_prefix}-dbm-autoconfig"
   rds_type                = "postgres"

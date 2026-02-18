@@ -43,26 +43,26 @@ const DebugModal = ({ resourceId, resourceName, resourceFilePath, onClose, onAct
   const handleInit = async () => {
     setIsProcessing(true);
     const resultId = onActionStart('init');
-    
+
     try {
-      const result = await terraformApi.initResource(resourceId);
-      onActionUpdate(resultId, result.output || 'Terraform initialized successfully');
-      onActionComplete(resultId, result.success, 'init');
-      
-      if (result.success) {
-        setInitialized(true);
-        const cache = JSON.parse(localStorage.getItem('terraform_init_status') || '{}');
-        cache[resourceId] = { initialized: true, timestamp: new Date().toISOString() };
-        localStorage.setItem('terraform_init_status', JSON.stringify(cache));
-        
-        setTimeout(() => {
-          onClose();
-        }, 1000);
-      }
+      await terraformApi.streamInitResource(
+        resourceId,
+        (chunk) => onActionUpdate(resultId, chunk),
+        (success) => {
+          onActionComplete(resultId, success, 'init');
+          if (success) {
+            setInitialized(true);
+            const cache = JSON.parse(localStorage.getItem('terraform_init_status') || '{}');
+            cache[resourceId] = { initialized: true, timestamp: new Date().toISOString() };
+            localStorage.setItem('terraform_init_status', JSON.stringify(cache));
+            setTimeout(() => onClose(), 1000);
+          }
+          setIsProcessing(false);
+        }
+      );
     } catch (err) {
       onActionUpdate(resultId, `Failed to initialize: ${(err as Error).message}`);
       onActionComplete(resultId, false, 'init');
-    } finally {
       setIsProcessing(false);
     }
   };

@@ -19,7 +19,7 @@ locals {
 }
 
 module "ecr_apps" {
-  source = "git::https://github.com/chanhyeokseo/datadog-sandbox-terraform-catalog.git//modules/ecr?ref=webui-dev"
+  source = "../../modules/ecr"
 
   repository_name        = "${local.name_prefix}-apps"
   image_tag_mutability   = "MUTABLE"

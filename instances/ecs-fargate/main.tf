@@ -19,7 +19,7 @@ locals {
 }
 
 module "ecs_fargate" {
-  source = "git::https://github.com/chanhyeokseo/datadog-sandbox-terraform-catalog.git//modules/ecs?ref=webui-dev"
+  source = "../../modules/ecs"
 
   name_prefix    = "${local.name_prefix}-fargate"
   enable_fargate = var.ecs_enable_fargate

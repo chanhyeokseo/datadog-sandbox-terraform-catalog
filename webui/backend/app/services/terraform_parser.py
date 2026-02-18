@@ -23,6 +23,8 @@ class TerraformParser:
         self.terraform_dir = Path(terraform_dir)
         self.instances_dir = self.terraform_dir / "instances"
         self._config_manager = None
+        self._s3_bucket_available: Optional[bool] = None
+        self._cached_s3_manager = None
 
     @property
     def config_manager(self):
@@ -184,7 +186,10 @@ class TerraformParser:
                         if len(parts) == 3:
                             s3_state_keys[parts[1]] = key
         except ClientError as e:
-            logger.warning("Failed to list S3 state files: %s", e)
+            if e.response.get("Error", {}).get("Code") == "NoSuchBucket":
+                logger.debug("S3 bucket does not exist yet, skipping state check")
+            else:
+                logger.warning("Failed to list S3 state files: %s", e)
             return statuses
 
         logger.debug("S3 state files found: %s", list(s3_state_keys.keys()))
@@ -690,52 +695,56 @@ class TerraformParser:
             return False
 
     def _get_s3_bucket_name(self) -> Optional[str]:
-        """Get S3 bucket name for config storage"""
         try:
-            from app.services.config_manager import ConfigManager
-            config_manager = ConfigManager(terraform_dir=str(self.terraform_dir))
-            name_prefix = config_manager._get_name_prefix_from_tfvars()
-            return config_manager.generate_bucket_name(name_prefix)
+            name_prefix = self.config_manager._get_name_prefix_from_tfvars()
+            return self.config_manager.generate_bucket_name(name_prefix)
         except Exception as e:
             logger.debug(f"Could not determine S3 bucket name: {e}")
             return None
 
+    def _get_s3_manager(self):
+        from app.services.s3_config_manager import S3ConfigManager
+        bucket_name = self._get_s3_bucket_name()
+        if not bucket_name:
+            return None
+        if self._cached_s3_manager is None or self._cached_s3_manager.bucket_name != bucket_name:
+            self._cached_s3_manager = S3ConfigManager(bucket_name)
+        return self._cached_s3_manager
+
+    def mark_s3_available(self):
+        self._s3_bucket_available = True
+
     def _sync_root_tfvars_to_s3(self) -> bool:
-        """Upload root terraform.tfvars to S3"""
+        if self._s3_bucket_available is False:
+            return False
         try:
-            bucket_name = self._get_s3_bucket_name()
-            if not bucket_name:
-                logger.debug("S3 bucket name not available, skipping S3 sync")
+            s3_manager = self._get_s3_manager()
+            if not s3_manager:
                 return False
-
-            from app.services.s3_config_manager import S3ConfigManager
-            s3_manager = S3ConfigManager(bucket_name)
             success = s3_manager.upload_root_tfvars(self.terraform_dir)
-
             if success:
-                logger.debug(f"✓ Synced root tfvars to S3: {bucket_name}")
+                self._s3_bucket_available = True
+            elif self._s3_bucket_available is None:
+                self._s3_bucket_available = False
             return success
         except Exception as e:
             logger.warning(f"Failed to sync root tfvars to S3: {e}")
             return False
 
     def _sync_instance_tfvars_to_s3(self, resource_id: str, tfvars_path: Path) -> bool:
-        """Upload instance terraform.tfvars to S3"""
+        if self._s3_bucket_available is False:
+            return False
         try:
-            bucket_name = self._get_s3_bucket_name()
-            if not bucket_name:
-                logger.debug("S3 bucket name not available, skipping S3 sync")
+            s3_manager = self._get_s3_manager()
+            if not s3_manager:
                 return False
-
             instance_dir = tfvars_path.parent
             instance_name = instance_dir.name
-
-            from app.services.s3_config_manager import S3ConfigManager
-            s3_manager = S3ConfigManager(bucket_name)
             success = s3_manager.upload_instance_tfvars(instance_dir, instance_name)
-
             if success:
-                logger.debug(f"✓ Synced instance tfvars to S3: {instance_name}")
+                self._s3_bucket_available = True
+            elif self._s3_bucket_available is None:
+                self._s3_bucket_available = False
             return success
         except Exception as e:
             logger.warning(f"Failed to sync instance tfvars to S3: {e}")

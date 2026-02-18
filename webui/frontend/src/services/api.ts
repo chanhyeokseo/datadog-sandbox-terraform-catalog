@@ -139,6 +139,46 @@ export const terraformApi = {
     return response.data;
   },
 
+  streamInitResource: async (
+    resourceId: string,
+    onData: (chunk: string) => void,
+    onComplete: (success: boolean) => void,
+    signal?: AbortSignal
+  ): Promise<void> => {
+    const response = await fetch(
+      `${API_BASE_URL}/init/stream/${resourceId}`,
+      { signal }
+    );
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+
+    if (!reader) {
+      throw new Error('Response body is not readable');
+    }
+
+    const buffer = { current: '' };
+    let exitCode: number | null = null;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        const code = processStreamChunk(buffer, chunk, onData);
+        if (code !== null) exitCode = code;
+      }
+      if (exitCode === null) exitCode = flushStreamBuffer(buffer, onData);
+      onComplete(exitCode === 0);
+    } catch (error) {
+      onData(`\nError: ${error}\n`);
+      onComplete(false);
+    }
+  },
+
   getResources: async (): Promise<TerraformResource[]> => {
     const response = await api.get<TerraformResource[]>('/resources');
     return response.data;

@@ -3,6 +3,7 @@
 
 # Include only what we need
 !instances/
+!modules/
 !apps/
 !webui/
 

@@ -7,7 +7,7 @@ terraform {
 }
 
 module "test_file" {
-  source = "git::https://github.com/chanhyeokseo/datadog-sandbox-terraform-catalog.git//modules/local-file-test?ref=webui-dev"
+  source = "../../modules/local-file-test"
 
   filename = "test-file-2.txt"
   content  = "This is test file 2 for quick testing"

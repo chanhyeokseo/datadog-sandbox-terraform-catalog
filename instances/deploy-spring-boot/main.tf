@@ -13,7 +13,7 @@ provider "aws" {
 }
 
 module "deploy_spring_boot" {
-  source = "git::https://github.com/chanhyeokseo/datadog-sandbox-terraform-catalog.git//modules/app-deploy?ref=webui-dev"
+  source = "../../modules/app-deploy"
 
   app_name           = "spring-boot-demo"
   app_path           = "${path.module}/../../apps/spring-boot-3.5.8"

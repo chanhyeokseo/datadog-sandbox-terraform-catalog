@@ -228,11 +228,11 @@ class ConfigManager:
         safe = name_prefix.lower().replace('_', '-')
         safe = ''.join(c if c.isalnum() or c == '-' else '-' for c in safe)[:32]
         bucket_name = f"dogstac-{safe}-{creds_hash}"
-        logger.info(f"Generated bucket name: {bucket_name}")
+        logger.debug(f"Generated bucket name: {bucket_name}")
         return bucket_name
 
     def generate_dynamodb_table_name(self) -> str:
         creds_hash = self._get_credentials_hash()
         table_name = f"dogstac-{creds_hash}-locks"
-        logger.info(f"Generated DynamoDB table name: {table_name}")
+        logger.debug(f"Generated DynamoDB table name: {table_name}")
         return table_name

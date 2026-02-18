@@ -28,7 +28,7 @@ locals {
 }
 
 module "security_group" {
-  source = "git::https://github.com/chanhyeokseo/datadog-sandbox-terraform-catalog.git//modules/security-group?ref=webui-dev"
+  source = "../../modules/security-group"
 
   name_prefix   = local.name_prefix
   vpc_id        = var.vpc_id

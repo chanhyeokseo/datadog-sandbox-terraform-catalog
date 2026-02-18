@@ -45,6 +45,8 @@ function OnboardingPage() {
   const [vpcLoading, setVpcLoading] = useState(false);
   const [keyResult, setKeyResult] = useState<{ key_name: string; private_key: string; key_path: string; ssh_hint: string } | null>(null);
   const [keyGenerating, setKeyGenerating] = useState(false);
+  const [completing, setCompleting] = useState(false);
+  const [completingMessage, setCompletingMessage] = useState('');
   const [backendSetup, setBackendSetup] = useState<{
     status: 'idle' | 'setting_up' | 'complete' | 'error';
     message?: string;
@@ -155,16 +157,21 @@ function OnboardingPage() {
       const updated = await terraformApi.getConfigOnboardingStatus();
       setStatus(updated);
       if (!updated.config_onboarding_required) {
-        // Sync tfvars to all instances
-        await terraformApi.syncTfvarsToInstances().catch(() => {});
+        setCompleting(true);
 
-        // Sync configuration to Parameter Store (for persistence)
+        setCompletingMessage('Syncing configuration...');
+        await terraformApi.syncTfvarsToInstances().catch(() => {});
         await terraformApi.syncToParameterStore().catch((err) => {
           console.warn('Failed to sync to Parameter Store:', err);
         });
 
-        // Setup backend infrastructure automatically
+        setCompletingMessage('Setting up backend infrastructure...');
         await setupBackendInfrastructure();
+
+        setCompletingMessage('Loading resources...');
+        try {
+          await terraformApi.getResources();
+        } catch (_) {}
 
         localStorage.removeItem('onboarding_dismissed');
         navigate('/', { replace: true });
@@ -262,6 +269,19 @@ function OnboardingPage() {
       return (val !== undefined && val.trim() !== '') || v.filled;
     });
   };
+
+  if (completing) {
+    return (
+      <div className="app-loading-screen">
+        <div className="app-loading-content">
+          <img src="/logo.png" alt="DogSTAC" className="app-logo" />
+          <h1 className="app-loading-title">DogSTAC</h1>
+          <div className="app-loading-spinner" />
+          <p className="app-loading-text">{completingMessage || 'Finishing setup...'}</p>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

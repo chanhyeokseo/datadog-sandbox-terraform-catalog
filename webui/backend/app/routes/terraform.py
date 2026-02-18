@@ -55,6 +55,40 @@ async def terraform_init_status(resource_id: str):
     return {"initialized": initialized, "resource_id": resource_id}
 
 
+@router.get("/init/stream/{resource_id}")
+async def terraform_init_stream(resource_id: str):
+    resource_dir = runner.get_resource_directory(resource_id)
+    if not resource_dir or not resource_dir.exists():
+        raise HTTPException(status_code=404, detail="Resource directory not found")
+
+    aws_env = parser.get_aws_env()
+
+    async def stream():
+        from app.services.terraform_runner import EXIT_SENTINEL_PREFIX
+        env = {**os.environ, **(aws_env or {})}
+        try:
+            process = await asyncio.create_subprocess_exec(
+                "terraform", "init", "-no-color", "-input=false",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                cwd=str(resource_dir),
+                env=env
+            )
+            while True:
+                line = await process.stdout.readline()
+                if not line:
+                    break
+                yield line.decode()
+            code = (await process.wait()) or 0
+            yield f"{EXIT_SENTINEL_PREFIX}{0 if code == 0 else 1}\n"
+        except Exception as e:
+            logger.error(f"Error streaming terraform init: {e}")
+            yield f"Error: {str(e)}\n"
+            yield f"{EXIT_SENTINEL_PREFIX}1\n"
+
+    return StreamingResponse(stream(), media_type="text/plain")
+
+
 @router.post("/init/{resource_id}")
 async def terraform_init_resource(resource_id: str):
     try:
@@ -67,33 +101,33 @@ async def terraform_init_resource(resource_id: str):
             raise HTTPException(status_code=404, detail="Resource directory does not exist")
         
         aws_env = parser.get_aws_env()
-        env = {**os.environ, **aws_env} if aws_env else None
+        env = {**os.environ, **(aws_env or {})}
         logger.info(f"Force running terraform init in {resource_dir}")
         process = await asyncio.create_subprocess_exec(
-            "terraform", "init", "-no-color", "-upgrade",
+            "terraform", "init", "-no-color", "-input=false",
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
             cwd=str(resource_dir),
             env=env
         )
         
-        stdout, stderr = await process.communicate()
-        output = stdout.decode() + stderr.decode()
+        lines = []
+        while True:
+            line = await process.stdout.readline()
+            if not line:
+                break
+            lines.append(line.decode())
         
-        if process.returncode == 0:
-            logger.info(f"Successfully force initialized terraform in {resource_dir}")
-            return {
-                "success": True,
-                "output": output,
-                "resource_id": resource_id
-            }
+        await process.wait()
+        output = "".join(lines)
+        success = process.returncode == 0
+        
+        if success:
+            logger.info(f"Successfully initialized terraform in {resource_dir}")
         else:
-            logger.error(f"Failed to force initialize terraform in {resource_dir}: {output}")
-            return {
-                "success": False,
-                "output": output,
-                "resource_id": resource_id
-            }
+            logger.error(f"Failed to initialize terraform in {resource_dir}: {output}")
+        
+        return {"success": success, "output": output, "resource_id": resource_id}
         
     except Exception as e:
         logger.error(f"Error initializing terraform for {resource_id}: {e}")

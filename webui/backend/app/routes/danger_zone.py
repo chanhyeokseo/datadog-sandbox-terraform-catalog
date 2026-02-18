@@ -134,13 +134,20 @@ async def hard_reset():
 
 
 def _resolve_key_pair_name() -> str:
-    variables = parser.parse_variables()
-    var_map = {v.name: v.value for v in variables}
-    ec2_key = (var_map.get("ec2_key_name") or "").strip()
-    if ec2_key:
-        return ec2_key
-    creator = (var_map.get("creator") or "").strip()
-    team = (var_map.get("team") or "").strip()
+    tfvars = Path(TERRAFORM_DIR) / "terraform.tfvars"
+    if not tfvars.exists():
+        return ""
+    import re
+    values = {}
+    for line in tfvars.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        m = re.match(r'^(\w+)\s*=\s*"([^"]*)"', line)
+        if m:
+            values[m.group(1)] = m.group(2)
+    creator = values.get("creator", "").strip()
+    team = values.get("team", "").strip()
     if creator and team:
         safe = lambda s: "".join(c if c.isalnum() or c in "-_" else "-" for c in s)[:64]
         return f"{safe(creator)}-{safe(team)}"
@@ -289,6 +296,9 @@ def _delete_dynamodb_table(config_manager: ConfigManager) -> dict:
     return result
 
 
+BIND_MOUNT_DIRS = {"modules", "apps"}
+
+
 def _clean_local_terraform_data() -> dict:
     result = {"success": True, "actions": []}
     try:
@@ -297,12 +307,24 @@ def _clean_local_terraform_data() -> dict:
             result["actions"].append(f"Directory not found: {td}")
             return result
 
-        shutil.rmtree(td)
-        result["actions"].append(f"Deleted terraform-data directory: {td}")
-        logger.info(f"Deleted terraform-data directory: {td}")
+        cleaned = 0
+        for entry in td.iterdir():
+            if entry.name in BIND_MOUNT_DIRS:
+                continue
+            try:
+                if entry.is_dir():
+                    shutil.rmtree(entry)
+                else:
+                    entry.unlink()
+                cleaned += 1
+            except Exception as e:
+                logger.warning(f"Failed to remove {entry}: {e}")
+
+        result["actions"].append(f"Removed {cleaned} item(s) from {td} (kept bind mounts: {', '.join(BIND_MOUNT_DIRS)})")
+        logger.info(f"Cleaned {cleaned} items from {td}")
     except Exception as e:
         result["success"] = False
         result["error"] = str(e)
-        result["actions"].append(f"Failed to delete terraform-data: {e}")
-        logger.error(f"Error deleting terraform-data: {e}")
+        result["actions"].append(f"Failed to clean terraform-data: {e}")
+        logger.error(f"Error cleaning terraform-data: {e}")
     return result

@@ -82,27 +82,63 @@ class TerraformRunner:
             process = await asyncio.create_subprocess_exec(
                 "terraform", "init", "-no-color", "-input=false",
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
                 cwd=str(resource_dir),
                 env=env
             )
-            
-            stdout, stderr = await process.communicate()
-            output = stdout.decode() + stderr.decode()
-            
+
+            lines = []
+            while True:
+                line = await process.stdout.readline()
+                if not line:
+                    break
+                lines.append(line.decode())
+
+            await process.wait()
+            output = "".join(lines)
+
             if process.returncode == 0:
                 logger.info(f"Successfully initialized terraform in {resource_dir}")
                 return True, output
             else:
                 logger.error(f"Failed to initialize terraform in {resource_dir}: {output}")
                 return False, output
-                
+
         except Exception as e:
             logger.error(f"Error running terraform init: {e}")
             return False, str(e)
+
+    async def stream_init(self, resource_dir: Path, env_extra: Optional[Dict[str, str]] = None) -> AsyncIterator[str]:
+        tf_dir = resource_dir / ".terraform"
+        if tf_dir.exists():
+            yield "Already initialized\n"
+            return
+
+        env = self._build_env(env_extra)
+        try:
+            process = await asyncio.create_subprocess_exec(
+                "terraform", "init", "-no-color", "-input=false",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                cwd=str(resource_dir),
+                env=env
+            )
+
+            while True:
+                line = await process.stdout.readline()
+                if not line:
+                    break
+                yield line.decode()
+
+            code = (await process.wait()) or 0
+            if code != 0:
+                yield f"{EXIT_SENTINEL_PREFIX}1\n"
+        except Exception as e:
+            logger.error(f"Error streaming terraform init: {e}")
+            yield f"Error: {str(e)}\n"
+            yield f"{EXIT_SENTINEL_PREFIX}1\n"
     
     async def stream_apply(self, resource_id: str, auto_approve: bool = False, var_files: Optional[List[str]] = None, env_extra: Optional[Dict[str, str]] = None) -> AsyncIterator[str]:
-        """Stream terraform apply for a specific resource directory"""
         resource_dir = self.get_resource_directory(resource_id)
         
         if not resource_dir:
@@ -115,15 +151,13 @@ class TerraformRunner:
             yield f"{EXIT_SENTINEL_PREFIX}1\n"
             return
 
-        yield f"Checking terraform initialization in: {resource_dir}\n"
-        init_success, init_output = await self.ensure_terraform_init(resource_dir, env_extra=env_extra)
-
-        if not init_success:
-            yield f"Error: Failed to initialize terraform\n{init_output}\n"
-            yield f"{EXIT_SENTINEL_PREFIX}1\n"
+        init_failed = False
+        async for line in self.stream_init(resource_dir, env_extra=env_extra):
+            if line.startswith(EXIT_SENTINEL_PREFIX):
+                init_failed = True
+            yield line
+        if init_failed:
             return
-
-        yield f"Initialized terraform\n"
 
         cmd = ["terraform", "apply", "-no-color", "-input=false"]
 
@@ -158,7 +192,6 @@ class TerraformRunner:
             yield f"{EXIT_SENTINEL_PREFIX}1\n"
     
     async def stream_destroy(self, resource_id: str, auto_approve: bool = False, var_files: Optional[List[str]] = None, env_extra: Optional[Dict[str, str]] = None) -> AsyncIterator[str]:
-        """Stream terraform destroy for a specific resource directory"""
         resource_dir = self.get_resource_directory(resource_id)
         
         if not resource_dir:
@@ -171,15 +204,13 @@ class TerraformRunner:
             yield f"{EXIT_SENTINEL_PREFIX}1\n"
             return
 
-        yield f"Checking terraform initialization in: {resource_dir}\n"
-        init_success, init_output = await self.ensure_terraform_init(resource_dir, env_extra=env_extra)
-
-        if not init_success:
-            yield f"Error: Failed to initialize terraform\n{init_output}\n"
-            yield f"{EXIT_SENTINEL_PREFIX}1\n"
+        init_failed = False
+        async for line in self.stream_init(resource_dir, env_extra=env_extra):
+            if line.startswith(EXIT_SENTINEL_PREFIX):
+                init_failed = True
+            yield line
+        if init_failed:
             return
-
-        yield f"Initialized terraform\n"
 
         cmd = ["terraform", "destroy", "-no-color", "-input=false"]
 
@@ -227,7 +258,6 @@ class TerraformRunner:
         )
 
     async def stream_plan(self, resource_id: str, var_files: Optional[List[str]] = None, env_extra: Optional[Dict[str, str]] = None) -> AsyncIterator[str]:
-        """Stream terraform plan for a specific resource directory"""
         resource_dir = self.get_resource_directory(resource_id)
 
         if not resource_dir:
@@ -240,15 +270,13 @@ class TerraformRunner:
             yield f"{EXIT_SENTINEL_PREFIX}1\n"
             return
 
-        yield f"Checking terraform initialization in: {resource_dir}\n"
-        init_success, init_output = await self.ensure_terraform_init(resource_dir, env_extra=env_extra)
-
-        if not init_success:
-            yield f"Error: Failed to initialize terraform\n{init_output}\n"
-            yield f"{EXIT_SENTINEL_PREFIX}1\n"
+        init_failed = False
+        async for line in self.stream_init(resource_dir, env_extra=env_extra):
+            if line.startswith(EXIT_SENTINEL_PREFIX):
+                init_failed = True
+            yield line
+        if init_failed:
             return
-
-        yield f"Initialized terraform\n"
 
         cmd = ["terraform", "plan", "-no-color", "-input=false", "-lock=false", "-compact-warnings"]
 

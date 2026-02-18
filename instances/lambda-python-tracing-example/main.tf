@@ -19,7 +19,7 @@ locals {
 }
 
 module "lambda_python_tracing_example" {
-  source = "git::https://github.com/chanhyeokseo/datadog-sandbox-terraform-catalog.git//modules/lambda-datadog-extension?ref=webui-dev"
+  source = "../../modules/lambda-datadog-extension"
 
   function_name = "${local.name_prefix}-python-tracing-example-app"
   source_dir    = "${path.module}/../../apps/lambda/python/tracing-example-app"

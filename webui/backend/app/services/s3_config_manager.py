@@ -58,6 +58,9 @@ class S3ConfigManager:
                 )
             logger.info(f"✓ Uploaded {local_path.name} to s3://{self.bucket_name}/{s3_key}")
             return True
+        except self.s3_client.exceptions.NoSuchBucket:
+            logger.debug(f"S3 bucket does not exist yet: {self.bucket_name}")
+            return False
         except Exception as e:
             logger.error(f"Failed to upload {local_path} to S3: {e}")
             return False
@@ -122,6 +125,9 @@ class S3ConfigManager:
                 return []
 
             return [obj['Key'] for obj in response['Contents']]
+        except self.s3_client.exceptions.NoSuchBucket:
+            logger.debug(f"S3 bucket does not exist yet: {self.bucket_name}")
+            return []
         except Exception as e:
             logger.error(f"Failed to list S3 objects with prefix {prefix}: {e}")
             return []

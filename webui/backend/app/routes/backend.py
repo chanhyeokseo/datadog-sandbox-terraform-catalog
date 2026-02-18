@@ -84,10 +84,10 @@ async def setup_backend(request: BackendSetupRequest):
             )
             result["backend_files_generated"] = generated
 
-        # Upload terraform.tfvars files to S3
         try:
             from app.services.terraform_parser import TerraformParser
             parser = TerraformParser(TERRAFORM_DIR)
+            parser.mark_s3_available()
 
             copied = parser.copy_root_tfvars_to_instances()
 
