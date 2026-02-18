@@ -9,6 +9,35 @@ import OnboardingModal from './components/OnboardingModal';
 import DangerZoneModal from './components/DangerZoneModal';
 import { TerraformResource, ResourceType } from './types';
 import { terraformApi as api, OnboardingStatus } from './services/api';
+
+const ProviderLoadingScreen = ({ progress, message }: { progress: number; message: string }) => (
+  <div className="app-loading-screen">
+    <div className="app-loading-content">
+      <img src="/logo.png" alt="DogSTAC" className="app-logo" />
+      <h1 className="app-loading-title">DogSTAC</h1>
+      <div style={{ width: '280px', margin: '24px auto 16px' }}>
+        <div style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px',
+        }}>
+          <span style={{ fontSize: '0.9em', fontWeight: 600 }}>Downloading AWS Provider</span>
+          <span style={{ fontSize: '0.85em', opacity: 0.7 }}>{progress}%</span>
+        </div>
+        <div style={{
+          height: '8px', background: 'rgba(255,255,255,0.1)', borderRadius: '4px', overflow: 'hidden',
+        }}>
+          <div style={{
+            height: '100%', width: `${progress}%`,
+            background: 'linear-gradient(90deg, #4a9eff, #6c5ce7)',
+            borderRadius: '4px', transition: 'width 0.6s ease',
+          }} />
+        </div>
+      </div>
+      <p className="app-loading-text" style={{ opacity: 0.6, fontSize: '0.8em' }}>
+        {message || 'Preparing provider plugins...'}
+      </p>
+    </div>
+  </div>
+);
 import './styles/App.css';
 import './styles/Unified.css';
 import './styles/DangerZone.css';
@@ -38,6 +67,8 @@ function App() {
   type LoadPhase = 'config_check' | 'loading' | 'ready';
   const [initialLoadPhase, setInitialLoadPhase] = useState<LoadPhase>('config_check');
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [providerReady, setProviderReady] = useState<boolean | null>(null);
+  const [providerProgress, setProviderProgress] = useState({ progress: 0, message: '' });
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme');
@@ -100,6 +131,38 @@ function App() {
       cancelled = true;
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let pollId: ReturnType<typeof setInterval> | null = null;
+    const check = async () => {
+      try {
+        const s = await api.getProviderCacheStatus();
+        if (cancelled) return;
+        setProviderProgress({ progress: s.progress, message: s.message });
+        if (s.ready) {
+          setProviderReady(true);
+          return;
+        }
+        setProviderReady(false);
+        pollId = setInterval(async () => {
+          try {
+            const s = await api.getProviderCacheStatus();
+            if (cancelled) return;
+            setProviderProgress({ progress: s.progress, message: s.message });
+            if (s.ready) {
+              setProviderReady(true);
+              if (pollId) clearInterval(pollId);
+            }
+          } catch {}
+        }, 2000);
+      } catch {
+        if (!cancelled) setProviderReady(true);
+      }
+    };
+    check();
+    return () => { cancelled = true; if (pollId) clearInterval(pollId); };
   }, []);
 
   const finishLoadingAndRefresh = async () => {
@@ -265,16 +328,22 @@ function App() {
   }
 
   if (initialLoadPhase === 'loading') {
-    return (
-      <div className="app-loading-screen">
-        <div className="app-loading-content">
-          <img src="/logo.png" alt="DogSTAC" className="app-logo" />
-          <h1 className="app-loading-title">DogSTAC</h1>
-          <div className="app-loading-spinner" />
-          <p className="app-loading-text">Loading...</p>
+    return providerReady === false
+      ? <ProviderLoadingScreen progress={providerProgress.progress} message={providerProgress.message} />
+      : (
+        <div className="app-loading-screen">
+          <div className="app-loading-content">
+            <img src="/logo.png" alt="DogSTAC" className="app-logo" />
+            <h1 className="app-loading-title">DogSTAC</h1>
+            <div className="app-loading-spinner" />
+            <p className="app-loading-text">Loading...</p>
+          </div>
         </div>
-      </div>
-    );
+      );
+  }
+
+  if (initialLoadPhase === 'ready' && providerReady === false) {
+    return <ProviderLoadingScreen progress={providerProgress.progress} message={providerProgress.message} />;
   }
 
   return (

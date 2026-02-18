@@ -3,8 +3,7 @@ set -e
 
 echo "Starting Terraform Web UI Backend..."
 
-# Create terraform working directory if not exists
-mkdir -p /app/terraform
+mkdir -p /app/terraform /app/terraform/.plugin-cache
 
 
 # Check if instances data already exists

@@ -23,6 +23,12 @@ runner = TerraformRunner(TERRAFORM_DIR)
 
 resource_locks: Dict[str, asyncio.Lock] = {}
 
+
+@router.get("/provider-cache/status")
+async def provider_cache_status():
+    return runner.get_cache_status()
+
+
 def get_resource_lock(resource_id: str) -> asyncio.Lock:
     if resource_id not in resource_locks:
         resource_locks[resource_id] = asyncio.Lock()

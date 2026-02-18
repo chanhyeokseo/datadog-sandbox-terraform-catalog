@@ -1,3 +1,6 @@
+import asyncio
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import logging
@@ -9,10 +12,18 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    asyncio.create_task(terraform.runner.warmup_provider_cache())
+    yield
+
+
 app = FastAPI(
     title="Terraform Web UI",
     description="Web UI for managing Terraform infrastructure",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(

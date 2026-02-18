@@ -129,6 +129,11 @@ export const terraformApi = {
     return response.data;
   },
 
+  getProviderCacheStatus: async (): Promise<{ ready: boolean; progress: number; message: string }> => {
+    const response = await api.get<{ ready: boolean; progress: number; message: string }>('/provider-cache/status');
+    return response.data;
+  },
+
   getInitStatus: async (resourceId: string): Promise<{ initialized: boolean; resource_id: string }> => {
     const response = await api.get<{ initialized: boolean; resource_id: string }>(`/init/${resourceId}/status`);
     return response.data;
