@@ -161,16 +161,9 @@ class TerraformParser:
             logger.debug("Cannot determine S3 bucket name, skipping S3 status fetch")
             return statuses
 
-        aws_env = self.get_aws_env()
-        region = (aws_env.get("AWS_REGION") or os.environ.get("AWS_REGION") or "ap-northeast-2")
-        client_kwargs: Dict[str, str] = {"region_name": region}
-        if aws_env.get("AWS_ACCESS_KEY_ID"):
-            client_kwargs["aws_access_key_id"] = aws_env["AWS_ACCESS_KEY_ID"]
-            client_kwargs["aws_secret_access_key"] = aws_env.get("AWS_SECRET_ACCESS_KEY", "")
-            if aws_env.get("AWS_SESSION_TOKEN"):
-                client_kwargs["aws_session_token"] = aws_env["AWS_SESSION_TOKEN"]
+        region = (os.environ.get("AWS_REGION") or "ap-northeast-2")
         try:
-            s3_client = boto3.client("s3", **client_kwargs)
+            s3_client = boto3.client("s3", region_name=region)
         except Exception as e:
             logger.warning("Failed to create S3 client for status check: %s", e)
             return statuses
@@ -265,7 +258,6 @@ class TerraformParser:
     def get_aws_env(self) -> dict:
         result = {}
 
-        # First, read from terraform.tfvars (legacy support)
         tfvars_path = self._root_tfvars_path()
         if tfvars_path.exists():
             with open(tfvars_path, 'r', encoding='utf-8') as f:
@@ -285,17 +277,13 @@ class TerraformParser:
                             elif key == "region" and value:
                                 result["AWS_REGION"] = value
 
-        # Override with environment variables (preferred method)
-        if os.environ.get("AWS_ACCESS_KEY_ID"):
-            result["AWS_ACCESS_KEY_ID"] = os.environ.get("AWS_ACCESS_KEY_ID")
-        if os.environ.get("AWS_SECRET_ACCESS_KEY"):
-            result["AWS_SECRET_ACCESS_KEY"] = os.environ.get("AWS_SECRET_ACCESS_KEY")
-        if os.environ.get("AWS_SESSION_TOKEN"):
-            result["AWS_SESSION_TOKEN"] = os.environ.get("AWS_SESSION_TOKEN")
-        if os.environ.get("AWS_REGION"):
-            result["AWS_REGION"] = os.environ.get("AWS_REGION")
+        for env_key in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY",
+                        "AWS_SESSION_TOKEN", "AWS_REGION", "AWS_PROFILE",
+                        "AWS_SHARED_CREDENTIALS_FILE", "AWS_CONFIG_FILE"):
+            val = os.environ.get(env_key)
+            if val:
+                result[env_key] = val
 
-        # Fallback: read region from tfvars if not in env
         if "AWS_REGION" not in result and tfvars_path.exists():
             with open(tfvars_path, 'r', encoding='utf-8') as f:
                 for line in f:

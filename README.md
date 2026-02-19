@@ -18,10 +18,12 @@ Terraform infrastructure management through a visual web interface.
 |:-----------:|-------------|
 | **Docker** | Container runtime & Docker Compose |
 | **Git** | Used internally to clone instance templates |
-| **AWS Credentials** | `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` |
+| **AWS CLI** | Configured with credentials (`~/.aws`) |
 
 > [!NOTE]
 > Terraform is pre-installed inside the backend container — no local installation needed.
+>
+> The container mounts `~/.aws` from your host (read-only), so any credentials configured via AWS CLI — including SSO, profiles, and temporary credentials — work automatically.
 
 ## Quick Start
 
@@ -38,15 +40,27 @@ Download these two files into the same directory:
 cp .env.example .env
 ```
 
-Edit `.env` and fill in the required values:
+Edit `.env` and set your region:
+
+```env
+AWS_REGION=ap-northeast-2
+```
+
+To use a specific AWS profile:
+
+```env
+AWS_PROFILE=my-profile
+```
+
+<details>
+<summary>Alternative: explicit credentials (not recommended)</summary>
 
 ```env
 AWS_ACCESS_KEY_ID=your-access-key-id
 AWS_SECRET_ACCESS_KEY=your-secret-access-key
-AWS_REGION=ap-northeast-2
-
-INSTANCES_REPO_URL=https://github.com/your-org/your-repo.git
 ```
+
+</details>
 
 ### 3. Start services
 

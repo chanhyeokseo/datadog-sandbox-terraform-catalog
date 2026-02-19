@@ -1,10 +1,12 @@
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Query, Body
+from fastapi import APIRouter, HTTPException, Query, Body
 from fastapi.responses import StreamingResponse
 from typing import List, Dict, Optional
 from pathlib import Path
 import logging
 import asyncio
 import os
+import boto3
+from botocore.exceptions import ClientError
 
 from app.models.schemas import (
     TerraformResource,
@@ -193,93 +195,33 @@ async def get_config_onboarding_status():
         return {"config_onboarding_required": True, "phases": [], "steps": []}
 
 
-EC2_NS = "http://ec2.amazonaws.com/doc/2016-11-15/"
+def _get_ec2_client(region: str):
+    return boto3.client("ec2", region_name=region)
 
 
-def _ec2_request(region: str, env: dict, action: str, extra_params: Optional[Dict[str, str]] = None) -> str:
-    import requests
-    from requests_aws4auth import AWS4Auth
-    params = {"Action": action, "Version": "2016-11-15"}
-    if extra_params:
-        params.update(extra_params)
-    auth = AWS4Auth(
-        env.get("AWS_ACCESS_KEY_ID", ""),
-        env.get("AWS_SECRET_ACCESS_KEY", ""),
-        region,
-        "ec2",
-        session_token=env.get("AWS_SESSION_TOKEN") or None,
-    )
-    url = f"https://ec2.{region}.amazonaws.com/"
-    resp = requests.get(url, params=params, auth=auth, timeout=30)
-    resp.raise_for_status()
-    return resp.text
-
-
-def _parse_describe_vpcs(xml_text: str) -> list:
-    import xml.etree.ElementTree as ET
-    root = ET.fromstring(xml_text)
-    vpcs = []
-    vpc_set = root.find(f".//{{{EC2_NS}}}vpcSet")
-    if vpc_set is None:
-        return vpcs
-    for item in vpc_set.findall(f"{{{EC2_NS}}}item"):
-        vpc_id_el = item.find(f"{{{EC2_NS}}}vpcId")
-        cidr_el = item.find(f"{{{EC2_NS}}}cidrBlock")
-        vpc_id = (vpc_id_el.text or "").strip() if vpc_id_el is not None else ""
-        if not vpc_id:
-            continue
-        cidr = (cidr_el.text or "").strip() if cidr_el is not None else ""
-        name = vpc_id
-        tag_set = item.find(f"{{{EC2_NS}}}tagSet")
-        if tag_set is not None:
-            for tag in tag_set.findall(f"{{{EC2_NS}}}item"):
-                key_el = tag.find(f"{{{EC2_NS}}}key")
-                val_el = tag.find(f"{{{EC2_NS}}}value")
-                if key_el is not None and key_el.text == "Name" and val_el is not None and val_el.text:
-                    name = val_el.text.strip()
-                    break
-        vpcs.append({"id": vpc_id, "cidr": cidr, "name": name})
-    return vpcs
-
-
-def _parse_describe_subnets(xml_text: str) -> list:
-    import xml.etree.ElementTree as ET
-    root = ET.fromstring(xml_text)
-    subnets = []
-    subnet_set = root.find(f".//{{{EC2_NS}}}subnetSet")
-    if subnet_set is None:
-        return subnets
-    for item in subnet_set.findall(f"{{{EC2_NS}}}item"):
-        sid_el = item.find(f"{{{EC2_NS}}}subnetId")
-        cidr_el = item.find(f"{{{EC2_NS}}}cidrBlock")
-        az_el = item.find(f"{{{EC2_NS}}}availabilityZone")
-        sid = (sid_el.text or "").strip() if sid_el is not None else ""
-        if not sid:
-            continue
-        cidr = (cidr_el.text or "").strip() if cidr_el is not None else ""
-        az = (az_el.text or "").strip() if az_el is not None else ""
-        name = sid
-        tag_set = item.find(f"{{{EC2_NS}}}tagSet")
-        if tag_set is not None:
-            for tag in tag_set.findall(f"{{{EC2_NS}}}item"):
-                key_el = tag.find(f"{{{EC2_NS}}}key")
-                val_el = tag.find(f"{{{EC2_NS}}}value")
-                if key_el is not None and key_el.text == "Name" and val_el is not None and val_el.text:
-                    name = val_el.text.strip()
-                    break
-        subnets.append({"id": sid, "cidr": cidr, "az": az, "name": name})
-    return subnets
+def _get_tag_name(tags: list) -> Optional[str]:
+    for tag in (tags or []):
+        if tag.get("Key") == "Name" and tag.get("Value"):
+            return tag["Value"]
+    return None
 
 
 @router.get("/aws/vpcs")
 async def get_aws_vpcs(region: str = Query(..., description="AWS region")):
     try:
-        env = parser.get_aws_env()
-        if not env:
-            raise HTTPException(status_code=400, detail="AWS credentials not configured")
-        params = {"Filter.1.Name": "state", "Filter.1.Value.1": "available"}
-        xml_text = await asyncio.to_thread(_ec2_request, region, env, "DescribeVpcs", params)
-        vpcs = _parse_describe_vpcs(xml_text)
+        ec2 = _get_ec2_client(region)
+        response = await asyncio.to_thread(
+            ec2.describe_vpcs,
+            Filters=[{"Name": "state", "Values": ["available"]}],
+        )
+        vpcs = []
+        for vpc in response.get("Vpcs", []):
+            vpc_id = vpc["VpcId"]
+            vpcs.append({
+                "id": vpc_id,
+                "cidr": vpc.get("CidrBlock", ""),
+                "name": _get_tag_name(vpc.get("Tags")) or vpc_id,
+            })
         return {"vpcs": vpcs}
     except Exception as e:
         logger.debug(f"get_aws_vpcs error: {e}")
@@ -289,17 +231,23 @@ async def get_aws_vpcs(region: str = Query(..., description="AWS region")):
 @router.get("/aws/subnets")
 async def get_aws_subnets(region: str = Query(...), vpc_id: str = Query(...)):
     try:
-        env = parser.get_aws_env()
-        if not env:
-            raise HTTPException(status_code=400, detail="AWS credentials not configured")
-        params = {
-            "Filter.1.Name": "vpc-id",
-            "Filter.1.Value.1": vpc_id,
-            "Filter.2.Name": "state",
-            "Filter.2.Value.1": "available",
-        }
-        xml_text = await asyncio.to_thread(_ec2_request, region, env, "DescribeSubnets", params)
-        subnets = _parse_describe_subnets(xml_text)
+        ec2 = _get_ec2_client(region)
+        response = await asyncio.to_thread(
+            ec2.describe_subnets,
+            Filters=[
+                {"Name": "vpc-id", "Values": [vpc_id]},
+                {"Name": "state", "Values": ["available"]},
+            ],
+        )
+        subnets = []
+        for subnet in response.get("Subnets", []):
+            sid = subnet["SubnetId"]
+            subnets.append({
+                "id": sid,
+                "cidr": subnet.get("CidrBlock", ""),
+                "az": subnet.get("AvailabilityZone", ""),
+                "name": _get_tag_name(subnet.get("Tags")) or sid,
+            })
         return {"subnets": subnets}
     except Exception as e:
         logger.debug(f"get_aws_subnets error: {e}")
@@ -320,47 +268,11 @@ def _convert_rsa_pem_to_openssh(pem_content: str) -> str:
     return openssh_bytes.decode("utf-8")
 
 
-def _parse_ec2_error(xml_text: str) -> str:
-    import xml.etree.ElementTree as ET
-    try:
-        root = ET.fromstring(xml_text)
-        err = root.find(f".//{{{EC2_NS}}}Error") or root.find(".//Error")
-        if err is not None:
-            code_el = err.find(f"{{{EC2_NS}}}Code") or err.find("Code")
-            msg_el = err.find(f"{{{EC2_NS}}}Message") or err.find("Message")
-            code = (code_el.text or "").strip() if code_el is not None else ""
-            msg = (msg_el.text or "").strip() if msg_el is not None else ""
-            out = f"{code}: {msg}" if code or msg else xml_text[:500]
-            if code == "RequestExpired":
-                out += " Check that your system clock is correct (and that the server running the app is in sync), then try again."
-            return out
-    except Exception:
-        pass
-    return xml_text[:500] if xml_text else "Unknown error"
-
-
-def _parse_create_key_pair(xml_text: str) -> tuple:
-    import xml.etree.ElementTree as ET
-    root = ET.fromstring(xml_text)
-    err = root.find(f".//{{{EC2_NS}}}Errors")
-    if err is not None:
-        raise RuntimeError(_parse_ec2_error(xml_text))
-    key_name_el = root.find(f".//{{{EC2_NS}}}keyName")
-    key_material_el = root.find(f".//{{{EC2_NS}}}keyMaterial")
-    key_name = (key_name_el.text or "").strip() if key_name_el is not None else ""
-    key_material = (key_material_el.text or "").strip() if key_material_el is not None else ""
-    if not key_material and key_material_el is not None and len(key_material_el) > 0:
-        key_material = "".join(key_material_el.itertext()).strip()
-    return key_name, key_material
-
-
 @router.post("/aws/key-pair")
 async def create_aws_key_pair():
     try:
-        env = parser.get_aws_env()
-        if not env:
-            raise HTTPException(status_code=400, detail="AWS credentials not configured")
-        region = (env.get("AWS_REGION") or "").strip() or "ap-northeast-2"
+        aws_env = parser.get_aws_env()
+        region = (aws_env.get("AWS_REGION") or "").strip() or "ap-northeast-2"
         try:
             variables = parser.parse_variables()
         except Exception as parse_err:
@@ -371,20 +283,15 @@ async def create_aws_key_pair():
         team = (var_map.get("team") or "").strip() or "team"
         safe = lambda s: "".join(c if c.isalnum() or c in "-_" else "-" for c in s)[:64]
         key_name = f"{safe(creator)}-{safe(team)}"
-        params = {"KeyName": key_name}
         try:
-            xml_text = await asyncio.to_thread(_ec2_request, region, env, "CreateKeyPair", params)
-        except Exception as req_err:
-            resp = getattr(req_err, "response", None)
-            if resp is not None and getattr(resp, "text", None):
-                try:
-                    msg = _parse_ec2_error(resp.text)
-                except Exception:
-                    msg = (resp.text or str(req_err))[:500]
-                logger.debug(f"CreateKeyPair API error: {msg}")
-                raise HTTPException(status_code=500, detail=msg)
-            raise HTTPException(status_code=500, detail=str(req_err))
-        kname, private_key = _parse_create_key_pair(xml_text)
+            ec2 = _get_ec2_client(region)
+            response = await asyncio.to_thread(ec2.create_key_pair, KeyName=key_name)
+        except ClientError as ce:
+            msg = ce.response.get("Error", {}).get("Message", str(ce))
+            logger.debug(f"CreateKeyPair API error: {msg}")
+            raise HTTPException(status_code=500, detail=msg)
+        kname = response.get("KeyName", "")
+        private_key = response.get("KeyMaterial", "")
         if not kname or not private_key:
             logger.debug(f"CreateKeyPair response missing key name or material: kname={bool(kname)}")
             raise HTTPException(status_code=500, detail="CreateKeyPair did not return key name or material")

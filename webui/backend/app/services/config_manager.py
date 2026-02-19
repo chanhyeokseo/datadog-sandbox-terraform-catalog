@@ -11,6 +11,8 @@ logger = logging.getLogger(__name__)
 
 class ConfigManager:
 
+    _identity_hash_cache: Optional[str] = None
+
     def __init__(self, terraform_dir: str = None):
         self.terraform_dir = Path(terraform_dir) if terraform_dir else Path(os.environ.get('TERRAFORM_DIR', '/app/terraform'))
         self._boto3_client = None
@@ -39,13 +41,25 @@ class ConfigManager:
         return self._read_tfvar('creator'), self._read_tfvar('team')
 
     def _get_credentials_hash(self) -> str:
-        access_key = os.environ.get('AWS_ACCESS_KEY_ID', '')
-        if not access_key:
-            logger.debug("No AWS_ACCESS_KEY_ID found, using 'default' hash")
+        if ConfigManager._identity_hash_cache is not None:
+            return ConfigManager._identity_hash_cache
+        try:
+            import boto3
+            sts = boto3.client(
+                'sts',
+                region_name=os.environ.get('AWS_REGION') or 'ap-northeast-2',
+            )
+            identity = sts.get_caller_identity()
+            account = identity.get('Account', '')
+            user_id = identity.get('UserId', '')
+            stable_id = f"{account}:{user_id}"
+            hash_value = hashlib.sha256(stable_id.encode('utf-8')).hexdigest()[:12]
+            logger.debug(f"Generated identity hash from STS (Account={account}, UserId={user_id}): {hash_value}")
+            ConfigManager._identity_hash_cache = hash_value
+            return hash_value
+        except Exception as e:
+            logger.warning(f"STS get-caller-identity failed, using 'default' hash: {e}")
             return 'default'
-        hash_value = hashlib.sha256(access_key.encode('utf-8')).hexdigest()[:12]
-        logger.debug(f"Generated credentials hash: {hash_value}")
-        return hash_value
 
     @property
     def _namespace_prefix(self) -> str:

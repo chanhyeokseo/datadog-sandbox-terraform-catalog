@@ -7,13 +7,15 @@ services:
     environment:
       - TERRAFORM_DIR=/app/terraform
       - USE_PARAMETER_STORE=true
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
       - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
       - AWS_REGION=${AWS_REGION:-ap-northeast-2}
+      - AWS_PROFILE=${AWS_PROFILE:-}
       - FORCE_REINIT=${FORCE_REINIT:-false}
     volumes:
       - ${TERRAFORM_DATA_PATH:-./terraform-data}:/app/terraform
+      - ~/.aws:/root/.aws:ro
     restart: unless-stopped
     networks:
       - dogstac-network
