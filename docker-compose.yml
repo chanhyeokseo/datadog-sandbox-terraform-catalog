@@ -1,6 +1,6 @@
 services:
   backend:
-    image: dogstac/tfrunner:latest
+    image: dogstac/tfrunner:1.0.0
     container_name: dogstac-backend
     ports:
       - "8000:8000"
@@ -21,7 +21,7 @@ services:
       - dogstac-network
 
   frontend:
-    image: dogstac/webui:latest
+    image: dogstac/webui:1.0.0
     container_name: dogstac-frontend
     ports:
       - "3000:3000"

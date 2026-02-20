@@ -94,6 +94,11 @@ export interface AwsSubnet {
 }
 
 export const terraformApi = {
+  checkCredentials: async (): Promise<{ valid: boolean; account: string; arn: string }> => {
+    const response = await api.get<{ valid: boolean; account: string; arn: string }>('/credentials/check');
+    return response.data;
+  },
+
   getOnboardingStatus: async (): Promise<OnboardingStatus> => {
     const response = await api.get<OnboardingStatus>('/onboarding/status');
     return response.data;

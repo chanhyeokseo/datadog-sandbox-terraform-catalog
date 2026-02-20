@@ -10,6 +10,26 @@ import DangerZoneModal from './components/DangerZoneModal';
 import { TerraformResource, ResourceType } from './types';
 import { terraformApi as api, OnboardingStatus } from './services/api';
 
+const CredentialErrorScreen = ({ onRetry }: { onRetry: () => void }) => (
+  <div className="app-loading-screen">
+    <div className="app-loading-content">
+      <img src="/logo.png" alt="DogSTAC" className="app-logo" />
+      <h1 className="app-loading-title">DogSTAC</h1>
+      <div className="credential-error-card">
+        <p className="credential-error-title">AWS Credentials Expired</p>
+        <p className="credential-error-desc">
+          Your AWS SSO session has expired or credentials are not configured.
+          Run the following command on your host machine, then click Retry.
+        </p>
+        <code className="credential-error-code">aws sso login</code>
+        <button onClick={onRetry} className="credential-error-btn">
+          Retry
+        </button>
+      </div>
+    </div>
+  </div>
+);
+
 const ProviderLoadingScreen = ({ progress, message }: { progress: number; message: string }) => (
   <div className="app-loading-screen">
     <div className="app-loading-content">
@@ -66,6 +86,7 @@ function App() {
   const [runningResources, setRunningResources] = useState<Map<string, string>>(new Map());
   type LoadPhase = 'config_check' | 'loading' | 'ready';
   const [initialLoadPhase, setInitialLoadPhase] = useState<LoadPhase>('config_check');
+  const [credentialError, setCredentialError] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [providerReady, setProviderReady] = useState<boolean | null>(null);
   const [providerProgress, setProviderProgress] = useState({ progress: 0, message: '' });
@@ -78,6 +99,16 @@ function App() {
     }
     let cancelled = false;
     const run = async () => {
+      try {
+        await api.checkCredentials();
+      } catch (err: any) {
+        if (cancelled) return;
+        if (err?.response?.status === 401) {
+          setCredentialError(true);
+          return;
+        }
+      }
+      if (cancelled) return;
       try {
         const configStatus = await api.getConfigOnboardingStatus();
         if (cancelled) return;
@@ -96,11 +127,24 @@ function App() {
           setShowOnboardingModal(true);
         }
         setInitialLoadPhase('ready');
-      } catch (_) {
+      } catch (err: any) {
         if (cancelled) return;
+        if (err?.response?.status === 401) {
+          setCredentialError(true);
+          return;
+        }
         setInitialLoadPhase('loading');
         const id = setInterval(async () => {
           if (cancelled) return;
+          try {
+            await api.checkCredentials();
+          } catch (credErr: any) {
+            if (credErr?.response?.status === 401) {
+              clearInterval(id);
+              setCredentialError(true);
+            }
+            return;
+          }
           try {
             const configStatus = await api.getConfigOnboardingStatus();
             if (cancelled) return;
@@ -318,6 +362,16 @@ function App() {
       alert('❌ Security Group resource not found');
     }
   };
+
+  if (credentialError) {
+    return (
+      <CredentialErrorScreen onRetry={() => {
+        setCredentialError(false);
+        setInitialLoadPhase('config_check');
+        window.location.reload();
+      }} />
+    );
+  }
 
   if (initialLoadPhase === 'config_check') {
     return (

@@ -18,7 +18,7 @@ Terraform infrastructure management through a visual web interface.
 |:-----------:|-------------|
 | **Docker** | Container runtime & Docker Compose |
 | **Git** | Used internally to clone instance templates |
-| **AWS CLI** | Configured with credentials (`~/.aws`) |
+| **AWS CLI** | Configured with SSO or credentials (`~/.aws`) |
 
 > [!NOTE]
 > Terraform is pre-installed inside the backend container — no local installation needed.
@@ -40,17 +40,18 @@ Download these two files into the same directory:
 cp .env.example .env
 ```
 
-Edit `.env` and set your region:
+Edit `.env` and set your AWS profile and region:
 
 ```env
+AWS_PROFILE=my-sso-profile
 AWS_REGION=ap-northeast-2
 ```
 
-To use a specific AWS profile:
-
-```env
-AWS_PROFILE=my-profile
-```
+> [!TIP]
+> If your profile uses AWS SSO, make sure to log in before starting the services:
+> ```bash
+> aws sso login --profile my-sso-profile
+> ```
 
 <details>
 <summary>Alternative: explicit credentials (not recommended)</summary>

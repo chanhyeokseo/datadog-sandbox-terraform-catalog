@@ -25,6 +25,38 @@ runner = TerraformRunner(TERRAFORM_DIR)
 
 resource_locks: Dict[str, asyncio.Lock] = {}
 
+_CREDENTIAL_ERROR_KEYWORDS = [
+    "token has expired", "token retrieval", "no credentials",
+    "credential retrieval", "invalidgrant", "expired token",
+    "unable to locate credentials",
+]
+
+
+def _is_credential_error(error: Exception) -> bool:
+    msg = str(error).lower()
+    return any(kw in msg for kw in _CREDENTIAL_ERROR_KEYWORDS)
+
+
+@router.get("/credentials/check")
+async def check_credentials():
+    try:
+        sts = boto3.client(
+            "sts",
+            region_name=os.environ.get("AWS_REGION") or "ap-northeast-2",
+        )
+        identity = await asyncio.to_thread(sts.get_caller_identity)
+        return {
+            "valid": True,
+            "account": identity.get("Account", ""),
+            "arn": identity.get("Arn", ""),
+        }
+    except Exception as e:
+        logger.warning(f"Credential check failed: {e}")
+        raise HTTPException(
+            status_code=401,
+            detail="AWS credentials expired or not configured. Run 'aws sso login' and refresh.",
+        )
+
 
 @router.get("/provider-cache/status")
 async def provider_cache_status():
@@ -382,6 +414,11 @@ async def get_resources():
         return resources
     except Exception as e:
         logger.error(f"Error getting resources: {e}")
+        if _is_credential_error(e):
+            raise HTTPException(
+                status_code=401,
+                detail="AWS credentials expired or not configured. Run 'aws sso login' and refresh.",
+            )
         raise HTTPException(status_code=500, detail=str(e))
 
 

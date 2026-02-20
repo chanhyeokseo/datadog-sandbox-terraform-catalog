@@ -184,6 +184,9 @@ class TerraformParser:
             else:
                 logger.warning("Failed to list S3 state files: %s", e)
             return statuses
+        except Exception as e:
+            logger.warning("S3 status check failed (credentials expired?): %s", e)
+            return statuses
 
         logger.debug("S3 state files found: %s", list(s3_state_keys.keys()))
 

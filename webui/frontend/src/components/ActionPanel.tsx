@@ -39,15 +39,17 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
   const [pendingConfirm, setPendingConfirm] = useState<{ type: string; onConfirm: () => void } | null>(null);
   const [rdpInfo, setRdpInfo] = useState<{ ip: string; username: string; password: string } | null>(null);
 
-  useEffect(() => {
-    const saved = localStorage.getItem('terraform_outputs');
-    if (saved) {
-      try {
-        setOutputs(JSON.parse(saved));
-      } catch (e) {
-        console.error('Failed to parse outputs:', e);
-      }
+  const getOutputsFromStorage = (): OutputData[] => {
+    try {
+      const saved = localStorage.getItem('terraform_outputs');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
     }
+  };
+
+  useEffect(() => {
+    setOutputs(getOutputsFromStorage());
   }, []);
 
   useEffect(() => {
@@ -98,14 +100,15 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
 
   const saveOutput = (resourceId: string, resourceName: string, output: string) => {
     const filteredOutput = parseResourceOutput(output);
-    
     const newOutput: OutputData = {
       resourceId,
       resourceName,
       timestamp: new Date().toISOString(),
       output: filteredOutput
     };
-    const updated = [newOutput, ...outputs.slice(0, 9)]; // Keep last 10
+    const current = getOutputsFromStorage();
+    const withoutOld = current.filter(o => o.resourceId !== resourceId);
+    const updated = [newOutput, ...withoutOld.slice(0, 9)];
     setOutputs(updated);
     localStorage.setItem('terraform_outputs', JSON.stringify(updated));
   };
@@ -123,25 +126,27 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
   const handleDeploy = async () => {
     if (!selectedResource) return;
 
-    const resultId = onActionStart('deploy', selectedResource.id);
+    const resourceId = selectedResource.id;
+    const resourceName = selectedResource.name;
+    const resultId = onActionStart('deploy', resourceId);
     const controller = new AbortController();
     abortControllerRef.current = controller;
     try {
       await terraformApi.streamApplyResource(
-        selectedResource.id,
+        resourceId,
         true,
         (chunk) => onActionUpdate(resultId, chunk),
         async (success) => {
           abortControllerRef.current = null;
-          onActionComplete(resultId, success, 'deploy', selectedResource.id);
+          onActionComplete(resultId, success, 'deploy', resourceId);
           if (onResourcesNeedRefresh) {
             setTimeout(() => onResourcesNeedRefresh!(), success ? 500 : 0);
           }
           if (success) {
             try {
-              const outputResult = await terraformApi.output(selectedResource.id);
+              const outputResult = await terraformApi.output(resourceId);
               if (outputResult.success && outputResult.output) {
-                saveOutput(selectedResource.id, selectedResource.name, outputResult.output);
+                saveOutput(resourceId, resourceName, outputResult.output);
               }
             } catch (err) {
               console.error('Failed to get outputs:', err);
@@ -153,50 +158,58 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
     } catch (err) {
       abortControllerRef.current = null;
       onActionUpdate(resultId, `\n${(err as Error).name === 'AbortError' ? 'Cancelled.' : (err as Error).message}\n`);
-      onActionComplete(resultId, false, 'deploy', selectedResource.id);
+      onActionComplete(resultId, false, 'deploy', resourceId);
     }
   };
 
   const handlePlan = async () => {
     if (!selectedResource) return;
 
-    const resultId = onActionStart('plan');
+    const resourceId = selectedResource.id;
+    const resultId = onActionStart('plan', resourceId);
     const controller = new AbortController();
     abortControllerRef.current = controller;
     try {
       await terraformApi.streamPlanResource(
-        selectedResource.id,
+        resourceId,
         (chunk) => onActionUpdate(resultId, chunk),
         (success) => {
           abortControllerRef.current = null;
-          onActionComplete(resultId, success, 'plan');
+          onActionComplete(resultId, success, 'plan', resourceId);
         },
         controller.signal
       );
     } catch (err) {
       abortControllerRef.current = null;
       onActionUpdate(resultId, `\n${(err as Error).name === 'AbortError' ? 'Cancelled.' : (err as Error).message}\n`);
-      onActionComplete(resultId, false, 'plan');
+      onActionComplete(resultId, false, 'plan', resourceId);
     }
   };
 
   const handleDestroy = async () => {
     if (!selectedResource) return;
 
+    const resourceId = selectedResource.id;
     const doDestroy = async () => {
-      const resultId = onActionStart('destroy', selectedResource.id);
+      const resultId = onActionStart('destroy', resourceId);
       const controller = new AbortController();
       abortControllerRef.current = controller;
       try {
         await terraformApi.streamDestroyResource(
-          selectedResource.id,
+          resourceId,
           true,
           (chunk) => onActionUpdate(resultId, chunk),
           (success) => {
             abortControllerRef.current = null;
-            onActionComplete(resultId, success, 'destroy', selectedResource.id);
+            onActionComplete(resultId, success, 'destroy', resourceId);
             if (onResourcesNeedRefresh) {
               setTimeout(() => onResourcesNeedRefresh!(), success ? 500 : 0);
+            }
+            if (success) {
+              const current = getOutputsFromStorage();
+              const cleaned = current.filter(o => o.resourceId !== resourceId);
+              setOutputs(cleaned);
+              localStorage.setItem('terraform_outputs', JSON.stringify(cleaned));
             }
           },
           controller.signal
@@ -204,7 +217,7 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
       } catch (err) {
         abortControllerRef.current = null;
         onActionUpdate(resultId, `\n${(err as Error).name === 'AbortError' ? 'Cancelled.' : (err as Error).message}\n`);
-        onActionComplete(resultId, false, 'destroy', selectedResource.id);
+        onActionComplete(resultId, false, 'destroy', resourceId);
       }
     };
 

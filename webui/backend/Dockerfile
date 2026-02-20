@@ -3,6 +3,7 @@ FROM python:3.11-slim
 RUN apt-get update && apt-get install -y \
     wget \
     unzip \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 ARG TERRAFORM_VERSION=1.7.0
