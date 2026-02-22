@@ -113,6 +113,10 @@ tmp/
 # Project Specific
 # ============================================
 
+# Untracked directories
+eks/
+legacy/
+
 # Terraform provider cache
 .terraform.lock.hcl
 
