@@ -10,3 +10,6 @@ output "kubeconfig_command" {
 output "windows_node_group_name" {
   value = module.eks_cluster.windows_node_group_name
 }
+output "sso_login_command" {
+  value = module.eks_cluster.sso_login_command
+}

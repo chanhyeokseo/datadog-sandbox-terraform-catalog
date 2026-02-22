@@ -10,7 +10,7 @@ import DangerZoneModal from './components/DangerZoneModal';
 import { TerraformResource, ResourceType } from './types';
 import { terraformApi as api, OnboardingStatus } from './services/api';
 
-const CredentialErrorScreen = ({ onRetry }: { onRetry: () => void }) => (
+const CredentialErrorScreen = ({ onRetry, ssoCommand }: { onRetry: () => void; ssoCommand: string }) => (
   <div className="app-loading-screen">
     <div className="app-loading-content">
       <img src="/logo.png" alt="DogSTAC" className="app-logo" />
@@ -21,7 +21,7 @@ const CredentialErrorScreen = ({ onRetry }: { onRetry: () => void }) => (
           Your AWS SSO session has expired or credentials are not configured.
           Run the following command on your host machine, then click Retry.
         </p>
-        <code className="credential-error-code">aws sso login</code>
+        <code className="credential-error-code">{ssoCommand}</code>
         <button onClick={onRetry} className="credential-error-btn">
           Retry
         </button>
@@ -86,7 +86,7 @@ function App() {
   const [runningResources, setRunningResources] = useState<Map<string, string>>(new Map());
   type LoadPhase = 'config_check' | 'loading' | 'ready';
   const [initialLoadPhase, setInitialLoadPhase] = useState<LoadPhase>('config_check');
-  const [credentialError, setCredentialError] = useState(false);
+  const [credentialError, setCredentialError] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [providerReady, setProviderReady] = useState<boolean | null>(null);
   const [providerProgress, setProviderProgress] = useState({ progress: 0, message: '' });
@@ -99,12 +99,14 @@ function App() {
     }
     let cancelled = false;
     const run = async () => {
+      const extractSsoCommand = (err: any) =>
+        err?.response?.data?.detail?.sso_command || 'aws sso login';
       try {
         await api.checkCredentials();
       } catch (err: any) {
         if (cancelled) return;
         if (err?.response?.status === 401) {
-          setCredentialError(true);
+          setCredentialError(extractSsoCommand(err));
           return;
         }
       }
@@ -130,7 +132,7 @@ function App() {
       } catch (err: any) {
         if (cancelled) return;
         if (err?.response?.status === 401) {
-          setCredentialError(true);
+          setCredentialError(extractSsoCommand(err));
           return;
         }
         setInitialLoadPhase('loading');
@@ -141,7 +143,7 @@ function App() {
           } catch (credErr: any) {
             if (credErr?.response?.status === 401) {
               clearInterval(id);
-              setCredentialError(true);
+              setCredentialError(extractSsoCommand(credErr));
             }
             return;
           }
@@ -365,11 +367,14 @@ function App() {
 
   if (credentialError) {
     return (
-      <CredentialErrorScreen onRetry={() => {
-        setCredentialError(false);
-        setInitialLoadPhase('config_check');
-        window.location.reload();
-      }} />
+      <CredentialErrorScreen
+        ssoCommand={credentialError}
+        onRetry={() => {
+          setCredentialError(null);
+          setInitialLoadPhase('config_check');
+          window.location.reload();
+        }}
+      />
     );
   }
 

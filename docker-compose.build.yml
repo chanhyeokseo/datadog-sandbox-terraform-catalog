@@ -13,13 +13,13 @@ services:
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
       - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
-      - AWS_REGION=${AWS_REGION:-ap-northeast-2}
       - AWS_PROFILE=${AWS_PROFILE:-}
+      - DOGSTAC_SALT=${DOGSTAC_SALT:-}
       - FORCE_REINIT=${FORCE_REINIT:-false}
     volumes:
       - ${TERRAFORM_DATA_PATH:-./terraform-data}:/app/terraform
-      - ./modules:/app/terraform/modules
-      - ~/.aws:/root/.aws:ro
+      - ./modules:/app/terraform-source/modules
+      - ~/.aws:/root/.aws
     restart: unless-stopped
     networks:
       - dogstac-network

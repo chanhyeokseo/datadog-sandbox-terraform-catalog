@@ -15,7 +15,7 @@ class S3ConfigManager:
 
     def __init__(self, bucket_name: str, region: str = None):
         self.bucket_name = bucket_name
-        self.region = region or os.environ.get('AWS_REGION', 'ap-northeast-2')
+        self.region = region or 'ap-northeast-2'
         self._s3_client = None
 
     @property

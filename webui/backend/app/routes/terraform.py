@@ -40,10 +40,8 @@ def _is_credential_error(error: Exception) -> bool:
 @router.get("/credentials/check")
 async def check_credentials():
     try:
-        sts = boto3.client(
-            "sts",
-            region_name=os.environ.get("AWS_REGION") or "ap-northeast-2",
-        )
+        aws_region = parser.get_aws_env().get("AWS_REGION", "ap-northeast-2")
+        sts = boto3.client("sts", region_name=aws_region)
         identity = await asyncio.to_thread(sts.get_caller_identity)
         return {
             "valid": True,
@@ -52,9 +50,15 @@ async def check_credentials():
         }
     except Exception as e:
         logger.warning(f"Credential check failed: {e}")
+        aws_profile = os.environ.get("AWS_PROFILE", "")
+        sso_command = f"aws sso login --profile={aws_profile}" if aws_profile else "aws sso login"
         raise HTTPException(
             status_code=401,
-            detail="AWS credentials expired or not configured. Run 'aws sso login' and refresh.",
+            detail={
+                "message": f"AWS credentials expired or not configured. Run '{sso_command}' and refresh.",
+                "aws_profile": aws_profile,
+                "sso_command": sso_command,
+            },
         )
 
 
@@ -311,10 +315,9 @@ async def create_aws_key_pair():
             logger.exception("parse_variables failed in create_aws_key_pair")
             raise HTTPException(status_code=500, detail=f"Failed to read config: {parse_err}")
         var_map = {v.name: v.value for v in variables}
-        creator = (var_map.get("creator") or "").strip() or "creator"
-        team = (var_map.get("team") or "").strip() or "team"
+        name_prefix = (var_map.get("name_prefix") or "").strip() or "dogstac"
         safe = lambda s: "".join(c if c.isalnum() or c in "-_" else "-" for c in s)[:64]
-        key_name = f"{safe(creator)}-{safe(team)}"
+        key_name = f"{safe(name_prefix)}-key-pair"
         try:
             ec2 = _get_ec2_client(region)
             response = await asyncio.to_thread(ec2.create_key_pair, KeyName=key_name)
@@ -415,9 +418,15 @@ async def get_resources():
     except Exception as e:
         logger.error(f"Error getting resources: {e}")
         if _is_credential_error(e):
+            aws_profile = os.environ.get("AWS_PROFILE", "")
+            sso_command = f"aws sso login --profile={aws_profile}" if aws_profile else "aws sso login"
             raise HTTPException(
                 status_code=401,
-                detail="AWS credentials expired or not configured. Run 'aws sso login' and refresh.",
+                detail={
+                    "message": f"AWS credentials expired or not configured. Run '{sso_command}' and refresh.",
+                    "aws_profile": aws_profile,
+                    "sso_command": sso_command,
+                },
             )
         raise HTTPException(status_code=500, detail=str(e))
 

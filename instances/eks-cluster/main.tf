@@ -69,4 +69,5 @@ module "eks_cluster" {
   endpoint_public_access  = var.endpoint_public_access
   endpoint_private_access = var.endpoint_private_access
   common_tags             = local.common_tags
+  aws_profile             = var.aws_profile
 }

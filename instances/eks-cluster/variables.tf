@@ -122,3 +122,8 @@ variable "endpoint_private_access" {
   type    = bool
   default = true
 }
+
+variable "aws_profile" {
+  type    = string
+  default = ""
+}

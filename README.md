@@ -23,7 +23,7 @@ Terraform infrastructure management through a visual web interface.
 > [!NOTE]
 > Terraform is pre-installed inside the backend container — no local installation needed.
 >
-> The container mounts `~/.aws` from your host (read-only), so any credentials configured via AWS CLI — including SSO, profiles, and temporary credentials — work automatically.
+> The container mounts `~/.aws` from your host, so any credentials configured via AWS CLI — including SSO, profiles, and temporary credentials — work automatically.
 
 ## Quick Start
 
@@ -40,12 +40,19 @@ Download these two files into the same directory:
 cp .env.example .env
 ```
 
-Edit `.env` and set your AWS profile and region:
+Edit `.env` and set the required values:
 
 ```env
+# AWS authentication (choose one)
 AWS_PROFILE=my-sso-profile
-AWS_REGION=ap-northeast-2
+
+# Identity salt — unique per user, used for naming AWS resources (S3, DynamoDB, Parameter Store)
+# Once set, do not change it.
+DOGSTAC_SALT=my-unique-salt
 ```
+
+> [!IMPORTANT]
+> `DOGSTAC_SALT` is **required**. It must be unique per user and remain unchanged after initial setup. Changing it will disconnect you from previously created backend resources.
 
 > [!TIP]
 > If your profile uses AWS SSO, make sure to log in before starting the services:
@@ -59,6 +66,7 @@ AWS_REGION=ap-northeast-2
 ```env
 AWS_ACCESS_KEY_ID=your-access-key-id
 AWS_SECRET_ACCESS_KEY=your-secret-access-key
+DOGSTAC_SALT=my-unique-salt
 ```
 
 </details>
@@ -74,6 +82,19 @@ docker compose up -d
 ```
 http://localhost:3000
 ```
+
+## Environment Variables
+
+| Variable | Required | Description |
+|----------|:--------:|-------------|
+| `AWS_PROFILE` | * | AWS CLI profile name (SSO or static credentials) |
+| `AWS_ACCESS_KEY_ID` | * | Explicit access key (alternative to profile) |
+| `AWS_SECRET_ACCESS_KEY` | * | Explicit secret key (alternative to profile) |
+| `AWS_SESSION_TOKEN` | | For temporary credentials |
+| `DOGSTAC_SALT` | **Yes** | Stable identifier for naming backend resources. Must be unique per user. |
+| `TERRAFORM_DATA_PATH` | | Persistent storage path (default: `./terraform-data`) |
+
+\* One of `AWS_PROFILE` or `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` is required.
 
 <div align="center">
 

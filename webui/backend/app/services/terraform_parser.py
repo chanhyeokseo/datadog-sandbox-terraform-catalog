@@ -161,7 +161,7 @@ class TerraformParser:
             logger.debug("Cannot determine S3 bucket name, skipping S3 status fetch")
             return statuses
 
-        region = (os.environ.get("AWS_REGION") or "ap-northeast-2")
+        region = self.get_aws_env().get("AWS_REGION", "ap-northeast-2")
         try:
             s3_client = boto3.client("s3", region_name=region)
         except Exception as e:

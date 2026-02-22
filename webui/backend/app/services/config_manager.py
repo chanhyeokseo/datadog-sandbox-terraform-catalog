@@ -40,26 +40,20 @@ class ConfigManager:
     def _get_creator_team_from_tfvars(self) -> tuple:
         return self._read_tfvar('creator'), self._read_tfvar('team')
 
+    def _get_region(self) -> str:
+        return self._read_tfvar('region', 'ap-northeast-2')
+
     def _get_credentials_hash(self) -> str:
         if ConfigManager._identity_hash_cache is not None:
             return ConfigManager._identity_hash_cache
-        try:
-            import boto3
-            sts = boto3.client(
-                'sts',
-                region_name=os.environ.get('AWS_REGION') or 'ap-northeast-2',
-            )
-            identity = sts.get_caller_identity()
-            account = identity.get('Account', '')
-            user_id = identity.get('UserId', '')
-            stable_id = f"{account}:{user_id}"
-            hash_value = hashlib.sha256(stable_id.encode('utf-8')).hexdigest()[:12]
-            logger.debug(f"Generated identity hash from STS (Account={account}, UserId={user_id}): {hash_value}")
-            ConfigManager._identity_hash_cache = hash_value
-            return hash_value
-        except Exception as e:
-            logger.warning(f"STS get-caller-identity failed, using 'default' hash: {e}")
+        salt = os.environ.get('DOGSTAC_SALT', '').strip()
+        if not salt:
+            logger.warning("DOGSTAC_SALT is not set, using 'default' hash")
             return 'default'
+        hash_value = hashlib.sha256(salt.encode('utf-8')).hexdigest()[:12]
+        logger.debug(f"Generated identity hash from DOGSTAC_SALT: {hash_value}")
+        ConfigManager._identity_hash_cache = hash_value
+        return hash_value
 
     @property
     def _namespace_prefix(self) -> str:
@@ -87,7 +81,7 @@ class ConfigManager:
         if self._boto3_client is None:
             try:
                 import boto3
-                region = os.environ.get('AWS_REGION') or os.environ.get('AWS_DEFAULT_REGION') or 'ap-northeast-2'
+                region = self._get_region()
                 self._boto3_client = boto3.client('ssm', region_name=region)
             except Exception as e:
                 logger.warning(f"Failed to create SSM client: {e}")

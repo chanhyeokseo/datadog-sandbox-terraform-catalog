@@ -138,19 +138,16 @@ def _resolve_key_pair_name() -> str:
     if not tfvars.exists():
         return ""
     import re
-    values = {}
     for line in tfvars.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line or line.startswith("#"):
             continue
-        m = re.match(r'^(\w+)\s*=\s*"([^"]*)"', line)
+        m = re.match(r'^name_prefix\s*=\s*"([^"]*)"', line)
         if m:
-            values[m.group(1)] = m.group(2)
-    creator = values.get("creator", "").strip()
-    team = values.get("team", "").strip()
-    if creator and team:
-        safe = lambda s: "".join(c if c.isalnum() or c in "-_" else "-" for c in s)[:64]
-        return f"{safe(creator)}-{safe(team)}"
+            name_prefix = m.group(1).strip()
+            if name_prefix:
+                safe = "".join(c if c.isalnum() or c in "-_" else "-" for c in name_prefix)[:64]
+                return f"{safe}-key-pair"
     return ""
 
 
@@ -161,7 +158,7 @@ def _delete_ssh_keys(config_manager: ConfigManager) -> dict:
 
         if key_name:
             try:
-                region = (os.environ.get("AWS_REGION") or "ap-northeast-2").strip()
+                region = parser.get_aws_env().get("AWS_REGION", "ap-northeast-2")
                 import boto3
                 ec2 = boto3.client("ec2", region_name=region)
                 ec2.delete_key_pair(KeyName=key_name)
@@ -245,7 +242,7 @@ def _delete_s3_bucket(config_manager: ConfigManager) -> dict:
     try:
         name_prefix = config_manager._get_name_prefix_from_tfvars()
         bucket_name = config_manager.generate_bucket_name(name_prefix)
-        region = (os.environ.get("AWS_REGION") or "ap-northeast-2").strip()
+        region = parser.get_aws_env().get("AWS_REGION", "ap-northeast-2")
 
         import boto3
         s3 = boto3.resource("s3", region_name=region)
@@ -274,7 +271,7 @@ def _delete_dynamodb_table(config_manager: ConfigManager) -> dict:
     result = {"success": True, "actions": []}
     try:
         table_name = config_manager.generate_dynamodb_table_name()
-        region = (os.environ.get("AWS_REGION") or "ap-northeast-2").strip()
+        region = parser.get_aws_env().get("AWS_REGION", "ap-northeast-2")
 
         import boto3
         dynamodb = boto3.client("dynamodb", region_name=region)

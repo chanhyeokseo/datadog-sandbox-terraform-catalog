@@ -5,19 +5,8 @@ echo "Starting Terraform Web UI Backend..."
 
 mkdir -p /app/terraform /app/terraform/.plugin-cache
 
-
-# Check if instances data already exists
-INSTANCES_EXIST=false
-if [ -d "/app/terraform/instances" ] && [ -n "$(ls -A /app/terraform/instances 2>/dev/null)" ]; then
-    INSTANCES_EXIST=true
-fi
-
-# Force re-initialization if requested
-if [ "$FORCE_REINIT" = "true" ]; then
-    echo "FORCE_REINIT=true - clearing existing data..."
-    rm -rf /app/terraform/instances /app/terraform/apps
-    INSTANCES_EXIST=false
-fi
+echo "Cleaning terraform-data (preserving .plugin-cache)..."
+find /app/terraform -mindepth 1 -maxdepth 1 ! -name '.plugin-cache' -exec rm -rf {} +
 
 # Sync modules and apps from image (skip if bind-mounted from host)
 if mountpoint -q /app/terraform/modules 2>/dev/null; then
@@ -35,18 +24,12 @@ elif [ -d "/app/terraform-source/apps" ]; then
     echo "Apps ready"
 fi
 
-# Seed instances data if not already present (persistent volume)
-if [ "$INSTANCES_EXIST" = "true" ]; then
-    echo "Using existing instances data from persistent volume"
-    echo "Instances: $(ls -1 /app/terraform/instances 2>/dev/null | wc -l) directories"
+echo "Seeding instances from image..."
+if [ -d "/app/terraform-source/instances" ]; then
+    cp -r /app/terraform-source/instances /app/terraform/
+    echo "Instances ready: $(ls -1 /app/terraform/instances | wc -l) directories"
 else
-    echo "Seeding instances from image..."
-    if [ -d "/app/terraform-source/instances" ]; then
-        cp -r /app/terraform-source/instances /app/terraform/
-        echo "Instances ready: $(ls -1 /app/terraform/instances | wc -l) directories"
-    else
-        echo "WARNING: /app/terraform-source/instances not found in image"
-    fi
+    echo "WARNING: /app/terraform-source/instances not found in image"
 fi
 
 echo "Loading configuration from Parameter Store..."

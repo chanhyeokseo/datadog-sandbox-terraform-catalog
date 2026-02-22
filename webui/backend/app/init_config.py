@@ -111,7 +111,7 @@ def regenerate_backend_files():
 
     bucket_name = config_manager.generate_bucket_name(name_prefix)
     table_name = config_manager.generate_dynamodb_table_name()
-    region = os.environ.get('AWS_REGION', 'ap-northeast-2')
+    region = config_manager._get_region()
 
     import boto3
     try:
