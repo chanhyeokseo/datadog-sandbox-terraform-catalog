@@ -21,9 +21,14 @@ Terraform infrastructure management through a visual web interface.
 | **AWS CLI** | Configured with SSO or credentials (`~/.aws`) |
 
 > [!NOTE]
-> Terraform is pre-installed inside the backend container — no local installation needed.
->
 > The container mounts `~/.aws` from your host, so any credentials configured via AWS CLI — including SSO, profiles, and temporary credentials — work automatically.
+
+
+If you are trying to use SSO but haven't configured an AWS SSO profile yet:
+```bash
+aws configure sso
+```
+Follow the prompts to set SSO start URL, region, account, role, and profile name. Use the profile name when configuring `.env` file.
 
 ## Quick Start
 
@@ -52,25 +57,17 @@ AWS_PROFILE=my-sso-profile
 DOGSTAC_SALT=my-unique-salt
 ```
 
-> [!IMPORTANT]
-> `DOGSTAC_SALT` is **required**. It must be unique per user and remain unchanged after initial setup. Changing it will disconnect you from previously created backend resources.
-
-> [!TIP]
-> If your profile uses AWS SSO, make sure to log in before starting the services:
-> ```bash
-> aws sso login --profile my-sso-profile
-> ```
-
 <details>
 <summary>Alternative: explicit credentials (not recommended)</summary>
 
 ```env
 AWS_ACCESS_KEY_ID=your-access-key-id
 AWS_SECRET_ACCESS_KEY=your-secret-access-key
-DOGSTAC_SALT=my-unique-salt
 ```
-
 </details>
+
+> [!IMPORTANT]
+> `DOGSTAC_SALT` is **required**. It must be unique per user and remain unchanged after initial setup. Changing it will disconnect you from previously created backend resources.
 
 ### 3. Start services
 
