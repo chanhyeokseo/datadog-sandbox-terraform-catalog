@@ -29,10 +29,11 @@ Terraform infrastructure management through a visual web interface.
 
 ### 1. Download configuration files
 
-Download these two files into the same directory:
-
-- [`docker-compose.yml`](docker-compose.yml)
-- [`.env.example`](.env.example)
+```bash
+mkdir dogstac && cd dogstac
+curl -O https://raw.githubusercontent.com/chanhyeokseo/datadog-sandbox-terraform-catalog/main/docker-compose.yml
+curl -O https://raw.githubusercontent.com/chanhyeokseo/datadog-sandbox-terraform-catalog/main/.env.example
+```
 
 ### 2. Configure environment
 
