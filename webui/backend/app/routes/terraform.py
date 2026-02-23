@@ -62,6 +62,18 @@ async def check_credentials():
         )
 
 
+@router.post("/ensure-data")
+async def ensure_data():
+    from app.init_config import ensure_terraform_data
+    try:
+        result = await asyncio.to_thread(ensure_terraform_data)
+        logger.info(f"ensure-data result: {result}")
+        return result
+    except Exception as e:
+        logger.error(f"ensure-data failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/provider-cache/status")
 async def provider_cache_status():
     return runner.get_cache_status()

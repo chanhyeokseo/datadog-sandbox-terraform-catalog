@@ -183,3 +183,9 @@ variable "region" {
   default     = "ap-northeast-2"
 }
 
+variable "aws_profile" {
+  description = "AWS CLI profile name for kubeconfig command"
+  type        = string
+  default     = ""
+}
+

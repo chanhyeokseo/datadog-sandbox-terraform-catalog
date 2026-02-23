@@ -99,6 +99,11 @@ export const terraformApi = {
     return response.data;
   },
 
+  ensureData: async (): Promise<{ seeded: Record<string, boolean>; config_synced: boolean; recovered: boolean }> => {
+    const response = await api.post('/ensure-data');
+    return response.data;
+  },
+
   getOnboardingStatus: async (): Promise<OnboardingStatus> => {
     const response = await api.get<OnboardingStatus>('/onboarding/status');
     return response.data;

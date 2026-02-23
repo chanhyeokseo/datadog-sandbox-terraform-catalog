@@ -112,6 +112,12 @@ function App() {
       }
       if (cancelled) return;
       try {
+        await api.ensureData();
+      } catch (err) {
+        console.warn('ensureData failed, continuing:', err);
+      }
+      if (cancelled) return;
+      try {
         const configStatus = await api.getConfigOnboardingStatus();
         if (cancelled) return;
         const hasUnfilledStep = configStatus.steps?.some((s: { filled: boolean }) => !s.filled) ?? false;
@@ -147,6 +153,9 @@ function App() {
             }
             return;
           }
+          try {
+            await api.ensureData();
+          } catch (_) {}
           try {
             const configStatus = await api.getConfigOnboardingStatus();
             if (cancelled) return;

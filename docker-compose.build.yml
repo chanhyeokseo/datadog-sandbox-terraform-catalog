@@ -16,6 +16,7 @@ services:
       - AWS_PROFILE=${AWS_PROFILE:-}
       - DOGSTAC_SALT=${DOGSTAC_SALT:-}
       - FORCE_REINIT=${FORCE_REINIT:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
       - ${TERRAFORM_DATA_PATH:-./terraform-data}:/app/terraform
       - ./modules:/app/terraform-source/modules

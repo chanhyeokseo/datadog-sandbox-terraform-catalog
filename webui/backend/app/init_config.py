@@ -9,8 +9,9 @@ import logging
 from pathlib import Path
 
 # Setup logging
+log_level = os.environ.get('LOG_LEVEL', 'INFO').upper()
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, log_level, logging.INFO),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
@@ -241,6 +242,62 @@ def init_from_parameter_store():
         logger.error("Failed to initialize config from Parameter Store")
 
     return success
+
+
+def _seed_from_image(terraform_dir: Path) -> dict:
+    source_dir = Path('/app/terraform-source')
+    result = {"instances": False, "modules": False, "apps": False}
+
+    instances_dir = terraform_dir / 'instances'
+    has_instances = instances_dir.exists() and any(
+        (d / 'main.tf').exists() for d in instances_dir.iterdir() if d.is_dir()
+    ) if instances_dir.exists() else False
+
+    if not has_instances and (source_dir / 'instances').exists():
+        import shutil
+        if instances_dir.exists():
+            shutil.rmtree(instances_dir)
+        shutil.copytree(source_dir / 'instances', instances_dir)
+        result["instances"] = True
+        logger.info(f"Re-seeded instances from image ({sum(1 for d in instances_dir.iterdir() if d.is_dir())} dirs)")
+
+    modules_dir = terraform_dir / 'modules'
+    if not modules_dir.exists() and (source_dir / 'modules').exists():
+        import shutil
+        shutil.copytree(source_dir / 'modules', modules_dir)
+        result["modules"] = True
+        logger.info("Re-seeded modules from image")
+
+    apps_dir = terraform_dir / 'apps'
+    if not apps_dir.exists() and (source_dir / 'apps').exists():
+        import shutil
+        shutil.copytree(source_dir / 'apps', apps_dir)
+        result["apps"] = True
+        logger.info("Re-seeded apps from image")
+
+    return result
+
+
+def ensure_terraform_data() -> dict:
+    terraform_dir = Path(os.environ.get('TERRAFORM_DIR', '/app/terraform'))
+    terraform_dir.mkdir(parents=True, exist_ok=True)
+
+    seed_result = _seed_from_image(terraform_dir)
+    seeded = any(seed_result.values())
+
+    tfvars_missing = not (terraform_dir / 'terraform.tfvars').exists()
+
+    config_synced = False
+    if seeded or tfvars_missing:
+        logger.info(f"Recovery needed: seeded={seeded}, tfvars_missing={tfvars_missing}")
+        config_synced = init_from_parameter_store()
+
+    return {
+        "seeded": seed_result,
+        "tfvars_missing": tfvars_missing,
+        "config_synced": config_synced,
+        "recovered": seeded or (tfvars_missing and config_synced),
+    }
 
 
 if __name__ == '__main__':

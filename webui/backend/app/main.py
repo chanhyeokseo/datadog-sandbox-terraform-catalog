@@ -11,8 +11,9 @@ if not os.environ.get("AWS_PROFILE", "").strip():
 
 from app.routes import terraform, ssh, backend, keys, danger_zone
 
+log_level = os.environ.get('LOG_LEVEL', 'INFO').upper()
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, log_level, logging.INFO),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 

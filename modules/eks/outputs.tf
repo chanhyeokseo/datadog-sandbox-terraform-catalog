@@ -101,6 +101,11 @@ output "fargate_profile_arn" {
 
 output "kubeconfig_command" {
   description = "Command to update kubeconfig for kubectl access"
-  value       = "aws eks update-kubeconfig --region ${var.region} --name ${aws_eks_cluster.main.name}"
+  value       = "aws eks update-kubeconfig --region ${var.region} --name ${aws_eks_cluster.main.name}${var.aws_profile != "" ? " --profile ${var.aws_profile}" : ""}"
+}
+
+output "sso_login_command" {
+  description = "Command to login via AWS SSO"
+  value       = var.aws_profile != "" ? "aws sso login --profile ${var.aws_profile}" : ""
 }
 
