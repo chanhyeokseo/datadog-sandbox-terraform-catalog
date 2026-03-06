@@ -79,3 +79,9 @@ variable "datadog_agent_image" {
   default     = "gcr.io/datadoghq/agent:latest"
 }
 
+variable "docker_run_command" {
+  description = "Custom docker run command for the Datadog agent. When empty, uses the default command."
+  type        = string
+  default     = ""
+}
+

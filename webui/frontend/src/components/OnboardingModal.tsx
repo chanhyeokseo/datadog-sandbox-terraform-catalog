@@ -58,11 +58,11 @@ function OnboardingModal({ status, onClose, onSelectShared }: OnboardingModalPro
                 <li key={index}>{step}</li>
               )) || (
                 <>
-                  <li>Select the <strong>Security Group</strong> from the list</li>
-                  <li>Click <strong>PLAN</strong> to preview changes</li>
-                  <li>Click <strong>DEPLOY</strong> to provision the Security Group and related shared infrastructure</li>
-                  <li>Wait for the deployment to complete</li>
-                  <li>You can then proceed to deploy other resources</li>
+                  Select the Security Group from the list
+                  Click PLAN to preview changes
+                  Click DEPLOY to provision the Security Group and related shared infrastructure
+                  Wait for the deployment to complete
+                  You can then proceed to deploy other resources
                 </>
               )}
             </ol>

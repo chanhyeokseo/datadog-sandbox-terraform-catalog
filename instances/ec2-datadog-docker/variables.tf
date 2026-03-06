@@ -47,6 +47,10 @@ variable "security_group_ids" {
   type    = list(string)
   default = []
 }
+variable "docker_run_command" {
+  type    = string
+  default = ""
+}
 variable "aws_access_key_id" {
   type    = string
   default = ""

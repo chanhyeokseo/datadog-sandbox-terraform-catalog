@@ -3,38 +3,38 @@
 # ============================================
 
 locals {
+  default_docker_run_command = join(" \\\n      ", [
+    "docker run -d",
+    "--name dd-agent",
+    "-e DD_API_KEY=\"${var.datadog_api_key}\"",
+    "-e DD_SITE=\"${var.datadog_site}\"",
+    "-e DD_DOGSTATSD_NON_LOCAL_TRAFFIC=true",
+    "-e DD_TAGS=\"creator:${var.creator},team:${var.team},terraform:true,instance_type:${var.instance_type}\"",
+    "-v /var/run/docker.sock:/var/run/docker.sock:ro",
+    "-v /proc/:/host/proc/:ro",
+    "-v /sys/fs/cgroup/:/host/sys/fs/cgroup:ro",
+    "-v /var/lib/docker/containers:/var/lib/docker/containers:ro",
+    "${var.datadog_agent_image}",
+  ])
+
+  effective_docker_run_command = var.docker_run_command != "" ? var.docker_run_command : local.default_docker_run_command
+
   docker_datadog_user_data = <<-EOF
     #!/bin/bash
     set -e
     
     echo "=== Starting Datadog Docker Agent Setup ==="
 
-    # Install Docker
-    echo "Installing Docker..."
     yum update -y
     yum install -y docker
     
-    # Start Docker service
-    echo "Starting Docker service..."
     systemctl start docker
     systemctl enable docker
     
-    # Add ec2-user to docker group
     usermod -a -G docker ec2-user
 
-    # Run Datadog Agent container
     echo "Starting Datadog Agent container..."
-    docker run -d \
-      --name dd-agent \
-      -e DD_API_KEY="${var.datadog_api_key}" \
-      -e DD_SITE="${var.datadog_site}" \
-      -e DD_DOGSTATSD_NON_LOCAL_TRAFFIC=true \
-      -e DD_TAGS="creator:${var.creator},team:${var.team},terraform:true,instance_type:${var.instance_type}" \
-      -v /var/run/docker.sock:/var/run/docker.sock:ro \
-      -v /proc/:/host/proc/:ro \
-      -v /sys/fs/cgroup/:/host/sys/fs/cgroup:ro \
-      -v /var/lib/docker/containers:/var/lib/docker/containers:ro \
-      ${var.datadog_agent_image}
+    ${local.effective_docker_run_command}
     
     echo "=== Datadog Docker Agent Setup Complete ==="
   EOF

@@ -188,7 +188,9 @@ body.light-mode {
   font-family: 'Courier New', monospace;
   color: var(--text-primary);
   margin-bottom: 20px;
+  white-space: pre-wrap;
   word-break: break-all;
+  overflow-x: auto;
 }
 
 .credential-error-btn {

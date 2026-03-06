@@ -5,7 +5,7 @@ Manages SSH private keys in AWS Systems Manager Parameter Store
 import boto3
 import logging
 from typing import Optional, List, Dict
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, ProfileNotFound
 
 logger = logging.getLogger(__name__)
 
@@ -15,21 +15,22 @@ class ParameterStoreKeyManager:
 
     def __init__(self, region: str = "ap-northeast-2"):
         self.region = region
-        self.ssm_client = boto3.client('ssm', region_name=region)
         self.key_prefix = "/ec2/keypairs"
+        try:
+            self.ssm_client = boto3.client('ssm', region_name=region)
+        except (ProfileNotFound, Exception) as e:
+            logger.warning(f"Failed to create SSM client: {e}")
+            self.ssm_client = None
+
+    def _require_client(self):
+        if self.ssm_client is None:
+            raise ClientError(
+                {"Error": {"Code": "ServiceUnavailable", "Message": "SSM client not available. Check AWS_PROFILE in .env."}},
+                "SSM",
+            )
 
     def upload_key(self, key_name: str, private_key_content: str, description: str = "") -> bool:
-        """
-        Upload a private key to Parameter Store
-
-        Args:
-            key_name: Name of the key (e.g., "chanhyeok")
-            private_key_content: The PEM file content
-            description: Optional description
-
-        Returns:
-            bool: True if successful
-        """
+        self._require_client()
         parameter_name = f"{self.key_prefix}/{key_name}"
 
         # Check size (Parameter Store Standard tier: 4KB limit)
@@ -62,15 +63,7 @@ class ParameterStoreKeyManager:
             raise
 
     def get_key(self, key_name: str) -> Optional[str]:
-        """
-        Retrieve a private key from Parameter Store
-
-        Args:
-            key_name: Name of the key
-
-        Returns:
-            str: The private key content, or None if not found
-        """
+        self._require_client()
         parameter_name = f"{self.key_prefix}/{key_name}"
 
         try:
@@ -88,12 +81,7 @@ class ParameterStoreKeyManager:
             raise
 
     def list_keys(self) -> List[Dict[str, any]]:
-        """
-        List all SSH keys stored in Parameter Store
-
-        Returns:
-            List of key metadata
-        """
+        self._require_client()
         keys = []
 
         try:
@@ -127,15 +115,7 @@ class ParameterStoreKeyManager:
             raise
 
     def delete_key(self, key_name: str) -> bool:
-        """
-        Delete a key from Parameter Store
-
-        Args:
-            key_name: Name of the key
-
-        Returns:
-            bool: True if successful
-        """
+        self._require_client()
         parameter_name = f"{self.key_prefix}/{key_name}"
 
         try:
@@ -151,7 +131,7 @@ class ParameterStoreKeyManager:
             raise
 
     def key_exists(self, key_name: str) -> bool:
-        """Check if a key exists in Parameter Store"""
+        self._require_client()
         parameter_name = f"{self.key_prefix}/{key_name}"
 
         try:
@@ -169,7 +149,7 @@ class ParameterStoreKeyManager:
             return False
 
     def get_key_info(self, key_name: str) -> Optional[Dict[str, any]]:
-        """Get metadata about a key without retrieving the actual value"""
+        self._require_client()
         parameter_name = f"{self.key_prefix}/{key_name}"
 
         try:
@@ -200,7 +180,7 @@ class ParameterStoreKeyManager:
             return None
 
     def update_key_description(self, key_name: str, description: str) -> bool:
-        """Update the description of a key"""
+        self._require_client()
         parameter_name = f"{self.key_prefix}/{key_name}"
 
         try:

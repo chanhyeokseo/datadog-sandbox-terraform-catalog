@@ -10,18 +10,44 @@ import DangerZoneModal from './components/DangerZoneModal';
 import { TerraformResource, ResourceType } from './types';
 import { terraformApi as api, OnboardingStatus } from './services/api';
 
-const CredentialErrorScreen = ({ onRetry, ssoCommand }: { onRetry: () => void; ssoCommand: string }) => (
+interface CredentialError {
+  type: 'profile_not_found' | 'expired';
+  profile?: string;
+  ssoCommand?: string;
+  message?: string;
+}
+
+const CredentialErrorScreen = ({ error, onRetry }: { error: CredentialError; onRetry: () => void }) => (
   <div className="app-loading-screen">
     <div className="app-loading-content">
       <img src="/logo.png" alt="DogSTAC" className="app-logo" />
       <h1 className="app-loading-title">DogSTAC</h1>
       <div className="credential-error-card">
-        <p className="credential-error-title">AWS Credentials Expired</p>
-        <p className="credential-error-desc">
-          Your AWS SSO session has expired or credentials are not configured.
-          Run the following command on your host machine, then click Retry.
-        </p>
-        <code className="credential-error-code">{ssoCommand}</code>
+        {error.type === 'profile_not_found' ? (
+          <>
+            <p className="credential-error-title">AWS Profile Not Found</p>
+            <p className="credential-error-desc">
+              The AWS profile <strong>{error.profile}</strong> does not exist in <code>~/.aws/config</code>.
+              Update <code>AWS_PROFILE</code> in your <code>.env</code> file and restart docker compose.
+            </p>
+            <pre className="credential-error-code">
+{`# 1. Fix .env
+AWS_PROFILE=your-valid-profile
+
+# 2. Restart
+docker compose down && docker compose up -d`}
+            </pre>
+          </>
+        ) : (
+          <>
+            <p className="credential-error-title">AWS Credentials Expired</p>
+            <p className="credential-error-desc">
+              Your AWS SSO session has expired or credentials are not configured.
+              Run the following command on your host machine, then click Retry.
+            </p>
+            <code className="credential-error-code">{error.ssoCommand}</code>
+          </>
+        )}
         <button onClick={onRetry} className="credential-error-btn">
           Retry
         </button>
@@ -86,7 +112,7 @@ function App() {
   const [runningResources, setRunningResources] = useState<Map<string, string>>(new Map());
   type LoadPhase = 'config_check' | 'loading' | 'ready';
   const [initialLoadPhase, setInitialLoadPhase] = useState<LoadPhase>('config_check');
-  const [credentialError, setCredentialError] = useState<string | null>(null);
+  const [credentialError, setCredentialError] = useState<CredentialError | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [providerReady, setProviderReady] = useState<boolean | null>(null);
   const [providerProgress, setProviderProgress] = useState({ progress: 0, message: '' });
@@ -99,14 +125,19 @@ function App() {
     }
     let cancelled = false;
     const run = async () => {
-      const extractSsoCommand = (err: any) =>
-        err?.response?.data?.detail?.sso_command || 'aws sso login';
+      const extractCredentialError = (err: any): CredentialError => {
+        const detail = err?.response?.data?.detail;
+        if (detail?.error_type === 'profile_not_found') {
+          return { type: 'profile_not_found', profile: detail.aws_profile || '', message: detail.message };
+        }
+        return { type: 'expired', ssoCommand: detail?.sso_command || 'aws sso login' };
+      };
       try {
         await api.checkCredentials();
       } catch (err: any) {
         if (cancelled) return;
         if (err?.response?.status === 401) {
-          setCredentialError(extractSsoCommand(err));
+          setCredentialError(extractCredentialError(err));
           return;
         }
       }
@@ -138,7 +169,7 @@ function App() {
       } catch (err: any) {
         if (cancelled) return;
         if (err?.response?.status === 401) {
-          setCredentialError(extractSsoCommand(err));
+          setCredentialError(extractCredentialError(err));
           return;
         }
         setInitialLoadPhase('loading');
@@ -149,7 +180,7 @@ function App() {
           } catch (credErr: any) {
             if (credErr?.response?.status === 401) {
               clearInterval(id);
-              setCredentialError(extractSsoCommand(credErr));
+              setCredentialError(extractCredentialError(credErr));
             }
             return;
           }
@@ -377,7 +408,7 @@ function App() {
   if (credentialError) {
     return (
       <CredentialErrorScreen
-        ssoCommand={credentialError}
+        error={credentialError}
         onRetry={() => {
           setCredentialError(null);
           setInitialLoadPhase('config_check');

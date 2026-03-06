@@ -28,7 +28,17 @@ webui/
 │   ├── Dockerfile
 │   ├── .dockerignore
 │   ├── requirements.txt
+│   ├── requirements-test.txt
+│   ├── pytest.ini
 │   ├── entrypoint.sh                  # Git sparse checkout + config init
+│   ├── tests/
+│   │   ├── conftest.py                # Shared fixtures (tmp_terraform_dir, root_tfvars)
+│   │   ├── test_terraform_parser_aws_env.py
+│   │   ├── test_terraform_parser_tfvars.py
+│   │   ├── test_credentials.py
+│   │   ├── test_instance_discovery.py
+│   │   ├── test_key_manager.py
+│   │   └── test_terraform_runner.py
 │   └── app/
 │       ├── main.py                    # FastAPI entry point, router mounts
 │       ├── init_config.py             # Startup config sync (S3 → Parameter Store → local)
@@ -394,6 +404,57 @@ Each instance directory contains:
 - `.env` file gitignored
 - No built-in authentication (designed for local/personal use)
 - Per-resource operation locks prevent concurrent modifications
+
+## Testing
+
+### Setup
+
+```bash
+cd webui/backend
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements-test.txt
+```
+
+### Running Tests
+
+```bash
+cd webui/backend
+source .venv/bin/activate
+python -m pytest tests/ -v          # all tests
+python -m pytest tests/ -v -k "keyword"  # filtered
+```
+
+### Conventions
+
+| Item | Convention |
+|------|-----------|
+| Framework | pytest (see `requirements-test.txt` for version) |
+| Config | `pytest.ini` — sets `testpaths = tests`, `pythonpath = .` |
+| Directory | `webui/backend/tests/` |
+| File naming | `test_{module}_{topic}.py` (e.g. `test_terraform_parser_aws_env.py`) |
+| Class naming | `Test{MethodOrFeature}` (e.g. `TestGetAwsEnvTfVarAwsProfile`) |
+| Function naming | `test_{expected_behavior}` (e.g. `test_sets_tf_var_when_aws_profile_present`) |
+| Fixtures | Shared fixtures go in `conftest.py`; test-local fixtures stay in the test file |
+| Env isolation | Always use `unittest.mock.patch.dict(os.environ, ...)` to avoid leaking state |
+| Filesystem | Use pytest's `tmp_path` fixture; never write to real project directories |
+| No comments | Tests should be self-explanatory through clear naming — no inline comments |
+| External services | Mock all AWS calls (`boto3`, `botocore`) — tests must run offline |
+
+### Available Shared Fixtures (`conftest.py`)
+
+| Fixture | Description |
+|---------|-------------|
+| `tmp_terraform_dir` | A `tmp_path` with an `instances/` subdirectory, ready for `TerraformParser(str(tmp_terraform_dir))` |
+| `root_tfvars` | Path object for `<tmp_terraform_dir>/terraform.tfvars` (file not yet created — write content in test) |
+
+### Adding a New Test File
+
+1. Create `tests/test_{module}_{topic}.py`
+2. Import the class/function under test from `app.*`
+3. Use shared fixtures from `conftest.py` or define local fixtures
+4. Group related tests in a class: `class Test{Feature}:`
+5. Run with `python -m pytest tests/test_{module}_{topic}.py -v`
+6. Update the project structure list in this AGENTS.md
 
 ## Code Style
 

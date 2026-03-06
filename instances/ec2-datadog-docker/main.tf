@@ -54,6 +54,7 @@ module "ec2_datadog_docker" {
   datadog_api_key      = var.datadog_api_key
   datadog_site         = var.datadog_site
   datadog_agent_image  = var.datadog_agent_image
+  docker_run_command   = var.docker_run_command
   creator              = var.creator
   team                 = var.team
   common_tags          = local.common_tags

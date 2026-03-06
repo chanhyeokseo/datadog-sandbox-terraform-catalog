@@ -4,17 +4,21 @@ from typing import List, Dict, Optional
 from pathlib import Path
 import logging
 import asyncio
+import json
 import os
+import re
 import boto3
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, ProfileNotFound
 
 from app.models.schemas import (
+    ResourceType,
     TerraformResource,
     TerraformStateResponse,
     TerraformVariable
 )
 from app.services.terraform_parser import TerraformParser
 from app.services.terraform_runner import TerraformRunner
+from app.services.instance_discovery import get_resource_id_for_instance, get_resource_type_from_dir
 
 router = APIRouter(prefix="/api/terraform", tags=["terraform"])
 logger = logging.getLogger(__name__)
@@ -37,6 +41,85 @@ def _is_credential_error(error: Exception) -> bool:
     return any(kw in msg for kw in _CREDENTIAL_ERROR_KEYWORDS)
 
 
+def _get_eks_resource_info() -> tuple[Optional[str], Optional[Path]]:
+    try:
+        for resource in parser.parse_all_resources():
+            if resource.type != ResourceType.EKS:
+                continue
+            resource_dir = runner.get_resource_directory(resource.id)
+            if resource_dir and resource_dir.exists():
+                logger.debug(f"Resolved EKS resource directory for {resource.id}: {resource_dir}")
+                return resource.id, resource_dir
+    except Exception as e:
+        logger.debug(f"Failed to resolve EKS resource from parsed resources: {e}")
+    if parser.instances_dir.exists():
+        for instance_dir in sorted(parser.instances_dir.iterdir()):
+            if not instance_dir.is_dir() or not (instance_dir / "main.tf").exists():
+                continue
+            if get_resource_type_from_dir(instance_dir.name) != ResourceType.EKS:
+                continue
+            resource_id = get_resource_id_for_instance(instance_dir)
+            logger.debug(f"Resolved EKS resource directory from instances scan for {resource_id}: {instance_dir}")
+            return resource_id, instance_dir
+    logger.debug("No EKS resource directory found while handling config request")
+    return None, None
+
+
+def _get_eks_config_file(resource_dir: Optional[Path]) -> Optional[Path]:
+    if not resource_dir:
+        return None
+    return resource_dir / "eks-config.auto.tfvars"
+
+def _parse_terraform_output_json(raw_output: str) -> Dict:
+    try:
+        parsed = json.loads(raw_output)
+        if isinstance(parsed, dict):
+            return parsed
+    except Exception as e:
+        logger.debug(f"Failed to parse terraform output JSON for EKS config: {e}")
+    return {}
+
+
+def _get_output_value(outputs: Dict, name: str):
+    entry = outputs.get(name)
+    if isinstance(entry, dict) and "value" in entry:
+        return entry["value"]
+    return None
+
+
+def _extract_eks_config_from_outputs(outputs: Dict) -> tuple[Dict, List[str]]:
+    config: Dict = {}
+    missing: List[str] = []
+    for name in ['enable_node_group', 'enable_windows_node_group', 'enable_fargate',
+                 'endpoint_public_access', 'endpoint_private_access']:
+        value = _get_output_value(outputs, name)
+        if isinstance(value, bool):
+            config[name] = value
+        else:
+            missing.append(name)
+    for name in ['node_desired_size', 'node_min_size', 'node_max_size', 'node_disk_size',
+                 'windows_node_desired_size', 'windows_node_min_size', 'windows_node_max_size',
+                 'windows_node_disk_size']:
+        value = _get_output_value(outputs, name)
+        if isinstance(value, (int, float)):
+            config[name] = int(value)
+        else:
+            missing.append(name)
+    for name in ['node_capacity_type', 'windows_node_capacity_type', 'windows_node_ami_type']:
+        value = _get_output_value(outputs, name)
+        if isinstance(value, str) and value:
+            config[name] = value
+        else:
+            missing.append(name)
+    for name in ['node_instance_types', 'windows_node_instance_types', 'fargate_namespaces']:
+        value = _get_output_value(outputs, name)
+        if isinstance(value, list):
+            config[name] = [str(item) for item in value]
+        else:
+            missing.append(name)
+    return config, missing
+
+
 @router.get("/credentials/check")
 async def check_credentials():
     try:
@@ -48,6 +131,17 @@ async def check_credentials():
             "account": identity.get("Account", ""),
             "arn": identity.get("Arn", ""),
         }
+    except ProfileNotFound:
+        aws_profile = os.environ.get("AWS_PROFILE", "")
+        logger.warning(f"AWS profile not found: {aws_profile}")
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "message": f"AWS profile '{aws_profile}' not found in ~/.aws/config. Verify the profile name and re-run docker compose.",
+                "aws_profile": aws_profile,
+                "error_type": "profile_not_found",
+            },
+        )
     except Exception as e:
         logger.warning(f"Credential check failed: {e}")
         aws_profile = os.environ.get("AWS_PROFILE", "")
@@ -404,11 +498,11 @@ async def get_onboarding_status():
             "reason": "security_group_not_deployed",
             "message": "Security Group must be deployed first",
             "next_steps": [
-                "1. Select the Security Group from the list",
-                "2. Click PLAN to preview changes",
-                "3. Click DEPLOY to provision the Security Group",
-                "4. Wait for the deployment to complete",
-                "5. You can then deploy other resources"
+                "Select the Security Group from the list",
+                "Click PLAN to preview changes",
+                "Click DEPLOY to provision the Security Group",
+                "Wait for the deployment to complete",
+                "You can then deploy other resources"
             ]
         }
 
@@ -427,6 +521,17 @@ async def get_resources():
         resources = parser.parse_all_resources()
         logger.info(f"Loaded {len(resources)} resources with current states")
         return resources
+    except ProfileNotFound:
+        aws_profile = os.environ.get("AWS_PROFILE", "")
+        logger.error(f"AWS profile not found: {aws_profile}")
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "message": f"AWS profile '{aws_profile}' not found in ~/.aws/config. Verify the profile name and re-run docker compose.",
+                "aws_profile": aws_profile,
+                "error_type": "profile_not_found",
+            },
+        )
     except Exception as e:
         logger.error(f"Error getting resources: {e}")
         if _is_credential_error(e):
@@ -858,43 +963,30 @@ async def terraform_output(resource_id: Optional[str] = None):
 @router.get("/eks/config")
 async def get_eks_config():
     try:
-        from pathlib import Path
-        import re
-        
-        eks_config_file = runner.instances_dir / "eks-cluster" / "eks-config.auto.tfvars"
-        
-        if not eks_config_file.exists():
-            return {"error": "EKS config file not found"}
-        
-        config = {}
-        with open(eks_config_file, 'r') as f:
-            content = f.read()
-            
-            for var in ['enable_node_group', 'enable_windows_node_group', 'enable_fargate', 
-                       'endpoint_public_access', 'endpoint_private_access']:
-                match = re.search(rf'{var}\s*=\s*(true|false)', content)
-                if match:
-                    config[var] = match.group(1) == 'true'
-            
-            for var in ['node_desired_size', 'node_min_size', 'node_max_size', 'node_disk_size',
-                       'windows_node_desired_size', 'windows_node_min_size', 'windows_node_max_size', 
-                       'windows_node_disk_size']:
-                match = re.search(rf'{var}\s*=\s*(\d+)', content)
-                if match:
-                    config[var] = int(match.group(1))
-            
-            for var in ['node_capacity_type', 'windows_node_capacity_type', 'windows_node_ami_type']:
-                match = re.search(rf'{var}\s*=\s*"([^"]+)"', content)
-                if match:
-                    config[var] = match.group(1)
-            
-            for var in ['node_instance_types', 'windows_node_instance_types', 'fargate_namespaces']:
-                match = re.search(rf'{var}\s*=\s*\[(.*?)\]', content)
-                if match:
-                    list_content = match.group(1)
-                    items = [item.strip().strip('"') for item in list_content.split(',') if item.strip()]
-                    config[var] = items
-        
+        resource_id, resource_dir = _get_eks_resource_info()
+        if not resource_id or not resource_dir:
+            return {"error": "EKS resource not found"}
+        aws_env = parser.get_aws_env()
+        init_ok, init_out = await runner.ensure_terraform_init(resource_dir, env_extra=aws_env)
+        if not init_ok:
+            logger.debug(f"Terraform init failed for {resource_id}: {init_out}")
+            return {"error": "Terraform init failed for EKS resource"}
+        success, output = await runner.output(resource_id=resource_id, env_extra=aws_env)
+        if not success:
+            logger.debug(f"Terraform output unavailable for {resource_id}: {output}")
+            return {"error": "Failed to read terraform output for EKS resource"}
+        outputs = _parse_terraform_output_json(output)
+        if not outputs:
+            logger.debug(f"Terraform output for {resource_id} was empty or invalid JSON")
+            return {"error": "Terraform output for EKS resource is empty or invalid"}
+        config, missing_outputs = _extract_eks_config_from_outputs(outputs)
+        if missing_outputs:
+            logger.debug(f"EKS config outputs missing for {resource_id}: {missing_outputs}")
+            return {
+                "error": "Required EKS config outputs are missing",
+                "missing_outputs": missing_outputs,
+            }
+        logger.debug(f"Loaded EKS config from terraform output for {resource_id}: {sorted(config.keys())}")
         return config
     except Exception as e:
         logger.error(f"Error getting EKS config: {e}")
@@ -904,9 +996,10 @@ async def get_eks_config():
 @router.post("/eks/config")
 async def update_eks_config(config: Dict):
     try:
-        from pathlib import Path
-        
-        eks_config_file = runner.instances_dir / "eks-cluster" / "eks-config.auto.tfvars"
+        _, resource_dir = _get_eks_resource_info()
+        eks_config_file = _get_eks_config_file(resource_dir)
+        if not eks_config_file:
+            raise HTTPException(status_code=404, detail="EKS resource not found")
         eks_config_file.parent.mkdir(parents=True, exist_ok=True)
         
         lines = [
@@ -939,6 +1032,210 @@ async def update_eks_config(config: Dict):
     except Exception as e:
         logger.error(f"Error updating EKS config: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+_DOCKER_AGENT_RESOURCE_ID = "ec2_datadog_docker"
+
+_DEFAULT_DOCKER_RUN_COMMAND = (
+    "docker run -d \\\n"
+    "  --name dd-agent \\\n"
+    "  -e DD_API_KEY={{DD_API_KEY}} \\\n"
+    "  -e DD_SITE={{DD_SITE}} \\\n"
+    "  -e DD_DOGSTATSD_NON_LOCAL_TRAFFIC=true \\\n"
+    "  -e DD_TAGS=\"{{DD_TAGS}}\" \\\n"
+    "  -v /var/run/docker.sock:/var/run/docker.sock:ro \\\n"
+    "  -v /proc/:/host/proc/:ro \\\n"
+    "  -v /sys/fs/cgroup/:/host/sys/fs/cgroup:ro \\\n"
+    "  -v /var/lib/docker/containers:/var/lib/docker/containers:ro \\\n"
+    "  {{DD_AGENT_IMAGE}}"
+)
+
+def _get_docker_agent_resource_dir() -> Optional[Path]:
+    resource_dir = runner.get_resource_directory(_DOCKER_AGENT_RESOURCE_ID)
+    if resource_dir and resource_dir.exists():
+        return resource_dir
+    if parser.instances_dir.exists():
+        candidate = parser.instances_dir / "ec2-datadog-docker"
+        if candidate.is_dir() and (candidate / "main.tf").exists():
+            return candidate
+    return None
+
+
+def _get_docker_agent_config_path(resource_dir: Path) -> Path:
+    return resource_dir / "docker-agent-config.json"
+
+
+def _resolve_docker_agent_placeholders(command: str, tfvars: dict) -> str:
+    mapping = {
+        "{{DD_API_KEY}}": tfvars.get("datadog_api_key", ""),
+        "{{DD_SITE}}": tfvars.get("datadog_site", "datadoghq.com"),
+        "{{DD_AGENT_IMAGE}}": tfvars.get("datadog_agent_image", "gcr.io/datadoghq/agent:latest"),
+        "{{DD_TAGS}}": "creator:{},team:{},terraform:true".format(
+            tfvars.get("creator", ""), tfvars.get("team", "")
+        ),
+    }
+    result = command
+    for placeholder, value in mapping.items():
+        result = result.replace(placeholder, value)
+    return result
+
+
+@router.get("/docker-agent/config")
+async def get_docker_agent_config():
+    try:
+        resource_dir = _get_docker_agent_resource_dir()
+        if not resource_dir:
+            return {"error": "ec2_datadog_docker resource not found"}
+
+        resource = parser.get_resource_by_id(_DOCKER_AGENT_RESOURCE_ID)
+        resource_status = resource.status.value if resource else "disabled"
+
+        config_path = _get_docker_agent_config_path(resource_dir)
+        if config_path.exists():
+            with open(config_path, "r") as f:
+                saved = json.load(f)
+            docker_run_command = saved.get("docker_run_command", _DEFAULT_DOCKER_RUN_COMMAND)
+        else:
+            docker_run_command = _DEFAULT_DOCKER_RUN_COMMAND
+
+        root_vars = parser._read_tfvars_to_map(parser._root_tfvars_path())
+        instance_vars = parser.get_instance_tfvars_map(_DOCKER_AGENT_RESOURCE_ID)
+        merged = {**root_vars, **instance_vars}
+
+        placeholders = {
+            "DD_API_KEY": "(configured)" if merged.get("datadog_api_key") else "(not set)",
+            "DD_SITE": merged.get("datadog_site", "datadoghq.com"),
+            "DD_AGENT_IMAGE": merged.get("datadog_agent_image", "gcr.io/datadoghq/agent:latest"),
+            "DD_TAGS": "creator:{},team:{},...".format(
+                merged.get("creator", ""), merged.get("team", "")
+            ),
+        }
+
+        return {
+            "docker_run_command": docker_run_command,
+            "resource_status": resource_status,
+            "placeholders": placeholders,
+        }
+    except Exception as e:
+        logger.error(f"Error getting docker agent config: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/docker-agent/config")
+async def update_docker_agent_config(config: Dict):
+    try:
+        resource_dir = _get_docker_agent_resource_dir()
+        if not resource_dir:
+            raise HTTPException(status_code=404, detail="ec2_datadog_docker resource not found")
+
+        docker_run_command = config.get("docker_run_command", "").strip()
+        if not docker_run_command:
+            raise HTTPException(status_code=400, detail="docker_run_command is required")
+
+        config_path = _get_docker_agent_config_path(resource_dir)
+        with open(config_path, "w") as f:
+            json.dump({"docker_run_command": docker_run_command}, f, indent=2)
+        logger.debug(f"Saved docker agent config to {config_path}")
+
+        resource = parser.get_resource_by_id(_DOCKER_AGENT_RESOURCE_ID)
+        is_deployed = resource and resource.status.value == "enabled"
+
+        root_vars = parser._read_tfvars_to_map(parser._root_tfvars_path())
+        instance_vars = parser.get_instance_tfvars_map(_DOCKER_AGENT_RESOURCE_ID)
+        merged = {**root_vars, **instance_vars}
+        resolved_command = _resolve_docker_agent_placeholders(docker_run_command, merged)
+
+        if is_deployed:
+            logger.info("Resource is deployed, applying docker agent config via SSH")
+            return await _apply_docker_agent_via_ssh(resource_dir, resolved_command, merged)
+        else:
+            logger.info("Resource is not deployed, writing docker-agent.auto.tfvars")
+            tfvars_path = resource_dir / "docker-agent.auto.tfvars"
+            escaped = resolved_command.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+            with open(tfvars_path, "w") as f:
+                f.write(f'docker_run_command = "{escaped}"\n')
+            logger.debug(f"Wrote docker-agent.auto.tfvars to {tfvars_path}")
+            return {
+                "success": True,
+                "message": "Docker agent configuration saved. Click Deploy to apply with the new settings.",
+                "mode": "terraform",
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating docker agent config: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+async def _apply_docker_agent_via_ssh(resource_dir: Path, resolved_command: str, merged_vars: dict) -> dict:
+    import paramiko
+    from io import StringIO
+
+    aws_env = parser.get_aws_env()
+    success, raw_output = await runner.output(resource_id=_DOCKER_AGENT_RESOURCE_ID, env_extra=aws_env)
+    if not success:
+        return {"success": False, "message": "Failed to get terraform outputs. Is the resource deployed?", "mode": "ssh"}
+
+    outputs = _parse_terraform_output_json(raw_output)
+    public_ip = _get_output_value(outputs, "public_ip")
+    if not public_ip:
+        return {"success": False, "message": "Public IP not found in terraform outputs.", "mode": "ssh"}
+
+    key_name = merged_vars.get("ec2_key_name", "ec2-key")
+    terraform_dir = Path(os.environ.get("TERRAFORM_DIR", "/terraform"))
+    key_path = None
+    for candidate in [
+        terraform_dir / "keys" / f"{key_name}.pem",
+        Path.cwd() / "keys" / f"{key_name}.pem",
+    ]:
+        if candidate.exists():
+            key_path = candidate
+            break
+
+    if not key_path:
+        from app.services.key_manager import LocalKeyManager
+        local_km = LocalKeyManager(keys_dir=str(terraform_dir / "keys"))
+        key_content = local_km.get_key(key_name)
+        if not key_content:
+            return {"success": False, "message": f"SSH key '{key_name}' not found.", "mode": "ssh"}
+        key_obj = paramiko.RSAKey.from_private_key(StringIO(key_content))
+    else:
+        key_obj = paramiko.RSAKey.from_private_key_file(str(key_path))
+
+    ssh_script = (
+        "docker stop dd-agent 2>/dev/null; "
+        "docker rm dd-agent 2>/dev/null; "
+        f"{resolved_command}"
+    )
+
+    try:
+        ssh_output = await asyncio.to_thread(
+            _ssh_exec_command, public_ip, "ec2-user", key_obj, ssh_script
+        )
+        logger.info(f"SSH command executed on {public_ip}: {ssh_output[:200]}")
+        return {
+            "success": True,
+            "message": "Docker agent container restarted with new configuration.",
+            "mode": "ssh",
+            "ssh_output": ssh_output,
+        }
+    except Exception as e:
+        logger.error(f"SSH execution failed on {public_ip}: {e}")
+        return {"success": False, "message": f"SSH execution failed: {e}", "mode": "ssh"}
+
+
+def _ssh_exec_command(hostname: str, username: str, key: "paramiko.PKey", command: str, timeout: int = 30) -> str:
+    import paramiko
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    try:
+        client.connect(hostname, username=username, pkey=key, timeout=timeout)
+        _, stdout, stderr = client.exec_command(command, timeout=timeout)
+        out = stdout.read().decode("utf-8", errors="replace")
+        err = stderr.read().decode("utf-8", errors="replace")
+        return out + err
+    finally:
+        client.close()
 
 
 def _sg_ensure_defaults(ingress_rules: list) -> list:

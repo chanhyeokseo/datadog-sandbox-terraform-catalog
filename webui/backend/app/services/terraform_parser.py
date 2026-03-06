@@ -287,6 +287,10 @@ class TerraformParser:
             if val:
                 result[env_key] = val
 
+        aws_profile = os.environ.get("AWS_PROFILE", "")
+        if aws_profile:
+            result["TF_VAR_aws_profile"] = aws_profile
+
         if "AWS_REGION" not in result and tfvars_path.exists():
             with open(tfvars_path, 'r', encoding='utf-8') as f:
                 for line in f:

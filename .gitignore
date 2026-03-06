@@ -124,5 +124,11 @@ legacy/
 # Uncomment if you want to track terraform.tfvars
 # !terraform.tfvars
 
+# Python virtual environments
+.venv/
+
+# Pytest cache
+.pytest_cache/
+
 # Terraform Data
 terraform-data/
