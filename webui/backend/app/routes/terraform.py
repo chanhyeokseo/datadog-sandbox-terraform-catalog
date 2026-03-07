@@ -300,6 +300,10 @@ async def ensure_data():
     try:
         result = await asyncio.to_thread(ensure_terraform_data)
         logger.info(f"ensure-data result: {result}")
+        if result.get("recovered") or result.get("config_synced"):
+            logger.info("Config recovered/synced, rebuilding S3 status cache")
+            parser.invalidate_s3_status()
+            parser.build_s3_status_cache()
         return result
     except Exception as e:
         logger.error(f"ensure-data failed: {e}")

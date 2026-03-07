@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import ConfirmModal from './ConfirmModal';
 
 interface Connection {
   id: string;
@@ -15,7 +14,6 @@ interface ConnectionsModalProps {
 const ConnectionsModal = ({ onClose }: ConnectionsModalProps) => {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [loading, setLoading] = useState(true);
-  const [closingId, setClosingId] = useState<string | null>(null);
 
   useEffect(() => {
     loadConnections();
@@ -37,19 +35,6 @@ const ConnectionsModal = ({ onClose }: ConnectionsModalProps) => {
     const terminalWindow = window.open(`/terminal/${connectionId}`, `terminal_${connectionId}`);
     if (terminalWindow) {
       terminalWindow.focus();
-    }
-  };
-
-  const doCloseConnection = async (connectionId: string) => {
-    try {
-      const response = await fetch(`/api/ssh/connections/${connectionId}`, {
-        method: 'DELETE',
-      });
-      if (response.ok) {
-        setConnections(prev => prev.filter(c => c.id !== connectionId));
-      }
-    } catch (error) {
-      console.error('Failed to close connection:', error);
     }
   };
 
@@ -87,12 +72,6 @@ const ConnectionsModal = ({ onClose }: ConnectionsModalProps) => {
                     >
                       Open
                     </button>
-                    <button
-                      onClick={() => setClosingId(conn.id)}
-                      className="btn-connection-action btn-close"
-                    >
-                      Close
-                    </button>
                   </div>
                 </div>
               ))}
@@ -104,21 +83,7 @@ const ConnectionsModal = ({ onClose }: ConnectionsModalProps) => {
     document.body
   );
 
-  return (
-    <>
-      {modal}
-      {closingId && (
-        <ConfirmModal
-          title="Close Connection"
-          message="Close this SSH connection?"
-          confirmLabel="Close"
-          danger
-          onConfirm={() => { doCloseConnection(closingId); setClosingId(null); }}
-          onCancel={() => setClosingId(null)}
-        />
-      )}
-    </>
-  );
+  return modal;
 };
 
 export default ConnectionsModal;

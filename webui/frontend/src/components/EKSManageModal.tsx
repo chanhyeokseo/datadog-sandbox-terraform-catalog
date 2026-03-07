@@ -347,7 +347,7 @@ const EKSManageModal = ({ onClose, connectInfo }: EKSManageModalProps) => {
 
   const handleUndeploy = async () => {
     if (!deployPreset || deploying) return;
-    if (!window.confirm(`Undeploy preset "${deployPreset}" from the cluster?`)) return;
+    if (!window.confirm(`Delete preset "${deployPreset}" from the cluster?`)) return;
     setDeploying(true);
     setDeployLog('');
     setDeployStatus('running');
@@ -1038,7 +1038,7 @@ const EKSManageModal = ({ onClose, connectInfo }: EKSManageModalProps) => {
             Update
           </button>
           <button className="eks-btn-undeploy" onClick={handleUndeploy} disabled={deploying || !deployPreset}>
-            Undeploy
+            Delete
           </button>
         </div>
         {deployStatus !== 'idle' && (
@@ -1049,7 +1049,7 @@ const EKSManageModal = ({ onClose, connectInfo }: EKSManageModalProps) => {
           </div>
         )}
         <div className="eks-deploy-log" ref={deployLogRef}>
-          {deployLog || 'Select a preset and click Deploy, Update, or Undeploy to begin.'}
+          {deployLog || 'Select a preset and click Deploy, Update, or Delete to begin.'}
         </div>
       </div>
     );

@@ -161,7 +161,6 @@ async def _setup_kubeconfig(resource_id: Optional[str], resource_dir: Optional[P
     if not force and KUBECONFIG_PATH.exists() and KUBECONFIG_PATH.stat().st_size > 0:
         age = time.time() - KUBECONFIG_PATH.stat().st_mtime
         if age < TOKEN_EXPIRY_SECONDS:
-            lines.append("Using existing kubeconfig.\n")
             return True, lines
         logger.debug("Kubeconfig token expired (age=%.0fs), refreshing", age)
 
@@ -489,7 +488,20 @@ async def run_kubectl(body: dict = Body(...)):
         raise HTTPException(status_code=400, detail="command is required")
 
     ALLOWED_BINARIES = {"kubectl", "helm", "istioctl", "kustomize"}
-    first_token = command.split()[0] if command.split() else ""
+    BINARY_ALIASES = {"k": "kubectl"}
+    SHELL_META = {"|", "&&", "||", ";", "`", "$(", ">", "<", "&"}
+    for meta in SHELL_META:
+        if meta in command:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Shell operator '{meta}' is not allowed",
+            )
+    tokens = command.split()
+    first_token = tokens[0] if tokens else ""
+    if first_token in BINARY_ALIASES:
+        tokens[0] = BINARY_ALIASES[first_token]
+        command = " ".join(tokens)
+        first_token = tokens[0]
     if first_token not in ALLOWED_BINARIES:
         raise HTTPException(
             status_code=400,

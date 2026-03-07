@@ -781,9 +781,9 @@ body.light-mode .eks-code-editor {
   min-height: 300px;
   max-height: 500px;
   padding: 16px;
-  background: #1a1a2e;
+  background: #1e1e1e;
   border: 1px solid var(--border-color);
-  color: #e0e0e0;
+  color: #d4d4d4;
   font-family: 'Fira Code', 'Cascadia Code', monospace;
   font-size: 12px;
   line-height: 1.6;
@@ -797,7 +797,7 @@ body.light-mode .eks-code-editor {
 }
 
 .eks-deploy-log::-webkit-scrollbar-track {
-  background: #1a1a2e;
+  background: #1e1e1e;
 }
 
 .eks-deploy-log::-webkit-scrollbar-thumb {
