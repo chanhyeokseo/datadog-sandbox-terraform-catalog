@@ -32,6 +32,20 @@ runner = TerraformRunner(TERRAFORM_DIR)
 
 _deploy_lock = asyncio.Lock()
 
+_TEMPLATE_RE = re.compile(r'\{\{(\w+)\}\}')
+
+
+def _resolve_template_vars(command: str) -> str:
+    root_tfvars = parser._read_tfvars_to_map(Path(TERRAFORM_DIR) / "terraform.tfvars")
+    def _replacer(m):
+        var_name = m.group(1)
+        val = root_tfvars.get(var_name)
+        if val is None:
+            logger.warning(f"Template variable '{var_name}' not found in terraform.tfvars")
+            return m.group(0)
+        return val.strip('"').strip("'")
+    return _TEMPLATE_RE.sub(_replacer, command)
+
 
 def _get_eks_resource_info() -> tuple[Optional[str], Optional[Path]]:
     try:
@@ -198,6 +212,7 @@ async def _execute_commands(commands: List[str], preset_dir: str) -> AsyncIterat
         if not cmd_str or cmd_str.startswith("#"):
             continue
 
+        cmd_str = _resolve_template_vars(cmd_str)
         yield f"\n$ {cmd_str}\n"
 
         async for line in _stream_shell(cmd_str, cwd=preset_dir):
@@ -210,6 +225,16 @@ async def _execute_commands(commands: List[str], preset_dir: str) -> AsyncIterat
             yield line
 
     yield f"{EXIT_SENTINEL_PREFIX}0\n"
+
+
+@router.post("/presets/refresh")
+async def refresh_presets():
+    try:
+        preset_manager.refresh_from_s3()
+        return {"success": True}
+    except Exception as e:
+        logger.error(f"Failed to refresh presets from S3: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/layout")
@@ -359,7 +384,8 @@ async def delete_preset(name: str):
 
 
 async def _stream_action(action_label: str, name: str, commands: List[str],
-                         resource_id: Optional[str], resource_dir: Optional[Path]) -> AsyncIterator[str]:
+                         resource_id: Optional[str], resource_dir: Optional[Path],
+                         on_success=None) -> AsyncIterator[str]:
     yield f"=== EKS Preset {action_label} ===\n"
     yield f"Preset: {name}\n\n"
 
@@ -377,8 +403,26 @@ async def _stream_action(action_label: str, name: str, commands: List[str],
 
     yield f"\n{action_label} from: {preset_dir}\n"
 
+    success = True
     async for line in _execute_commands(commands, str(preset_dir)):
+        if line.startswith(EXIT_SENTINEL_PREFIX) and "1" in line:
+            success = False
         yield line
+
+    if success and on_success:
+        try:
+            on_success()
+        except Exception as e:
+            logger.warning(f"on_success callback failed: {e}")
+
+
+@router.get("/deployments")
+async def get_deployments():
+    try:
+        return {"deployments": preset_manager.get_deployments()}
+    except Exception as e:
+        logger.error(f"Failed to get deployments: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/presets/{name}/deploy")
@@ -394,7 +438,8 @@ async def deploy_preset(name: str):
     resource_id, resource_dir = _get_eks_resource_info()
 
     return StreamingResponse(
-        _stream_action("Deploy", name, commands, resource_id, resource_dir),
+        _stream_action("Deploy", name, commands, resource_id, resource_dir,
+                        on_success=lambda: preset_manager.mark_deployed(name)),
         media_type="text/plain",
     )
 
@@ -430,9 +475,40 @@ async def undeploy_preset(name: str):
     resource_id, resource_dir = _get_eks_resource_info()
 
     return StreamingResponse(
-        _stream_action("Undeploy", name, commands, resource_id, resource_dir),
+        _stream_action("Undeploy", name, commands, resource_id, resource_dir,
+                        on_success=lambda: preset_manager.mark_undeployed(name)),
         media_type="text/plain",
     )
+
+
+@router.post("/kubectl")
+async def run_kubectl(body: dict = Body(...)):
+    command = body.get("command", "").strip()
+    if not command:
+        raise HTTPException(status_code=400, detail="command is required")
+
+    ALLOWED_BINARIES = {"kubectl", "helm", "istioctl", "kustomize"}
+    first_token = command.split()[0] if command.split() else ""
+    if first_token not in ALLOWED_BINARIES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Only {', '.join(sorted(ALLOWED_BINARIES))} commands are allowed",
+        )
+
+    resource_id, resource_dir = _get_eks_resource_info()
+
+    async def _stream():
+        ok, lines = await _setup_kubeconfig(resource_id, resource_dir)
+        for line in lines:
+            yield line
+        if not ok:
+            return
+
+        yield f"$ {command}\n"
+        async for line in _stream_shell(command):
+            yield line
+
+    return StreamingResponse(_stream(), media_type="text/plain")
 
 
 @router.get("/kubeconfig-status")

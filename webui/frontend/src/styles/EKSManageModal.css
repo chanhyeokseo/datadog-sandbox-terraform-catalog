@@ -828,6 +828,58 @@ body.light-mode .eks-code-editor {
   border: 1px solid rgba(33, 150, 243, 0.3);
 }
 
+/* Deployed presets list */
+.eks-deployed-list {
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+}
+
+.eks-deployed-header {
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.eks-deployed-items {
+  display: flex;
+  flex-direction: column;
+}
+
+.eks-deployed-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: all 0.15s;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.eks-deployed-item:last-child {
+  border-bottom: none;
+}
+
+.eks-deployed-item:hover {
+  background: rgba(76, 175, 80, 0.06);
+}
+
+.eks-deployed-item.selected {
+  background: rgba(76, 175, 80, 0.1);
+}
+
+.eks-deployed-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #4caf50;
+}
+
+.eks-deployed-time {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
 /* Update button */
 .eks-btn-update {
   padding: 10px 24px;
@@ -948,4 +1000,112 @@ body.light-mode .eks-code-editor {
 
 .light-mode .eks-deploy-log::-webkit-scrollbar-thumb {
   background: #ccc;
+}
+
+/* Run tab */
+.eks-run-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.eks-run-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.eks-run-preset-btn {
+  padding: 5px 12px;
+  background: rgba(139, 127, 199, 0.1);
+  color: var(--primary-color);
+  border: 1px solid rgba(139, 127, 199, 0.25);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.eks-run-preset-btn:hover:not(:disabled) {
+  background: rgba(139, 127, 199, 0.2);
+  transform: translateY(-1px);
+}
+
+.eks-run-preset-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.eks-run-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  padding: 4px 8px;
+}
+
+.eks-run-input-row:focus-within {
+  border-color: var(--primary-color);
+}
+
+.eks-run-prompt {
+  color: var(--primary-color);
+  font-family: 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 14px;
+  font-weight: 700;
+  user-select: none;
+}
+
+.eks-run-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-family: 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 13px;
+  outline: none;
+  padding: 8px 4px;
+}
+
+.eks-run-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.eks-run-exec-btn {
+  padding: 6px 18px;
+  background: rgba(76, 175, 80, 0.2);
+  color: #4caf50;
+  border: 1px solid rgba(76, 175, 80, 0.3);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.eks-run-exec-btn:hover:not(:disabled) {
+  background: rgba(76, 175, 80, 0.3);
+}
+
+.eks-run-exec-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.eks-run-stop-btn {
+  padding: 6px 14px;
+  background: rgba(220, 53, 69, 0.2);
+  color: #dc3545;
+  border: 1px solid rgba(220, 53, 69, 0.3);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.eks-run-stop-btn:hover {
+  background: rgba(220, 53, 69, 0.3);
 }

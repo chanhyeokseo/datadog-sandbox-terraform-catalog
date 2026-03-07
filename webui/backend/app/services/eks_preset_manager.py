@@ -8,6 +8,7 @@ logger = logging.getLogger(__name__)
 
 S3_PRESET_PREFIX = "eks-presets"
 S3_LAYOUT_KEY = f"{S3_PRESET_PREFIX}/_layout.json"
+S3_DEPLOYMENTS_KEY = f"{S3_PRESET_PREFIX}/_deployments.json"
 OOTB_SOURCE_DIR = Path("/app/terraform-source/eks")
 
 
@@ -17,6 +18,7 @@ class EKSPresetManager:
         self.terraform_dir = Path(terraform_dir)
         self.eks_dir = self.terraform_dir / "eks"
         self._cached_s3_manager = None
+        self._cache_initialized = False
 
     def _get_s3_manager(self):
         from app.services.s3_config_manager import S3ConfigManager
@@ -77,7 +79,11 @@ class EKSPresetManager:
                 }
         return presets
 
-    def _scan_s3_presets(self) -> Dict[str, Dict]:
+    def _scan_s3_presets(self, force: bool = False) -> Dict[str, Dict]:
+        if self._cache_initialized and not force:
+            logger.debug("S3 preset scan skipped (local cache initialized)")
+            return {}
+
         presets = {}
         s3 = self._get_s3_manager()
         if not s3:
@@ -297,6 +303,10 @@ class EKSPresetManager:
         preset_dir = self.eks_dir / name
         preset_dir.mkdir(parents=True, exist_ok=True)
 
+        if self._cache_initialized and preset_dir.exists() and any(preset_dir.iterdir()):
+            logger.debug(f"Preset '{name}' already cached locally, skipping S3 sync")
+            return preset_dir
+
         s3 = self._get_s3_manager()
         if s3:
             keys = s3.list_files(f"{S3_PRESET_PREFIX}/{name}/")
@@ -305,6 +315,9 @@ class EKSPresetManager:
                 if not filename:
                     continue
                 local_path = preset_dir / filename
+                if local_path.exists():
+                    logger.debug(f"Skipping already cached file: {local_path}")
+                    continue
                 s3.download_file(key, local_path)
 
         if preset_dir.exists() and any(preset_dir.iterdir()):
@@ -312,15 +325,24 @@ class EKSPresetManager:
         return None
 
     def get_layout(self) -> List[Dict]:
-        s3 = self._get_s3_manager()
         layout = None
-        if s3:
-            local_path = self.eks_dir / "_layout.json"
-            if s3.download_file(S3_LAYOUT_KEY, local_path):
+        local_path = self.eks_dir / "_layout.json"
+
+        if local_path.exists():
+            try:
+                layout = json.loads(local_path.read_text())
+                logger.debug("Layout loaded from local cache")
+            except Exception as e:
+                logger.warning(f"Failed to parse local layout: {e}")
+
+        if layout is None:
+            s3 = self._get_s3_manager()
+            if s3 and s3.download_file(S3_LAYOUT_KEY, local_path):
                 try:
                     layout = json.loads(local_path.read_text())
+                    logger.debug("Layout downloaded from S3")
                 except Exception as e:
-                    logger.warning(f"Failed to parse layout: {e}")
+                    logger.warning(f"Failed to parse S3 layout: {e}")
 
         all_presets = {p["name"]: p for p in self.list_presets()}
         if layout is None:
@@ -385,3 +407,87 @@ class EKSPresetManager:
             if not s3.upload_file(f, s3_key):
                 success = False
         return success
+
+    def initialize_local_cache(self) -> None:
+        s3 = self._get_s3_manager()
+        if not s3:
+            logger.warning("S3 not available, skipping EKS preset cache initialization")
+            self._cache_initialized = True
+            return
+
+        self.eks_dir.mkdir(parents=True, exist_ok=True)
+
+        try:
+            local_path = self.eks_dir / "_layout.json"
+            if s3.download_file(S3_LAYOUT_KEY, local_path):
+                logger.debug("Cached _layout.json from S3")
+
+            keys = s3.list_files(f"{S3_PRESET_PREFIX}/")
+            downloaded = 0
+            for key in keys:
+                if key.endswith("/"):
+                    continue
+                rel = key[len(S3_PRESET_PREFIX) + 1:]
+                if rel.startswith("_"):
+                    continue
+                local_file = self.eks_dir / rel
+                local_file.parent.mkdir(parents=True, exist_ok=True)
+                if s3.download_file(key, local_file):
+                    downloaded += 1
+
+            logger.info(f"EKS preset cache initialized: {downloaded} files downloaded from S3")
+        except Exception as e:
+            logger.warning(f"Failed to initialize EKS preset cache: {e}")
+
+        self._cache_initialized = True
+
+    def refresh_from_s3(self) -> None:
+        logger.info("Refreshing EKS preset cache from S3")
+        self._cache_initialized = False
+        self.initialize_local_cache()
+
+    def _deployments_path(self) -> Path:
+        return self.eks_dir / "_deployments.json"
+
+    def _read_deployments(self) -> Dict[str, Dict]:
+        path = self._deployments_path()
+        if path.exists():
+            try:
+                return json.loads(path.read_text())
+            except Exception as e:
+                logger.warning(f"Failed to read deployments file: {e}")
+        return {}
+
+    def _save_deployments(self, data: Dict[str, Dict]) -> None:
+        path = self._deployments_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, indent=2) + "\n")
+        s3 = self._get_s3_manager()
+        if s3:
+            s3.upload_file(path, S3_DEPLOYMENTS_KEY)
+
+    def get_deployments(self) -> Dict[str, Dict]:
+        local = self._read_deployments()
+        if local:
+            return local
+        s3 = self._get_s3_manager()
+        if s3:
+            path = self._deployments_path()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if s3.download_file(S3_DEPLOYMENTS_KEY, path):
+                return self._read_deployments()
+        return {}
+
+    def mark_deployed(self, name: str) -> None:
+        from datetime import datetime, timezone
+        deployments = self._read_deployments()
+        deployments[name] = {"deployed_at": datetime.now(timezone.utc).isoformat()}
+        self._save_deployments(deployments)
+        logger.debug(f"Marked preset as deployed: {name}")
+
+    def mark_undeployed(self, name: str) -> None:
+        deployments = self._read_deployments()
+        if name in deployments:
+            del deployments[name]
+            self._save_deployments(deployments)
+            logger.debug(f"Marked preset as undeployed: {name}")

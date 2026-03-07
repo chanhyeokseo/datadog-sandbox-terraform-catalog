@@ -4,7 +4,7 @@
   "type": "helm",
   "built_in": true,
   "deploy_commands": [
-    "kubectl create secret generic datadog-secret --from-literal api-key=<YOUR_DATADOG_API_KEY>",
+    "kubectl create secret generic datadog-secret --from-literal api-key={{datadog_api_key}}",
     "helm repo add datadog https://helm.datadoghq.com --force-update",
     "helm repo update",
     "helm upgrade --install datadog-agent datadog/datadog -f datadog-values.yaml"

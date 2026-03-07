@@ -581,7 +581,16 @@ export interface KubeconfigStatus {
   message?: string;
 }
 
+export interface DeploymentInfo {
+  deployed_at: string;
+}
+
 export const eksManageApi = {
+  getDeployments: async (): Promise<Record<string, DeploymentInfo>> => {
+    const response = await axios.get<{ deployments: Record<string, DeploymentInfo> }>(`${EKS_MANAGE_BASE}/deployments`);
+    return response.data.deployments;
+  },
+
   listPresets: async (): Promise<{ presets: EKSPreset[] }> => {
     const response = await axios.get<{ presets: EKSPreset[] }>(`${EKS_MANAGE_BASE}/presets`);
     return response.data;
@@ -707,6 +716,40 @@ export const eksManageApi = {
   ): Promise<void> => {
     const response = await fetch(`${EKS_MANAGE_BASE}/presets/${name}/undeploy`, {
       method: 'POST',
+      signal,
+    });
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+    if (!reader) throw new Error('Response body is not readable');
+    const buffer = { current: '' };
+    let exitCode: number | null = null;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        const code = processStreamChunk(buffer, chunk, onData);
+        if (code !== null) exitCode = code;
+      }
+      if (exitCode === null) exitCode = flushStreamBuffer(buffer, onData);
+      onComplete(exitCode === 0);
+    } catch (error) {
+      onData(`\nError: ${error}\n`);
+      onComplete(false);
+    }
+  },
+
+  streamKubectl: async (
+    command: string,
+    onData: (chunk: string) => void,
+    onComplete: (success: boolean) => void,
+    signal?: AbortSignal
+  ): Promise<void> => {
+    const response = await fetch(`${EKS_MANAGE_BASE}/kubectl`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command }),
       signal,
     });
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);

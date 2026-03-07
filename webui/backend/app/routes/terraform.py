@@ -86,6 +86,33 @@ def _get_eks_config_file(resource_dir: Optional[Path]) -> Optional[Path]:
     return resource_dir / "eks-config.auto.tfvars"
 
 
+def _write_eks_config_file(config_path: Path, config: Dict) -> None:
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        f"enable_node_group   = {str(config.get('enable_node_group', True)).lower()}",
+        f"node_instance_types = {config.get('node_instance_types', ['t3.medium'])}".replace("'", '"'),
+        f"node_desired_size   = {config.get('node_desired_size', 2)}",
+        f"node_min_size       = {config.get('node_min_size', 1)}",
+        f"node_max_size       = {config.get('node_max_size', 4)}",
+        f"node_disk_size      = {config.get('node_disk_size', 20)}",
+        f"node_capacity_type  = \"{config.get('node_capacity_type', 'ON_DEMAND')}\"",
+        f"enable_windows_node_group   = {str(config.get('enable_windows_node_group', False)).lower()}",
+        f"windows_node_instance_types = {config.get('windows_node_instance_types', ['t3.medium'])}".replace("'", '"'),
+        f"windows_node_ami_type       = \"{config.get('windows_node_ami_type', 'WINDOWS_FULL_2022_x86_64')}\"",
+        f"windows_node_desired_size   = {config.get('windows_node_desired_size', 2)}",
+        f"windows_node_min_size       = {config.get('windows_node_min_size', 1)}",
+        f"windows_node_max_size       = {config.get('windows_node_max_size', 4)}",
+        f"windows_node_disk_size      = {config.get('windows_node_disk_size', 50)}",
+        f"windows_node_capacity_type  = \"{config.get('windows_node_capacity_type', 'ON_DEMAND')}\"",
+        f"enable_fargate     = {str(config.get('enable_fargate', False)).lower()}",
+        f"fargate_namespaces = {config.get('fargate_namespaces', ['default', 'kube-system'])}".replace("'", '"'),
+        f"endpoint_public_access  = {str(config.get('endpoint_public_access', True)).lower()}",
+        f"endpoint_private_access = {str(config.get('endpoint_private_access', True)).lower()}",
+    ]
+    with open(config_path, 'w') as f:
+        f.write('\n'.join(lines) + '\n')
+
+
 def _parse_eks_config_file(config_path: Path) -> Optional[Dict]:
     if not config_path.exists():
         return None
@@ -256,6 +283,8 @@ async def sso_status(session_id: str):
     if result.get("status") == "complete":
         logger.info("SSO login complete, rebuilding S3 status cache")
         parser.invalidate_s3_status()
+        from app.routes.eks_manage import preset_manager as eks_preset_mgr
+        eks_preset_mgr.refresh_from_s3()
     return result
 
 
@@ -1161,6 +1190,11 @@ async def get_eks_config():
                 "error": "Required EKS config outputs are missing",
                 "missing_outputs": missing_outputs,
             }
+
+        if config_path:
+            _write_eks_config_file(config_path, config)
+            logger.debug(f"Cached terraform output to local file: {config_path}")
+
         logger.debug(f"Loaded EKS config from terraform output for {resource_id}: {sorted(config.keys())}")
         return config
     except Exception as e:
@@ -1175,35 +1209,8 @@ async def update_eks_config(config: Dict):
         eks_config_file = _get_eks_config_file(resource_dir)
         if not eks_config_file:
             raise HTTPException(status_code=404, detail="EKS resource not found")
-        eks_config_file.parent.mkdir(parents=True, exist_ok=True)
-        
-        lines = [
-            f"enable_node_group   = {str(config.get('enable_node_group', True)).lower()}",
-            f"node_instance_types = {config.get('node_instance_types', ['t3.medium'])}".replace("'", '"'),
-            f"node_desired_size   = {config.get('node_desired_size', 2)}",
-            f"node_min_size       = {config.get('node_min_size', 1)}",
-            f"node_max_size       = {config.get('node_max_size', 4)}",
-            f"node_disk_size      = {config.get('node_disk_size', 20)}",
-            f"node_capacity_type  = \"{config.get('node_capacity_type', 'ON_DEMAND')}\"",
-            f"enable_windows_node_group   = {str(config.get('enable_windows_node_group', False)).lower()}",
-            f"windows_node_instance_types = {config.get('windows_node_instance_types', ['t3.medium'])}".replace("'", '"'),
-            f"windows_node_ami_type       = \"{config.get('windows_node_ami_type', 'WINDOWS_FULL_2022_x86_64')}\"",
-            f"windows_node_desired_size   = {config.get('windows_node_desired_size', 2)}",
-            f"windows_node_min_size       = {config.get('windows_node_min_size', 1)}",
-            f"windows_node_max_size       = {config.get('windows_node_max_size', 4)}",
-            f"windows_node_disk_size      = {config.get('windows_node_disk_size', 50)}",
-            f"windows_node_capacity_type  = \"{config.get('windows_node_capacity_type', 'ON_DEMAND')}\"",
-            f"enable_fargate     = {str(config.get('enable_fargate', False)).lower()}",
-            f"fargate_namespaces = {config.get('fargate_namespaces', ['default', 'kube-system'])}".replace("'", '"'),
-            f"endpoint_public_access  = {str(config.get('endpoint_public_access', True)).lower()}",
-            f"endpoint_private_access = {str(config.get('endpoint_private_access', True)).lower()}",
-        ]
-        
-        with open(eks_config_file, 'w') as f:
-            f.write('\n'.join(lines) + '\n')
-        
+        _write_eks_config_file(eks_config_file, config)
         return {"success": True, "message": "EKS configuration updated successfully"}
-        
     except Exception as e:
         logger.error(f"Error updating EKS config: {e}")
         raise HTTPException(status_code=500, detail=str(e))

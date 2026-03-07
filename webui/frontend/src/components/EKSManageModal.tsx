@@ -9,7 +9,7 @@ import {
   SortableContext, useSortable, verticalListSortingStrategy, arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { eksManageApi, EKSPreset, TreeNode, TreeFolder } from '../services/api';
+import { eksManageApi, EKSPreset, TreeNode, TreeFolder, DeploymentInfo } from '../services/api';
 import '../styles/EKSManageModal.css';
 
 interface EKSManageModalProps {
@@ -21,7 +21,7 @@ interface EKSManageModalProps {
   } | null;
 }
 
-type TabId = 'connection' | 'presets' | 'editor' | 'deploy';
+type TabId = 'connection' | 'presets' | 'editor' | 'deploy' | 'run';
 
 const STORAGE_KEY = 'eks-last-preset';
 
@@ -99,9 +99,19 @@ const EKSManageModal = ({ onClose, connectInfo }: EKSManageModalProps) => {
   const [deployLog, setDeployLog] = useState<string>('');
   const [deploying, setDeploying] = useState(false);
   const [deployStatus, setDeployStatus] = useState<'idle' | 'running' | 'success' | 'error'>('idle');
+  const [deployedPresets, setDeployedPresets] = useState<Record<string, DeploymentInfo>>({});
   const deployLogRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const highlightRef = useRef<HTMLPreElement>(null);
+
+  const [runCommand, setRunCommand] = useState('');
+  const [runOutput, setRunOutput] = useState('');
+  const [runRunning, setRunRunning] = useState(false);
+  const [runStatus, setRunStatus] = useState<'idle' | 'running' | 'success' | 'error'>('idle');
+  const runLogRef = useRef<HTMLDivElement>(null);
+  const runAbortRef = useRef<AbortController | null>(null);
+  const [runHistory, setRunHistory] = useState<string[]>([]);
+  const [runHistoryIdx, setRunHistoryIdx] = useState(-1);
 
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createName, setCreateName] = useState('');
@@ -112,6 +122,15 @@ const EKSManageModal = ({ onClose, connectInfo }: EKSManageModalProps) => {
   const [dragActiveId, setDragActiveId] = useState<string | null>(null);
   const presetsMap = useRef<Record<string, EKSPreset>>({});
   const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  const loadDeployments = useCallback(async () => {
+    try {
+      const data = await eksManageApi.getDeployments();
+      setDeployedPresets(data);
+    } catch (e) {
+      console.error('Failed to load deployments:', e);
+    }
+  }, []);
 
   const loadPresets = useCallback(async () => {
     setLoadingPresets(true);
@@ -126,12 +145,13 @@ const EKSManageModal = ({ onClose, connectInfo }: EKSManageModalProps) => {
         const layout = await eksManageApi.getLayout();
         setTreeLayout(layout);
       } catch { /* layout will be generated server-side on next call */ }
+      await loadDeployments();
     } catch (e) {
       console.error('Failed to load presets:', e);
     } finally {
       setLoadingPresets(false);
     }
-  }, [deployPreset]);
+  }, [deployPreset, loadDeployments]);
 
   useEffect(() => {
     loadPresets();
@@ -314,6 +334,7 @@ const EKSManageModal = ({ onClose, connectInfo }: EKSManageModalProps) => {
         (success) => {
           setDeployStatus(success ? 'success' : 'error');
           setDeploying(false);
+          if (success) loadDeployments();
         },
         abortRef.current.signal,
       );
@@ -343,6 +364,7 @@ const EKSManageModal = ({ onClose, connectInfo }: EKSManageModalProps) => {
         (success) => {
           setDeployStatus(success ? 'success' : 'error');
           setDeploying(false);
+          if (success) loadDeployments();
         },
         abortRef.current.signal,
       );
@@ -843,12 +865,158 @@ const EKSManageModal = ({ onClose, connectInfo }: EKSManageModalProps) => {
     );
   };
 
+  const PRESET_COMMANDS = [
+    { label: 'Get Pods', cmd: 'kubectl get pods -A' },
+    { label: 'Get Nodes', cmd: 'kubectl get nodes -o wide' },
+    { label: 'Get Services', cmd: 'kubectl get svc -A' },
+    { label: 'Get Namespaces', cmd: 'kubectl get namespaces' },
+    { label: 'Get Events', cmd: 'kubectl get events -A --sort-by=.lastTimestamp' },
+    { label: 'Get Deployments', cmd: 'kubectl get deployments -A' },
+    { label: 'Get DaemonSets', cmd: 'kubectl get daemonsets -A' },
+    { label: 'Get ConfigMaps', cmd: 'kubectl get configmaps -A' },
+    { label: 'Get Webhooks', cmd: 'kubectl get mutatingwebhookconfigurations,validatingwebhookconfigurations' },
+  ];
+
+  const executeRunCommand = async (cmd: string) => {
+    if (!cmd.trim() || runRunning) return;
+    setRunRunning(true);
+    setRunOutput('');
+    setRunStatus('running');
+    setRunHistory(prev => {
+      const next = prev.filter(h => h !== cmd.trim());
+      next.unshift(cmd.trim());
+      return next.slice(0, 50);
+    });
+    setRunHistoryIdx(-1);
+    runAbortRef.current = new AbortController();
+    try {
+      await eksManageApi.streamKubectl(
+        cmd.trim(),
+        (chunk) => {
+          setRunOutput(prev => prev + chunk);
+          if (runLogRef.current) runLogRef.current.scrollTop = runLogRef.current.scrollHeight;
+        },
+        (success) => {
+          setRunStatus(success ? 'success' : 'error');
+          setRunRunning(false);
+        },
+        runAbortRef.current.signal,
+      );
+    } catch (e) {
+      setRunStatus('error');
+      setRunRunning(false);
+      setRunOutput(prev => prev + `\nError: ${e}\n`);
+    }
+  };
+
+  const handleRunKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      executeRunCommand(runCommand);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (runHistory.length > 0) {
+        const next = Math.min(runHistoryIdx + 1, runHistory.length - 1);
+        setRunHistoryIdx(next);
+        setRunCommand(runHistory[next]);
+      }
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (runHistoryIdx > 0) {
+        const next = runHistoryIdx - 1;
+        setRunHistoryIdx(next);
+        setRunCommand(runHistory[next]);
+      } else {
+        setRunHistoryIdx(-1);
+        setRunCommand('');
+      }
+    }
+  };
+
+  const renderRunTab = () => (
+    <div className="eks-run-section">
+      <div className="eks-run-presets">
+        {PRESET_COMMANDS.map(({ label, cmd }) => (
+          <button
+            key={cmd}
+            className={`eks-run-preset-btn ${runRunning ? 'disabled' : ''}`}
+            onClick={() => { setRunCommand(cmd); executeRunCommand(cmd); }}
+            disabled={runRunning}
+            title={cmd}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <div className="eks-run-input-row">
+        <span className="eks-run-prompt">$</span>
+        <input
+          type="text"
+          className="eks-run-input"
+          value={runCommand}
+          onChange={e => setRunCommand(e.target.value)}
+          onKeyDown={handleRunKeyDown}
+          placeholder="kubectl get pods -n default"
+          disabled={runRunning}
+          spellCheck={false}
+          autoComplete="off"
+        />
+        <button
+          className="eks-run-exec-btn"
+          onClick={() => executeRunCommand(runCommand)}
+          disabled={runRunning || !runCommand.trim()}
+        >
+          {runRunning ? 'Running...' : 'Run'}
+        </button>
+        {runRunning && (
+          <button
+            className="eks-run-stop-btn"
+            onClick={() => runAbortRef.current?.abort()}
+          >
+            Stop
+          </button>
+        )}
+      </div>
+      {runStatus !== 'idle' && (
+        <div className={`eks-deploy-status ${runStatus}`}>
+          {runStatus === 'running' && 'Running...'}
+          {runStatus === 'success' && 'Completed'}
+          {runStatus === 'error' && 'Failed'}
+        </div>
+      )}
+      <div className="eks-deploy-log" ref={runLogRef}>
+        {runOutput || 'Select a preset command or type your own and press Run.'}
+      </div>
+    </div>
+  );
+
+  const deployedNames = Object.keys(deployedPresets);
+
   const renderDeployTab = () => {
     const currentPreset = presets.find(p => p.name === deployPreset);
     const hasUpdateCmds = (currentPreset?.update_commands?.length || 0) > 0;
 
     return (
       <div className="eks-deploy-section">
+        {deployedNames.length > 0 && (
+          <div className="eks-deployed-list">
+            <div className="eks-deployed-header">Deployed Presets</div>
+            <div className="eks-deployed-items">
+              {deployedNames.map(name => (
+                <div
+                  key={name}
+                  className={`eks-deployed-item ${deployPreset === name ? 'selected' : ''}`}
+                  onClick={() => { setDeployPreset(name); localStorage.setItem(STORAGE_KEY, name); }}
+                >
+                  <span className="eks-deployed-name">{name}</span>
+                  <span className="eks-deployed-time">
+                    {new Date(deployedPresets[name].deployed_at).toLocaleString()}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="eks-deploy-preset-select">
           <label>Preset</label>
           <select value={deployPreset} onChange={e => { setDeployPreset(e.target.value); localStorage.setItem(STORAGE_KEY, e.target.value); }} disabled={deploying}>
@@ -895,13 +1063,13 @@ const EKSManageModal = ({ onClose, connectInfo }: EKSManageModalProps) => {
           <button className="eks-manage-close" onClick={onClose}>&times;</button>
         </div>
         <div className="eks-manage-tabs">
-          {(['connection', 'presets', 'editor', 'deploy'] as TabId[]).map(tab => (
+          {(['connection', 'presets', 'editor', 'deploy', 'run'] as TabId[]).map(tab => (
             <button
               key={tab}
               className={`eks-manage-tab ${activeTab === tab ? 'active' : ''}`}
               onClick={() => setActiveTab(tab)}
             >
-              {tab === 'connection' ? 'Connection' : tab === 'presets' ? 'Presets' : tab === 'editor' ? 'Editor' : 'Deploy'}
+              {{ connection: 'Connection', presets: 'Presets', editor: 'Editor', deploy: 'Deploy', run: 'Run' }[tab]}
             </button>
           ))}
         </div>
@@ -910,6 +1078,7 @@ const EKSManageModal = ({ onClose, connectInfo }: EKSManageModalProps) => {
           {activeTab === 'presets' && renderPresetsTab()}
           {activeTab === 'editor' && renderEditorTab()}
           {activeTab === 'deploy' && renderDeployTab()}
+          {activeTab === 'run' && renderRunTab()}
         </div>
       </div>
     </div>,
