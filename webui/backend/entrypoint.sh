@@ -24,6 +24,14 @@ elif [ -d "/app/terraform-source/apps" ]; then
     echo "Apps ready"
 fi
 
+if mountpoint -q /app/terraform/eks 2>/dev/null; then
+    echo "EKS presets: using bind mount"
+elif [ -d "/app/terraform-source/eks" ]; then
+    rm -rf /app/terraform/eks
+    cp -r /app/terraform-source/eks /app/terraform/
+    echo "EKS presets ready: $(ls -1 /app/terraform/eks | wc -l) directories"
+fi
+
 echo "Seeding instances from image..."
 if [ -d "/app/terraform-source/instances" ]; then
     cp -r /app/terraform-source/instances /app/terraform/

@@ -1,0 +1,19 @@
+{
+  "name": "spring-boot-3.5.8",
+  "description": "Spring Boot 3.5.8 demo app with Datadog APM tracing",
+  "type": "kubectl",
+  "built_in": true,
+  "deploy_commands": [
+    "kubectl apply -f deployment.yaml",
+    "kubectl apply -f load-generator.yaml"
+  ],
+  "update_commands": [
+    "kubectl apply -f deployment.yaml",
+    "kubectl apply -f load-generator.yaml"
+  ],
+  "undeploy_commands": [
+    "kubectl delete -f load-generator.yaml --ignore-not-found",
+    "kubectl delete -f deployment.yaml --ignore-not-found"
+  ],
+  "files": ["deployment.yaml", "load-generator.yaml", "README.md"]
+}

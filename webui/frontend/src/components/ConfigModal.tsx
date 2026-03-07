@@ -8,6 +8,8 @@ interface ConfigModalProps {
   onSave: (message: string) => void;
 }
 
+const READONLY_VARS = new Set(['name_prefix', 'aws_access_key_id', 'aws_secret_access_key']);
+
 const ConfigModal = ({ onClose, onSave }: ConfigModalProps) => {
   const [commonVars, setCommonVars] = useState<TerraformVariable[]>([]);
   const [editingVar, setEditingVar] = useState<string | null>(null);
@@ -104,13 +106,15 @@ const ConfigModal = ({ onClose, onSave }: ConfigModalProps) => {
                         <span className="variable-value">
                           {variable.sensitive ? '***' : variable.value || '(empty)'}
                         </span>
-                        <button 
-                          onClick={() => handleEditVariable(variable.name, variable.value || '')} 
-                          className="btn-edit-small"
-                          title="Edit variable"
-                        >
-                          ✏️
-                        </button>
+                        {!READONLY_VARS.has(variable.name) && (
+                          <button 
+                            onClick={() => handleEditVariable(variable.name, variable.value || '')} 
+                            className="btn-edit-small"
+                            title="Edit variable"
+                          >
+                            ✏️
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>

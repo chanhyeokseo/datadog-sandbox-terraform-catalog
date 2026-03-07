@@ -1,0 +1,21 @@
+{
+  "name": "agent-helm",
+  "description": "Datadog Agent via Helm chart (values-based)",
+  "type": "helm",
+  "built_in": true,
+  "deploy_commands": [
+    "kubectl create secret generic datadog-secret --from-literal api-key=<YOUR_DATADOG_API_KEY>",
+    "helm repo add datadog https://helm.datadoghq.com --force-update",
+    "helm repo update",
+    "helm upgrade --install datadog-agent datadog/datadog -f datadog-values.yaml"
+  ],
+  "update_commands": [
+    "helm repo update",
+    "helm upgrade datadog-agent datadog/datadog -f datadog-values.yaml"
+  ],
+  "undeploy_commands": [
+    "helm uninstall datadog-agent",
+    "kubectl delete secret datadog-secret"
+  ],
+  "files": ["datadog-values.yaml", "README.md"]
+}

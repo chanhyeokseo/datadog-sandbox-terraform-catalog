@@ -5,6 +5,7 @@
 !instances/
 !modules/
 !apps/
+!eks/
 !webui/
 
 # Exclude unnecessary files from webui

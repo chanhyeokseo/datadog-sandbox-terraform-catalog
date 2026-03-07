@@ -1,0 +1,951 @@
+.eks-manage-modal {
+  background: var(--bg-primary);
+  width: 95%;
+  max-width: 1100px;
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+}
+
+.eks-manage-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.eks-manage-header h2 {
+  margin: 0;
+  font-size: 22px;
+  color: var(--text-primary);
+}
+
+.eks-manage-close {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 24px;
+  cursor: pointer;
+  padding: 4px 8px;
+  line-height: 1;
+}
+
+.eks-manage-close:hover {
+  color: var(--text-primary);
+}
+
+.eks-manage-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 12px 24px 0;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+}
+
+.eks-manage-tab {
+  padding: 10px 20px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+  border-bottom: 2px solid transparent;
+}
+
+.eks-manage-tab:hover {
+  background: rgba(139, 127, 199, 0.1);
+  color: var(--text-primary);
+}
+
+.eks-manage-tab.active {
+  background: var(--bg-primary);
+  color: var(--primary-color);
+  border-bottom: 2px solid var(--primary-color);
+}
+
+.eks-manage-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+  min-height: 400px;
+}
+
+.eks-manage-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.eks-manage-body::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+.eks-manage-body::-webkit-scrollbar-thumb {
+  background: var(--text-tertiary);
+}
+
+.eks-manage-body::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
+}
+
+/* Connection tab */
+.eks-connect-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.eks-connect-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.eks-connect-field label {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.eks-connect-field .hint {
+  color: var(--text-secondary);
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.eks-connect-value-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.eks-connect-value-row code {
+  flex: 1;
+  padding: 10px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  font-family: 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 12px;
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+
+.eks-copy-btn {
+  padding: 8px 14px;
+  background: rgba(139, 127, 199, 0.15);
+  color: var(--primary-color);
+  border: 1px solid rgba(139, 127, 199, 0.3);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: all 0.2s;
+}
+
+.eks-copy-btn:hover {
+  background: rgba(139, 127, 199, 0.25);
+}
+
+/* Presets tab */
+.eks-presets-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 16px;
+}
+
+.eks-btn-create {
+  padding: 8px 18px;
+  background: rgba(76, 175, 80, 0.2);
+  color: #4caf50;
+  border: 1px solid rgba(76, 175, 80, 0.3);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.eks-btn-create:hover {
+  background: rgba(76, 175, 80, 0.3);
+  transform: translateY(-1px);
+}
+
+/* Tree structure */
+.eks-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.eks-tree-folder {
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  transition: all 0.2s;
+}
+
+.eks-tree-folder.drop-target {
+  border-color: var(--primary-color);
+  background: rgba(139, 127, 199, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(139, 127, 199, 0.3);
+}
+
+.eks-tree-folder-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.eks-tree-folder-header:hover {
+  background: rgba(139, 127, 199, 0.06);
+}
+
+.eks-tree-folder-icon {
+  font-size: 10px;
+  color: var(--text-secondary);
+  width: 14px;
+  text-align: center;
+}
+
+.eks-tree-folder-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.eks-tree-folder-count {
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: rgba(139, 127, 199, 0.1);
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+
+.eks-tree-folder-delete {
+  background: none;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 4px;
+  opacity: 0;
+  transition: all 0.15s;
+}
+
+.eks-tree-folder-header:hover .eks-tree-folder-delete {
+  opacity: 1;
+}
+
+.eks-tree-folder-delete:hover {
+  color: #dc3545;
+}
+
+.eks-tree-folder-children {
+  padding: 0 0 4px 0;
+}
+
+.eks-tree-folder-children .eks-tree-preset {
+  padding-left: 34px;
+}
+
+.eks-tree-empty-folder {
+  padding: 8px 34px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+
+.eks-tree-preset {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+  border: 1px solid transparent;
+}
+
+.eks-tree-preset:hover {
+  background: rgba(139, 127, 199, 0.06);
+}
+
+.eks-tree-preset.selected {
+  background: rgba(139, 127, 199, 0.1);
+  border-color: rgba(139, 127, 199, 0.3);
+}
+
+.eks-tree-preset.drag-overlay {
+  background: var(--bg-secondary);
+  border: 1px solid var(--primary-color);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  padding: 8px 12px;
+  opacity: 0.9;
+}
+
+.eks-tree-preset-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.eks-tree-preset-desc {
+  flex: 1;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.eks-tree-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.eks-tree-preset:hover .eks-tree-actions {
+  opacity: 1;
+}
+
+.eks-tree-actions button {
+  padding: 2px 8px;
+  font-size: 11px;
+  background: rgba(139, 127, 199, 0.1);
+  color: var(--primary-color);
+  border: 1px solid rgba(139, 127, 199, 0.2);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+
+.eks-tree-actions button:hover {
+  background: rgba(139, 127, 199, 0.2);
+}
+
+.eks-tree-actions button.danger {
+  color: #dc3545;
+  background: rgba(220, 53, 69, 0.1);
+  border-color: rgba(220, 53, 69, 0.2);
+}
+
+.eks-tree-actions button.danger:hover {
+  background: rgba(220, 53, 69, 0.2);
+}
+
+.eks-tree-root-drop {
+  margin-top: 4px;
+  padding: 10px;
+  border: 1px dashed var(--border-color);
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  transition: all 0.2s;
+}
+
+.eks-tree-root-drop.drop-target {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  background: rgba(139, 127, 199, 0.06);
+}
+
+.eks-preset-badge {
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 10px;
+}
+
+.eks-preset-badge.built-in {
+  background: rgba(33, 150, 243, 0.15);
+  color: #42a5f5;
+  border: 1px solid rgba(33, 150, 243, 0.3);
+}
+
+.eks-preset-badge.custom {
+  background: rgba(255, 152, 0, 0.15);
+  color: #ffa726;
+  border: 1px solid rgba(255, 152, 0, 0.3);
+}
+
+
+
+.eks-btn-delete {
+  padding: 4px 12px;
+  background: rgba(220, 53, 69, 0.15);
+  color: #dc3545;
+  border: 1px solid rgba(220, 53, 69, 0.3);
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s;
+}
+
+.eks-btn-delete:hover {
+  background: rgba(220, 53, 69, 0.25);
+}
+
+/* Clone button */
+.eks-btn-clone {
+  padding: 4px 12px;
+  background: rgba(33, 150, 243, 0.15);
+  color: #42a5f5;
+  border: 1px solid rgba(33, 150, 243, 0.3);
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s;
+}
+
+.eks-btn-clone:hover {
+  background: rgba(33, 150, 243, 0.25);
+}
+
+.eks-btn-add-file {
+  width: 100%;
+  margin-top: 4px;
+  padding: 6px 12px;
+  background: rgba(76, 175, 80, 0.1);
+  color: #4caf50;
+  border: 1px dashed rgba(76, 175, 80, 0.3);
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s;
+}
+
+.eks-btn-add-file:hover {
+  background: rgba(76, 175, 80, 0.2);
+}
+
+.eks-btn-clone.sidebar-clone {
+  width: 100%;
+  margin-top: 12px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* OOTB badge in editor sidebar */
+.eks-ootb-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 8px;
+  background: rgba(33, 150, 243, 0.15);
+  color: #42a5f5;
+  border: 1px solid rgba(33, 150, 243, 0.3);
+  vertical-align: middle;
+}
+
+/* Read-only textareas */
+.eks-editor-textarea.readonly,
+.eks-cmd-textarea.readonly {
+  opacity: 0.7;
+  cursor: default;
+  background: var(--bg-primary);
+}
+
+/* Create preset form */
+.eks-create-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  margin-bottom: 16px;
+}
+
+.eks-create-form h4 {
+  margin: 0 0 4px 0;
+  color: var(--text-primary);
+  font-size: 15px;
+}
+
+.eks-create-form input,
+.eks-create-form select,
+.eks-create-form textarea {
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.eks-create-form textarea {
+  min-height: 60px;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.eks-create-form-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* Editor tab */
+.eks-editor-layout {
+  display: flex;
+  gap: 16px;
+  height: 100%;
+  min-height: 400px;
+}
+
+.eks-editor-sidebar {
+  width: 200px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.eks-editor-sidebar-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: 0 0 8px 0;
+  border-bottom: 1px solid var(--border-color);
+  margin-bottom: 4px;
+}
+
+.eks-editor-description-field {
+  margin-bottom: 8px;
+}
+
+.eks-editor-desc-input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 12px;
+  box-sizing: border-box;
+}
+
+.eks-editor-desc-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  color: var(--text-primary);
+}
+
+.eks-editor-desc-input.readonly {
+  opacity: 0.7;
+  cursor: default;
+  background: var(--bg-primary);
+}
+
+.eks-desc-save {
+  width: 100%;
+  margin-top: 4px;
+  padding: 4px 8px !important;
+  font-size: 11px !important;
+}
+
+.eks-file-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-secondary);
+  transition: all 0.15s;
+  border: 1px solid transparent;
+}
+
+.eks-file-item:hover {
+  background: rgba(139, 127, 199, 0.08);
+  color: var(--text-primary);
+}
+
+.eks-file-item.active {
+  background: rgba(139, 127, 199, 0.12);
+  color: var(--primary-color);
+  border-color: rgba(139, 127, 199, 0.3);
+  font-weight: 500;
+}
+
+.eks-editor-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.eks-editor-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.eks-editor-filename {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-family: 'Fira Code', 'Cascadia Code', monospace;
+}
+
+.eks-btn-save {
+  padding: 6px 16px;
+  background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+  color: white;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.eks-btn-save:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+}
+
+.eks-btn-save:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.eks-code-editor {
+  position: relative;
+  flex: 1;
+  min-height: 350px;
+  border: 1px solid var(--border-color);
+}
+
+.eks-code-editor:focus-within {
+  border-color: var(--primary-color);
+}
+
+.eks-code-highlight,
+.eks-code-editor .eks-editor-textarea {
+  margin: 0;
+  padding: 16px;
+  font-family: 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  tab-size: 2;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.eks-code-highlight {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  pointer-events: none;
+  color: transparent;
+}
+
+.eks-code-highlight code {
+  color: var(--hl-text);
+}
+
+.eks-code-editor .eks-editor-textarea {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 350px;
+  border: none;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--hl-text);
+  resize: none;
+  outline: none;
+}
+
+.eks-code-editor {
+  --hl-text: #d4d4d4;
+  --hl-key: #9cdcfe;
+  --hl-punct: #d4d4d4;
+  --hl-string: #ce9178;
+  --hl-comment: #6a9955;
+  --hl-bool: #569cd6;
+  --hl-number: #b5cea8;
+  background: #1e1e1e;
+}
+
+body.light-mode .eks-code-editor {
+  --hl-text: #383a42;
+  --hl-key: #e45649;
+  --hl-punct: #383a42;
+  --hl-string: #50a14f;
+  --hl-comment: #a0a1a7;
+  --hl-bool: #0184bc;
+  --hl-number: #986801;
+  background: #fafafa;
+}
+
+.hl-key { color: var(--hl-key); }
+.hl-punct { color: var(--hl-punct); }
+.hl-string { color: var(--hl-string); }
+.hl-comment { color: var(--hl-comment); font-style: italic; }
+.hl-bool { color: var(--hl-bool); }
+.hl-number { color: var(--hl-number); }
+
+.eks-editor-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+/* Deploy tab */
+.eks-deploy-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.eks-deploy-preset-select {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.eks-deploy-preset-select label {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.eks-deploy-preset-select select {
+  flex: 1;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+.eks-deploy-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.eks-btn-deploy {
+  padding: 10px 24px;
+  background: rgba(76, 175, 80, 0.2);
+  color: #4caf50;
+  border: 1px solid rgba(76, 175, 80, 0.3);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.eks-btn-deploy:hover:not(:disabled) {
+  background: rgba(76, 175, 80, 0.3);
+  transform: translateY(-2px);
+}
+
+.eks-btn-deploy:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.eks-btn-undeploy {
+  padding: 10px 24px;
+  background: rgba(220, 53, 69, 0.2);
+  color: #dc3545;
+  border: 1px solid rgba(220, 53, 69, 0.3);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.eks-btn-undeploy:hover:not(:disabled) {
+  background: rgba(220, 53, 69, 0.3);
+  transform: translateY(-2px);
+}
+
+.eks-btn-undeploy:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.eks-deploy-log {
+  flex: 1;
+  min-height: 300px;
+  max-height: 500px;
+  padding: 16px;
+  background: #1a1a2e;
+  border: 1px solid var(--border-color);
+  color: #e0e0e0;
+  font-family: 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.eks-deploy-log::-webkit-scrollbar {
+  width: 8px;
+}
+
+.eks-deploy-log::-webkit-scrollbar-track {
+  background: #1a1a2e;
+}
+
+.eks-deploy-log::-webkit-scrollbar-thumb {
+  background: #444;
+}
+
+.eks-deploy-status {
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.eks-deploy-status.success {
+  background: rgba(76, 175, 80, 0.15);
+  color: #4caf50;
+  border: 1px solid rgba(76, 175, 80, 0.3);
+}
+
+.eks-deploy-status.error {
+  background: rgba(220, 53, 69, 0.15);
+  color: #dc3545;
+  border: 1px solid rgba(220, 53, 69, 0.3);
+}
+
+.eks-deploy-status.running {
+  background: rgba(33, 150, 243, 0.15);
+  color: #42a5f5;
+  border: 1px solid rgba(33, 150, 243, 0.3);
+}
+
+/* Update button */
+.eks-btn-update {
+  padding: 10px 24px;
+  background: rgba(33, 150, 243, 0.2);
+  color: #42a5f5;
+  border: 1px solid rgba(33, 150, 243, 0.3);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.eks-btn-update:hover:not(:disabled) {
+  background: rgba(33, 150, 243, 0.3);
+  transform: translateY(-2px);
+}
+
+.eks-btn-update:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Editor mode toggle */
+.eks-editor-mode-toggle {
+  display: flex;
+  gap: 0;
+  margin-bottom: 8px;
+  border: 1px solid var(--border-color);
+}
+
+.eks-mode-btn {
+  flex: 1;
+  padding: 6px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.eks-mode-btn.active {
+  background: rgba(139, 127, 199, 0.15);
+  color: var(--primary-color);
+}
+
+.eks-mode-btn:hover:not(.active) {
+  background: rgba(139, 127, 199, 0.08);
+}
+
+/* Commands editor */
+.eks-commands-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+}
+
+.eks-cmd-sections {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+}
+
+.eks-cmd-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.eks-cmd-section label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-family: 'Fira Code', 'Cascadia Code', monospace;
+}
+
+.eks-cmd-textarea {
+  min-height: 100px;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-family: 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  resize: vertical;
+  tab-size: 2;
+}
+
+.eks-cmd-textarea:focus {
+  outline: none;
+  border-color: var(--primary-color);
+}
+
+/* Loading */
+.eks-manage-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+/* Light mode */
+.light-mode .eks-deploy-log {
+  background: #f5f5f5;
+  color: #333;
+}
+
+.light-mode .eks-deploy-log::-webkit-scrollbar-track {
+  background: #f5f5f5;
+}
+
+.light-mode .eks-deploy-log::-webkit-scrollbar-thumb {
+  background: #ccc;
+}

@@ -1,0 +1,24 @@
+{
+  "name": "agent-datadog-operator",
+  "description": "Datadog Agent via Datadog Operator (CRD-based)",
+  "type": "kubectl",
+  "built_in": true,
+  "deploy_commands": [
+    "kubectl create secret generic datadog-secret --from-literal api-key=<YOUR_DATADOG_API_KEY>",
+    "helm repo add datadog https://helm.datadoghq.com --force-update",
+    "helm repo update",
+    "helm upgrade --install datadog-operator datadog/datadog-operator",
+    "kubectl apply -f datadog-agent.yaml"
+  ],
+  "update_commands": [
+    "helm repo update",
+    "helm upgrade datadog-operator datadog/datadog-operator",
+    "kubectl apply -f datadog-agent.yaml"
+  ],
+  "undeploy_commands": [
+    "kubectl delete -f datadog-agent.yaml --ignore-not-found",
+    "helm uninstall datadog-operator",
+    "kubectl delete secret datadog-secret"
+  ],
+  "files": ["datadog-agent.yaml", "README.md"]
+}

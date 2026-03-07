@@ -1,0 +1,29 @@
+{
+  "name": "istio",
+  "description": "Istio service mesh with Flask demo application",
+  "type": "helm",
+  "built_in": true,
+  "deploy_commands": [
+    "helm repo add istio https://istio-release.storage.googleapis.com/charts",
+    "helm repo update",
+    "kubectl create namespace istio-system --dry-run=client -o yaml | kubectl apply -f -",
+    "helm upgrade --install istio-base istio/base -n istio-system --set defaultRevision=default",
+    "helm upgrade --install istiod istio/istiod -n istio-system --wait",
+    "kubectl apply -f flask-server.yaml",
+    "kubectl apply -f load-generator.yaml"
+  ],
+  "update_commands": [
+    "helm repo update",
+    "helm upgrade istiod istio/istiod -n istio-system --wait",
+    "kubectl apply -f flask-server.yaml",
+    "kubectl apply -f load-generator.yaml"
+  ],
+  "undeploy_commands": [
+    "kubectl delete -f load-generator.yaml --ignore-not-found",
+    "kubectl delete -f flask-server.yaml --ignore-not-found",
+    "helm uninstall istiod -n istio-system",
+    "helm uninstall istio-base -n istio-system",
+    "kubectl delete namespace istio-system --ignore-not-found"
+  ],
+  "files": ["flask-server.yaml", "load-generator.yaml", "README.md"]
+}

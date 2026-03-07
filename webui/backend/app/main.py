@@ -9,7 +9,7 @@ import logging
 if not os.environ.get("AWS_PROFILE", "").strip():
     os.environ.pop("AWS_PROFILE", None)
 
-from app.routes import terraform, ssh, backend, keys, danger_zone
+from app.routes import terraform, ssh, backend, keys, danger_zone, eks_manage
 from app.services.credential_manager import credential_manager
 
 log_level = os.environ.get('LOG_LEVEL', 'INFO').upper()
@@ -17,6 +17,8 @@ logging.basicConfig(
     level=getattr(logging, log_level, logging.INFO),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
+for _noisy in ('botocore', 'boto3', 'urllib3', 's3transfer'):
+    logging.getLogger(_noisy).setLevel(logging.WARNING)
 
 
 @asynccontextmanager
@@ -46,6 +48,7 @@ app.include_router(ssh.router)
 app.include_router(backend.router)
 app.include_router(keys.router)
 app.include_router(danger_zone.router)
+app.include_router(eks_manage.router)
 
 
 @app.get("/")

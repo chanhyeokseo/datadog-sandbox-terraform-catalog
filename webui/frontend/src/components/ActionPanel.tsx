@@ -8,6 +8,7 @@ import DockerAgentEditor from './DockerAgentEditor';
 import DebugModal from './DebugModal';
 import DescriptionModal from './DescriptionModal';
 import ConfirmModal from './ConfirmModal';
+import EKSManageModal from './EKSManageModal';
 
 interface ActionPanelProps {
   selectedResource: TerraformResource | null;
@@ -41,6 +42,7 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
   const [pendingConfirm, setPendingConfirm] = useState<{ type: string; onConfirm: () => void } | null>(null);
   const [rdpInfo, setRdpInfo] = useState<{ ip: string; username: string; password: string } | null>(null);
   const [eksConnectInfo, setEksConnectInfo] = useState<{ kubeconfigCommand: string; clusterName: string; ssoCommand: string } | null>(null);
+  const [showEKSManageModal, setShowEKSManageModal] = useState(false);
 
   const getOutputsFromStorage = (): OutputData[] => {
     try {
@@ -289,42 +291,35 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
     if (!selectedResource) return;
 
     const resourceOutput = outputs.find(o => o.resourceId === selectedResource.id);
-    if (!resourceOutput || !resourceOutput.output) {
-      alert('No output information available.\n\nPlease click "Get Outputs" button first to fetch the outputs.');
-      return;
+    if (resourceOutput?.output) {
+      try {
+        const outputData: Record<string, unknown> = JSON.parse(resourceOutput.output);
+        let kubeconfigCommand: string | null = null;
+        let clusterName: string | null = null;
+        let ssoCommand: string | null = null;
+
+        for (const [key, value] of Object.entries(outputData)) {
+          const keyLower = key.toLowerCase();
+          const strVal = value != null ? String(value) : '';
+          if (!strVal) continue;
+          if (!kubeconfigCommand && keyLower.includes('kubeconfig_command')) kubeconfigCommand = strVal;
+          if (!clusterName && keyLower === 'cluster_name') clusterName = strVal;
+          if (!ssoCommand && keyLower.includes('sso_login_command')) ssoCommand = strVal;
+        }
+
+        if (kubeconfigCommand) {
+          setEksConnectInfo({
+            kubeconfigCommand,
+            clusterName: clusterName || 'unknown',
+            ssoCommand: ssoCommand || '',
+          });
+        }
+      } catch {
+        // ignore parse errors, modal will show without connect info
+      }
     }
 
-    let outputData: Record<string, unknown>;
-    try {
-      outputData = JSON.parse(resourceOutput.output);
-    } catch {
-      alert('Failed to parse output data.');
-      return;
-    }
-
-    let kubeconfigCommand: string | null = null;
-    let clusterName: string | null = null;
-    let ssoCommand: string | null = null;
-
-    for (const [key, value] of Object.entries(outputData)) {
-      const keyLower = key.toLowerCase();
-      const strVal = value != null ? String(value) : '';
-      if (!strVal) continue;
-      if (!kubeconfigCommand && keyLower.includes('kubeconfig_command')) kubeconfigCommand = strVal;
-      if (!clusterName && keyLower === 'cluster_name') clusterName = strVal;
-      if (!ssoCommand && keyLower.includes('sso_login_command')) ssoCommand = strVal;
-    }
-
-    if (!kubeconfigCommand) {
-      alert('kubeconfig_command not found in outputs.\n\nMake sure the EKS cluster is deployed and outputs are available.');
-      return;
-    }
-
-    setEksConnectInfo({
-      kubeconfigCommand,
-      clusterName: clusterName || 'unknown',
-      ssoCommand: ssoCommand || '',
-    });
+    setShowEKSManageModal(true);
   };
 
   const handleConnect = async () => {
@@ -586,9 +581,9 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
                     onClick={handleEKSConnect}
                     className="btn btn-connect"
                     disabled={!!runningAction}
-                    title="Show kubeconfig command to connect to EKS cluster"
+                    title="Connect to EKS cluster and manage workloads"
                   >
-                    Connect
+                    Connect & Manage
                   </button>
                 )}
               </>
@@ -854,57 +849,11 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
         </div>,
         document.body
       )}
-      {eksConnectInfo && createPortal(
-        <div className="modal-overlay" onClick={() => setEksConnectInfo(null)}>
-          <div className="rdp-modal" onClick={(e) => e.stopPropagation()}>
-            <h3 className="rdp-modal-title">EKS Cluster Connection</h3>
-            <div className="rdp-modal-fields">
-              <div className="rdp-field">
-                <label className="rdp-field-label">Cluster Name</label>
-                <div className="rdp-field-value-row">
-                  <code className="rdp-field-value">{eksConnectInfo.clusterName}</code>
-                  <button className="rdp-copy-btn" onClick={() => copyToClipboard(eksConnectInfo.clusterName)}>Copy</button>
-                </div>
-              </div>
-              {eksConnectInfo.ssoCommand && (
-                <div className="rdp-field">
-                  <label className="rdp-field-label">Step 1: SSO Login</label>
-                  <div className="rdp-field-hint" style={{ marginBottom: '6px' }}>
-                    Run this command first to authenticate via SSO:
-                  </div>
-                  <div className="rdp-field-value-row">
-                    <code className="rdp-field-value" style={{ fontSize: '12px', wordBreak: 'break-all' }}>{eksConnectInfo.ssoCommand}</code>
-                    <button className="rdp-copy-btn" onClick={() => copyToClipboard(eksConnectInfo.ssoCommand)}>Copy</button>
-                  </div>
-                </div>
-              )}
-              <div className="rdp-field">
-                <label className="rdp-field-label">{eksConnectInfo.ssoCommand ? 'Step 2: Update Kubeconfig' : 'Update Kubeconfig'}</label>
-                <div className="rdp-field-hint" style={{ marginBottom: '6px' }}>
-                  Run this command in your terminal to configure kubectl access:
-                </div>
-                <div className="rdp-field-value-row">
-                  <code className="rdp-field-value" style={{ fontSize: '12px', wordBreak: 'break-all' }}>{eksConnectInfo.kubeconfigCommand}</code>
-                  <button className="rdp-copy-btn" onClick={() => copyToClipboard(eksConnectInfo.kubeconfigCommand)}>Copy</button>
-                </div>
-              </div>
-              <div className="rdp-field">
-                <label className="rdp-field-label">Verify Connection</label>
-                <div className="rdp-field-hint" style={{ marginBottom: '6px' }}>
-                  After running the above, verify with:
-                </div>
-                <div className="rdp-field-value-row">
-                  <code className="rdp-field-value">kubectl get nodes</code>
-                  <button className="rdp-copy-btn" onClick={() => copyToClipboard('kubectl get nodes')}>Copy</button>
-                </div>
-              </div>
-            </div>
-            <div className="rdp-modal-actions">
-              <button className="confirm-modal-btn cancel" onClick={() => setEksConnectInfo(null)}>Close</button>
-            </div>
-          </div>
-        </div>,
-        document.body
+      {showEKSManageModal && (
+        <EKSManageModal
+          onClose={() => { setShowEKSManageModal(false); setEksConnectInfo(null); }}
+          connectInfo={eksConnectInfo}
+        />
       )}
     </div>
   );

@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: load-generator
+  namespace: flask-app
+  labels:
+    app: load-generator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: load-generator
+  template:
+    metadata:
+      labels:
+        app: load-generator
+    spec:
+      containers:
+        - name: load-generator
+          image: alpine:3.19
+          command:
+            - /bin/sh
+            - -c
+            - |
+              apk add --no-cache curl
+              
+              TARGET="http://flask-server"
+              
+              # Endpoints with weights
+              # 70% success (200), 10% created (201), 10% client errors (4xx), 10% server errors (5xx)
+              
+              while true; do
+                RAND=$((RANDOM % 100))
+                
+                if [ $RAND -lt 50 ]; then
+                  curl -s "$TARGET/" > /dev/null
+                elif [ $RAND -lt 70 ]; then
+                  curl -s "$TARGET/api/success" > /dev/null
+                elif [ $RAND -lt 80 ]; then
+                  curl -s "$TARGET/api/created" > /dev/null
+                elif [ $RAND -lt 85 ]; then
+                  curl -s "$TARGET/api/bad-request" > /dev/null
+                elif [ $RAND -lt 90 ]; then
+                  curl -s "$TARGET/api/not-found" > /dev/null
+                elif [ $RAND -lt 95 ]; then
+                  curl -s "$TARGET/api/error" > /dev/null
+                else
+                  curl -s "$TARGET/api/unavailable" > /dev/null
+                fi
+                
+                sleep 0.5
+              done
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+

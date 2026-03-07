@@ -140,8 +140,12 @@ async def test_get_eks_config_falls_back_to_instances_scan(monkeypatch, tmp_path
     async def fake_output(*args, **kwargs):
         return True, json.dumps(_full_eks_outputs())
 
+    async def fake_init(*args, **kwargs):
+        return True, ""
+
     monkeypatch.setattr(terraform_routes.parser, "parse_all_resources", lambda: [])
     monkeypatch.setattr(terraform_routes.parser, "instances_dir", instances_dir)
+    monkeypatch.setattr(terraform_routes.runner, "ensure_terraform_init", fake_init)
     monkeypatch.setattr(terraform_routes.runner, "output", fake_output)
     monkeypatch.setattr(terraform_routes.parser, "get_aws_env", lambda: {})
 

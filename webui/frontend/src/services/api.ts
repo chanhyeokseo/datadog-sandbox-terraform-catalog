@@ -545,3 +545,198 @@ export const dangerZoneApi = {
     return response.data;
   },
 };
+
+const EKS_MANAGE_BASE = '/api/terraform/eks/manage';
+
+export interface EKSPreset {
+  name: string;
+  description: string;
+  type: string;
+  built_in: boolean;
+  deploy_commands: string[];
+  update_commands: string[];
+  undeploy_commands: string[];
+  files: string[];
+}
+
+export interface EKSPresetFileResponse {
+  filename: string;
+  content: string;
+}
+
+export interface TreeFolder { id: string; type: 'folder'; name: string; children: string[]; }
+export interface TreePreset { id: string; type: 'preset'; }
+export type TreeNode = TreeFolder | TreePreset;
+
+export interface KubeconfigStatus {
+  configured: boolean;
+  cluster_name: string | null;
+  region?: string;
+  kubeconfig_command?: string;
+  message?: string;
+}
+
+export const eksManageApi = {
+  listPresets: async (): Promise<{ presets: EKSPreset[] }> => {
+    const response = await axios.get<{ presets: EKSPreset[] }>(`${EKS_MANAGE_BASE}/presets`);
+    return response.data;
+  },
+
+  getPreset: async (name: string): Promise<EKSPreset> => {
+    const response = await axios.get<EKSPreset>(`${EKS_MANAGE_BASE}/presets/${name}`);
+    return response.data;
+  },
+
+  getPresetFile: async (name: string, filename: string): Promise<EKSPresetFileResponse> => {
+    const response = await axios.get<EKSPresetFileResponse>(
+      `${EKS_MANAGE_BASE}/presets/${name}/files/${encodeURIComponent(filename)}`
+    );
+    return response.data;
+  },
+
+  createPreset: async (data: {
+    name: string;
+    description?: string;
+    type?: string;
+    deploy_commands?: string[];
+    update_commands?: string[];
+    undeploy_commands?: string[];
+    files?: Record<string, string>;
+  }): Promise<{ success: boolean; name: string }> => {
+    const response = await axios.post(`${EKS_MANAGE_BASE}/presets`, data);
+    return response.data;
+  },
+
+  updatePresetFile: async (name: string, filename: string, content: string): Promise<{ success: boolean }> => {
+    const response = await axios.put(
+      `${EKS_MANAGE_BASE}/presets/${name}/files/${encodeURIComponent(filename)}`,
+      { content }
+    );
+    return response.data;
+  },
+
+  updatePresetManifest: async (name: string, data: Partial<EKSPreset>): Promise<{ success: boolean }> => {
+    const response = await axios.put(`${EKS_MANAGE_BASE}/presets/${name}`, data);
+    return response.data;
+  },
+
+  deletePreset: async (name: string): Promise<{ success: boolean }> => {
+    const response = await axios.delete(`${EKS_MANAGE_BASE}/presets/${name}`);
+    return response.data;
+  },
+
+  clonePreset: async (name: string, targetName: string): Promise<{ success: boolean; name: string }> => {
+    const response = await axios.post(`${EKS_MANAGE_BASE}/presets/${name}/clone`, { target_name: targetName });
+    return response.data;
+  },
+
+  streamDeploy: async (
+    name: string,
+    onData: (chunk: string) => void,
+    onComplete: (success: boolean) => void,
+    signal?: AbortSignal
+  ): Promise<void> => {
+    const response = await fetch(`${EKS_MANAGE_BASE}/presets/${name}/deploy`, {
+      method: 'POST',
+      signal,
+    });
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+    if (!reader) throw new Error('Response body is not readable');
+    const buffer = { current: '' };
+    let exitCode: number | null = null;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        const code = processStreamChunk(buffer, chunk, onData);
+        if (code !== null) exitCode = code;
+      }
+      if (exitCode === null) exitCode = flushStreamBuffer(buffer, onData);
+      onComplete(exitCode === 0);
+    } catch (error) {
+      onData(`\nError: ${error}\n`);
+      onComplete(false);
+    }
+  },
+
+  streamUpdate: async (
+    name: string,
+    onData: (chunk: string) => void,
+    onComplete: (success: boolean) => void,
+    signal?: AbortSignal
+  ): Promise<void> => {
+    const response = await fetch(`${EKS_MANAGE_BASE}/presets/${name}/update`, {
+      method: 'POST',
+      signal,
+    });
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+    if (!reader) throw new Error('Response body is not readable');
+    const buffer = { current: '' };
+    let exitCode: number | null = null;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        const code = processStreamChunk(buffer, chunk, onData);
+        if (code !== null) exitCode = code;
+      }
+      if (exitCode === null) exitCode = flushStreamBuffer(buffer, onData);
+      onComplete(exitCode === 0);
+    } catch (error) {
+      onData(`\nError: ${error}\n`);
+      onComplete(false);
+    }
+  },
+
+  streamUndeploy: async (
+    name: string,
+    onData: (chunk: string) => void,
+    onComplete: (success: boolean) => void,
+    signal?: AbortSignal
+  ): Promise<void> => {
+    const response = await fetch(`${EKS_MANAGE_BASE}/presets/${name}/undeploy`, {
+      method: 'POST',
+      signal,
+    });
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+    if (!reader) throw new Error('Response body is not readable');
+    const buffer = { current: '' };
+    let exitCode: number | null = null;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        const code = processStreamChunk(buffer, chunk, onData);
+        if (code !== null) exitCode = code;
+      }
+      if (exitCode === null) exitCode = flushStreamBuffer(buffer, onData);
+      onComplete(exitCode === 0);
+    } catch (error) {
+      onData(`\nError: ${error}\n`);
+      onComplete(false);
+    }
+  },
+
+  getKubeconfigStatus: async (): Promise<KubeconfigStatus> => {
+    const response = await axios.get<KubeconfigStatus>(`${EKS_MANAGE_BASE}/kubeconfig-status`);
+    return response.data;
+  },
+
+  getLayout: async (): Promise<TreeNode[]> => {
+    const response = await axios.get<{ layout: TreeNode[] }>(`${EKS_MANAGE_BASE}/layout`);
+    return response.data.layout;
+  },
+
+  saveLayout: async (layout: TreeNode[]): Promise<void> => {
+    await axios.put(`${EKS_MANAGE_BASE}/layout`, { layout });
+  },
+};

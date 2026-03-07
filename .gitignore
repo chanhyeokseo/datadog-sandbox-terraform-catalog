@@ -114,7 +114,6 @@ tmp/
 # ============================================
 
 # Untracked directories
-eks/
 legacy/
 
 # Terraform provider cache

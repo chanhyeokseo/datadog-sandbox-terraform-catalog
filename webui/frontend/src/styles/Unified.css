@@ -168,6 +168,42 @@ body.light-mode .btn-clear-small:hover {
   color: #352d6e !important;
 }
 
+body.light-mode .btn-update {
+  background: linear-gradient(135deg, rgba(33, 150, 243, 0.18) 0%, rgba(33, 150, 243, 0.10) 100%);
+  color: #1565c0 !important;
+  text-shadow: none;
+}
+
+body.light-mode .btn-plan {
+  background: linear-gradient(135deg, rgba(23, 162, 184, 0.18) 0%, rgba(23, 162, 184, 0.10) 100%);
+  color: #00838f !important;
+  text-shadow: none;
+}
+
+body.light-mode .btn-destroy {
+  background: linear-gradient(135deg, rgba(220, 53, 69, 0.18) 0%, rgba(220, 53, 69, 0.10) 100%);
+  color: #c62828 !important;
+  text-shadow: none;
+}
+
+body.light-mode .btn-connect {
+  background: linear-gradient(135deg, rgba(255, 193, 7, 0.22) 0%, rgba(255, 193, 7, 0.12) 100%);
+  color: #e65100 !important;
+  text-shadow: none;
+}
+
+body.light-mode .btn-configure {
+  background: linear-gradient(135deg, rgba(156, 39, 176, 0.18) 0%, rgba(156, 39, 176, 0.10) 100%);
+  color: #7b1fa2 !important;
+  text-shadow: none;
+}
+
+body.light-mode .btn-deploy {
+  background: linear-gradient(135deg, rgba(76, 175, 80, 0.18) 0%, rgba(76, 175, 80, 0.10) 100%);
+  color: #2e7d32 !important;
+  text-shadow: none;
+}
+
 /* Large Action Buttons (Deploy, Plan, Destroy) */
 .btn {
   padding: 1.2rem 2rem;
