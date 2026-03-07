@@ -7,6 +7,7 @@ import asyncio
 import json
 import os
 import re
+import time
 import boto3
 from botocore.exceptions import ClientError, ProfileNotFound
 
@@ -19,6 +20,7 @@ from app.models.schemas import (
 from app.services.terraform_parser import TerraformParser
 from app.services.terraform_runner import TerraformRunner
 from app.services.instance_discovery import get_resource_id_for_instance, get_resource_type_from_dir
+from app.services.credential_manager import credential_manager
 
 router = APIRouter(prefix="/api/terraform", tags=["terraform"])
 logger = logging.getLogger(__name__)
@@ -120,11 +122,26 @@ def _extract_eks_config_from_outputs(outputs: Dict) -> tuple[Dict, List[str]]:
     return config, missing
 
 
+def _build_sts_client():
+    aws_env = parser.get_aws_env()
+    region = aws_env.get("AWS_REGION", "ap-northeast-2")
+    access_key = os.environ.get("AWS_ACCESS_KEY_ID")
+    secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY")
+    session_token = os.environ.get("AWS_SESSION_TOKEN")
+    if access_key and secret_key:
+        return boto3.client(
+            "sts", region_name=region,
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
+            aws_session_token=session_token,
+        )
+    return boto3.client("sts", region_name=region)
+
+
 @router.get("/credentials/check")
 async def check_credentials():
     try:
-        aws_region = parser.get_aws_env().get("AWS_REGION", "ap-northeast-2")
-        sts = boto3.client("sts", region_name=aws_region)
+        sts = _build_sts_client()
         identity = await asyncio.to_thread(sts.get_caller_identity)
         return {
             "valid": True,
@@ -143,17 +160,60 @@ async def check_credentials():
             },
         )
     except Exception as e:
-        logger.warning(f"Credential check failed: {e}")
+        logger.warning(f"Credential check failed: {e}, attempting SSO auto-refresh")
+        refreshed = await asyncio.to_thread(credential_manager.try_refresh_credentials)
+        if refreshed:
+            try:
+                sts = _build_sts_client()
+                identity = await asyncio.to_thread(sts.get_caller_identity)
+                return {
+                    "valid": True,
+                    "account": identity.get("Account", ""),
+                    "arn": identity.get("Arn", ""),
+                }
+            except Exception as retry_err:
+                logger.warning(f"Credential check failed after refresh: {retry_err}")
+
         aws_profile = os.environ.get("AWS_PROFILE", "")
         sso_command = f"aws sso login --profile={aws_profile}" if aws_profile else "aws sso login"
+        sso_configured = credential_manager.get_sso_config() is not None
         raise HTTPException(
             status_code=401,
             detail={
                 "message": f"AWS credentials expired or not configured. Run '{sso_command}' and refresh.",
                 "aws_profile": aws_profile,
                 "sso_command": sso_command,
+                "sso_configured": sso_configured,
             },
         )
+
+
+@router.post("/credentials/sso-login")
+async def sso_login():
+    session = await asyncio.to_thread(credential_manager.start_sso_login)
+    if not session:
+        raise HTTPException(
+            status_code=400,
+            detail="SSO is not configured for the current AWS profile",
+        )
+    return {
+        "session_id": session.session_id,
+        "verification_uri": session.verification_uri,
+        "user_code": session.user_code,
+        "expires_in": int(session.expires_at - time.time()),
+    }
+
+
+@router.get("/credentials/sso-status/{session_id}")
+async def sso_status(session_id: str):
+    result = await asyncio.to_thread(credential_manager.poll_sso_token, session_id)
+    return result
+
+
+@router.get("/credentials/health")
+async def credential_health():
+    return await asyncio.to_thread(credential_manager.get_credential_health)
+
 
 
 @router.post("/ensure-data")

@@ -1,0 +1,256 @@
+.sso-modal {
+  background: var(--panel-bg);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  border: 1px solid var(--panel-border);
+  box-shadow: var(--glass-shadow-strong),
+              0 0 80px rgba(139, 127, 199, 0.2),
+              inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  border-radius: 0;
+  padding: 28px 32px;
+  min-width: 420px;
+  max-width: 520px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+body.light-mode .sso-modal {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(139, 127, 199, 0.2);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.1),
+              0 0 60px rgba(139, 127, 199, 0.1),
+              inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.sso-modal-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sso-modal-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--danger-color);
+}
+
+.sso-modal-desc {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.sso-modal-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color);
+}
+
+body.light-mode .sso-modal-section {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.sso-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+}
+
+.sso-start-btn {
+  padding: 10px 24px;
+  background: linear-gradient(135deg, rgba(139, 127, 199, 0.5) 0%, rgba(139, 127, 199, 0.3) 100%);
+  border: 2px solid rgba(139, 127, 199, 0.6);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border-radius: 0;
+}
+
+.sso-start-btn:hover {
+  background: linear-gradient(135deg, rgba(139, 127, 199, 0.6) 0%, rgba(139, 127, 199, 0.4) 100%);
+  border-color: rgba(139, 127, 199, 0.8);
+  box-shadow: 0 4px 15px rgba(139, 127, 199, 0.4);
+}
+
+.sso-status-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.sso-status-row.sso-success {
+  color: #4caf50;
+  font-weight: 600;
+}
+
+.sso-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(139, 127, 199, 0.3);
+  border-top-color: rgba(139, 127, 199, 0.8);
+  border-radius: 50%;
+  animation: sso-spin 0.8s linear infinite;
+}
+
+@keyframes sso-spin {
+  to { transform: rotate(360deg); }
+}
+
+.sso-auth-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sso-auth-instruction {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.sso-auth-link {
+  display: block;
+  padding: 8px 12px;
+  background: rgba(74, 158, 255, 0.08);
+  border: 1px solid rgba(74, 158, 255, 0.25);
+  color: #4a9eff;
+  font-size: 13px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  word-break: break-all;
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.sso-auth-link:hover {
+  background: rgba(74, 158, 255, 0.15);
+  border-color: rgba(74, 158, 255, 0.4);
+}
+
+body.light-mode .sso-auth-link {
+  color: #1976d2;
+  background: rgba(25, 118, 210, 0.06);
+  border-color: rgba(25, 118, 210, 0.2);
+}
+
+body.light-mode .sso-auth-link:hover {
+  background: rgba(25, 118, 210, 0.1);
+  border-color: rgba(25, 118, 210, 0.35);
+}
+
+.sso-user-code {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sso-user-code-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.sso-user-code-value {
+  padding: 4px 12px;
+  font-size: 16px;
+  font-weight: 700;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  letter-spacing: 2px;
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-color);
+}
+
+body.light-mode .sso-user-code-value {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.sso-error-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sso-error-msg {
+  margin: 0;
+  font-size: 13px;
+  color: var(--danger-color);
+  line-height: 1.5;
+}
+
+.sso-command-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sso-command-value {
+  flex: 1;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-color);
+  word-break: break-all;
+  user-select: all;
+}
+
+body.light-mode .sso-command-value {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+.sso-copy-btn {
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 0;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.sso-copy-btn:hover {
+  background: var(--glass-bg);
+  color: var(--text-primary);
+  border-color: var(--border-color-strong);
+}
+
+.sso-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.sso-retry-btn {
+  padding: 10px 32px;
+  background: linear-gradient(135deg, rgba(139, 127, 199, 0.5) 0%, rgba(139, 127, 199, 0.3) 100%);
+  border: 2px solid rgba(139, 127, 199, 0.6);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border-radius: 0;
+}
+
+.sso-retry-btn:hover {
+  background: linear-gradient(135deg, rgba(139, 127, 199, 0.6) 0%, rgba(139, 127, 199, 0.4) 100%);
+  border-color: rgba(139, 127, 199, 0.8);
+  box-shadow: 0 4px 15px rgba(139, 127, 199, 0.4);
+}

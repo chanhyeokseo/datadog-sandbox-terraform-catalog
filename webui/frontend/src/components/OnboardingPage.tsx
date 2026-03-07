@@ -11,6 +11,7 @@ import {
   AwsSubnet,
 } from '../services/api';
 import DangerZoneModal from './DangerZoneModal';
+import SSOLoginModal from './SSOLoginModal';
 import '../styles/App.css';
 import '../styles/Unified.css';
 import '../styles/OnboardingPage.css';
@@ -47,7 +48,7 @@ function OnboardingPage() {
   const [keyGenerating, setKeyGenerating] = useState(false);
   const [completing, setCompleting] = useState(false);
   const [completingMessage, setCompletingMessage] = useState('');
-  const [credentialError, setCredentialError] = useState<string | null>(null);
+  const [credentialError, setCredentialError] = useState<{ command: string; ssoConfigured: boolean } | null>(null);
   const [backendSetup, setBackendSetup] = useState<{
     status: 'idle' | 'setting_up' | 'complete' | 'error';
     message?: string;
@@ -123,13 +124,15 @@ function OnboardingPage() {
   }, [currentPhaseIndex, status]);
 
   const loadStatus = async () => {
-    const extractSsoCommand = (err: any) =>
-      err?.response?.data?.detail?.sso_command || 'aws sso login';
+    const extractCredInfo = (err: any) => ({
+      command: err?.response?.data?.detail?.sso_command || 'aws sso login',
+      ssoConfigured: err?.response?.data?.detail?.sso_configured ?? false,
+    });
     try {
       await terraformApi.checkCredentials();
     } catch (err: any) {
       if (err?.response?.status === 401) {
-        setCredentialError(extractSsoCommand(err));
+        setCredentialError(extractCredInfo(err));
         setLoading(false);
         return;
       }
@@ -287,23 +290,12 @@ function OnboardingPage() {
 
   if (credentialError) {
     return (
-      <div className="app-loading-screen">
-        <div className="app-loading-content">
-          <img src="/logo.png" alt="DogSTAC" className="app-logo" />
-          <h1 className="app-loading-title">DogSTAC</h1>
-          <div className="credential-error-card">
-            <p className="credential-error-title">AWS Credentials Expired</p>
-            <p className="credential-error-desc">
-              Your AWS SSO session has expired or credentials are not configured.
-              Run the following command on your host machine, then click Retry.
-            </p>
-            <code className="credential-error-code">{credentialError}</code>
-            <button onClick={() => { setCredentialError(null); setLoading(true); loadStatus(); }} className="credential-error-btn">
-              Retry
-            </button>
-          </div>
-        </div>
-      </div>
+      <SSOLoginModal
+        ssoConfigured={credentialError.ssoConfigured}
+        ssoCommand={credentialError.command}
+        onSuccess={() => { setCredentialError(null); setLoading(true); loadStatus(); }}
+        onRetry={() => { setCredentialError(null); setLoading(true); loadStatus(); }}
+      />
     );
   }
 

@@ -10,6 +10,7 @@ if not os.environ.get("AWS_PROFILE", "").strip():
     os.environ.pop("AWS_PROFILE", None)
 
 from app.routes import terraform, ssh, backend, keys, danger_zone
+from app.services.credential_manager import credential_manager
 
 log_level = os.environ.get('LOG_LEVEL', 'INFO').upper()
 logging.basicConfig(
@@ -21,6 +22,7 @@ logging.basicConfig(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     asyncio.create_task(terraform.runner.warmup_provider_cache())
+    asyncio.create_task(credential_manager.background_refresh_loop())
     yield
 
 

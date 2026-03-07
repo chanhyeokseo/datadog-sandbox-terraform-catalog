@@ -99,6 +99,21 @@ export const terraformApi = {
     return response.data;
   },
 
+  startSSOLogin: async (): Promise<{ session_id: string; verification_uri: string; user_code: string; expires_in: number }> => {
+    const response = await api.post<{ session_id: string; verification_uri: string; user_code: string; expires_in: number }>('/credentials/sso-login');
+    return response.data;
+  },
+
+  getSSOStatus: async (sessionId: string): Promise<{ status: string; message?: string }> => {
+    const response = await api.get<{ status: string; message?: string }>(`/credentials/sso-status/${sessionId}`);
+    return response.data;
+  },
+
+  getCredentialHealth: async (): Promise<{ status: string; sso_configured: boolean; sso_profile?: string; sso_token_expires_in?: number; account?: string; arn?: string; message?: string }> => {
+    const response = await api.get<{ status: string; sso_configured: boolean; sso_profile?: string; sso_token_expires_in?: number; account?: string; arn?: string; message?: string }>('/credentials/health');
+    return response.data;
+  },
+
   ensureData: async (): Promise<{ seeded: Record<string, boolean>; config_synced: boolean; recovered: boolean }> => {
     const response = await api.post('/ensure-data');
     return response.data;

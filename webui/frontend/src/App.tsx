@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ResourceSidebar from './components/ResourceSidebar';
 import ActionPanel from './components/ActionPanel';
@@ -7,6 +7,7 @@ import ConfigModal from './components/ConfigModal';
 import ConnectionsModal from './components/ConnectionsModal';
 import OnboardingModal from './components/OnboardingModal';
 import DangerZoneModal from './components/DangerZoneModal';
+import SSOLoginModal from './components/SSOLoginModal';
 import { TerraformResource, ResourceType } from './types';
 import { terraformApi as api, OnboardingStatus } from './services/api';
 
@@ -14,40 +15,28 @@ interface CredentialError {
   type: 'profile_not_found' | 'expired';
   profile?: string;
   ssoCommand?: string;
+  ssoConfigured?: boolean;
   message?: string;
 }
 
-const CredentialErrorScreen = ({ error, onRetry }: { error: CredentialError; onRetry: () => void }) => (
+const ProfileNotFoundScreen = ({ error, onRetry }: { error: CredentialError; onRetry: () => void }) => (
   <div className="app-loading-screen">
     <div className="app-loading-content">
       <img src="/logo.png" alt="DogSTAC" className="app-logo" />
       <h1 className="app-loading-title">DogSTAC</h1>
       <div className="credential-error-card">
-        {error.type === 'profile_not_found' ? (
-          <>
-            <p className="credential-error-title">AWS Profile Not Found</p>
-            <p className="credential-error-desc">
-              The AWS profile <strong>{error.profile}</strong> does not exist in <code>~/.aws/config</code>.
-              Update <code>AWS_PROFILE</code> in your <code>.env</code> file and restart docker compose.
-            </p>
-            <pre className="credential-error-code">
+        <p className="credential-error-title">AWS Profile Not Found</p>
+        <p className="credential-error-desc">
+          The AWS profile <strong>{error.profile}</strong> does not exist in <code>~/.aws/config</code>.
+          Update <code>AWS_PROFILE</code> in your <code>.env</code> file and restart docker compose.
+        </p>
+        <pre className="credential-error-code">
 {`# 1. Fix .env
 AWS_PROFILE=your-valid-profile
 
 # 2. Restart
 docker compose down && docker compose up -d`}
-            </pre>
-          </>
-        ) : (
-          <>
-            <p className="credential-error-title">AWS Credentials Expired</p>
-            <p className="credential-error-desc">
-              Your AWS SSO session has expired or credentials are not configured.
-              Run the following command on your host machine, then click Retry.
-            </p>
-            <code className="credential-error-code">{error.ssoCommand}</code>
-          </>
-        )}
+        </pre>
         <button onClick={onRetry} className="credential-error-btn">
           Retry
         </button>
@@ -113,7 +102,9 @@ function App() {
   type LoadPhase = 'config_check' | 'loading' | 'ready';
   const [initialLoadPhase, setInitialLoadPhase] = useState<LoadPhase>('config_check');
   const [credentialError, setCredentialError] = useState<CredentialError | null>(null);
+  const [showSSOModal, setShowSSOModal] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const healthRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [providerReady, setProviderReady] = useState<boolean | null>(null);
   const [providerProgress, setProviderProgress] = useState({ progress: 0, message: '' });
 
@@ -130,7 +121,11 @@ function App() {
         if (detail?.error_type === 'profile_not_found') {
           return { type: 'profile_not_found', profile: detail.aws_profile || '', message: detail.message };
         }
-        return { type: 'expired', ssoCommand: detail?.sso_command || 'aws sso login' };
+        return {
+          type: 'expired',
+          ssoCommand: detail?.sso_command || 'aws sso login',
+          ssoConfigured: detail?.sso_configured ?? false,
+        };
       };
       try {
         await api.checkCredentials();
@@ -250,6 +245,41 @@ function App() {
     check();
     return () => { cancelled = true; if (pollId) clearInterval(pollId); };
   }, []);
+
+  useEffect(() => {
+    if (initialLoadPhase !== 'ready') return;
+    const checkHealth = async () => {
+      try {
+        const health = await api.getCredentialHealth();
+        if (health.status === 'expiring_soon') {
+          try {
+            await api.checkCredentials();
+          } catch (err: any) {
+            if (err?.response?.status === 401) {
+              const detail = err?.response?.data?.detail;
+              setCredentialError({
+                type: 'expired',
+                ssoCommand: detail?.sso_command || 'aws sso login',
+                ssoConfigured: detail?.sso_configured ?? health.sso_configured,
+              });
+              setShowSSOModal(true);
+            }
+          }
+        } else if (health.status === 'expired') {
+          setCredentialError({
+            type: 'expired',
+            ssoCommand: health.sso_profile
+              ? `aws sso login --profile=${health.sso_profile}`
+              : 'aws sso login',
+            ssoConfigured: health.sso_configured,
+          });
+          setShowSSOModal(true);
+        }
+      } catch {}
+    };
+    healthRef.current = setInterval(checkHealth, 300000);
+    return () => { if (healthRef.current) clearInterval(healthRef.current); };
+  }, [initialLoadPhase]);
 
   const finishLoadingAndRefresh = async () => {
     try {
@@ -405,15 +435,30 @@ function App() {
     }
   };
 
-  if (credentialError) {
+  const handleCredentialRetry = useCallback(() => {
+    setCredentialError(null);
+    setShowSSOModal(false);
+    setInitialLoadPhase('config_check');
+    window.location.reload();
+  }, []);
+
+  const handleSSOSuccess = useCallback(() => {
+    setCredentialError(null);
+    setShowSSOModal(false);
+    window.location.reload();
+  }, []);
+
+  if (credentialError?.type === 'profile_not_found') {
+    return <ProfileNotFoundScreen error={credentialError} onRetry={handleCredentialRetry} />;
+  }
+
+  if (credentialError && initialLoadPhase !== 'ready') {
     return (
-      <CredentialErrorScreen
-        error={credentialError}
-        onRetry={() => {
-          setCredentialError(null);
-          setInitialLoadPhase('config_check');
-          window.location.reload();
-        }}
+      <SSOLoginModal
+        ssoConfigured={credentialError.ssoConfigured ?? false}
+        ssoCommand={credentialError.ssoCommand || 'aws sso login'}
+        onSuccess={handleSSOSuccess}
+        onRetry={handleCredentialRetry}
       />
     );
   }
@@ -514,6 +559,15 @@ function App() {
         <DangerZoneModal
           onClose={() => setShowDangerZone(false)}
           onResourcesNeedRefresh={handleResourcesNeedRefresh}
+        />
+      )}
+
+      {showSSOModal && credentialError?.type === 'expired' && (
+        <SSOLoginModal
+          ssoConfigured={credentialError.ssoConfigured ?? false}
+          ssoCommand={credentialError.ssoCommand || 'aws sso login'}
+          onSuccess={handleSSOSuccess}
+          onRetry={handleCredentialRetry}
         />
       )}
 
