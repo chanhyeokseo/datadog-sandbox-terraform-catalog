@@ -1347,8 +1347,13 @@ async def _apply_docker_agent_via_ssh(resource_dir: Path, resolved_command: str,
     from io import StringIO
 
     aws_env = parser.get_aws_env()
+    init_ok, init_out = await runner.ensure_terraform_init(resource_dir, env_extra=aws_env)
+    if not init_ok:
+        logger.warning(f"Terraform init failed for docker agent SSH apply: {init_out}")
+        return {"success": False, "message": "Terraform init failed. Check credentials.", "mode": "ssh"}
     success, raw_output = await runner.output(resource_id=_DOCKER_AGENT_RESOURCE_ID, env_extra=aws_env)
     if not success:
+        logger.warning(f"Terraform output failed for docker agent: {raw_output}")
         return {"success": False, "message": "Failed to get terraform outputs. Is the resource deployed?", "mode": "ssh"}
 
     outputs = _parse_terraform_output_json(raw_output)

@@ -50,7 +50,7 @@ webui/
 │       ├── models/
 │       │   └── schemas.py             # Pydantic models (Resource, Variable, enums)
 │       ├── routes/
-│       │   ├── terraform.py           # Terraform + resource + onboarding endpoints
+│       │   ├── terraform.py           # Terraform + resource + onboarding + background ops endpoints
 │       │   ├── backend.py             # S3/DynamoDB backend setup endpoints
 │       │   ├── ssh.py                 # SSH WebSocket terminal
 │       │   ├── keys.py               # SSH key management (upload/list/delete)
@@ -197,6 +197,8 @@ Key methods on `TerraformParser`:
 - `_force_fetch_all_s3_statuses()` - the actual S3 scan logic (bypasses cache)
 - `_fetch_single_s3_status(dir_name)` - fetch one instance's tfstate from S3
 
+Cache is also rebuilt after SSO login completes (via `sso_status` endpoint) to recover from startup with expired credentials.
+
 ### Per-Instance Terraform Execution
 
 Each instance runs Terraform independently:
@@ -269,6 +271,7 @@ App
 | GET | `/plan/stream/{resource_id}` | Stream terraform plan (SSE) |
 | GET | `/apply/stream/{resource_id}` | Stream terraform apply (SSE) |
 | GET | `/destroy/stream/{resource_id}` | Stream terraform destroy (SSE) |
+| GET | `/operations/active` | List running background operations |
 | GET | `/output` | Get terraform output values |
 | GET | `/onboarding/status` | Check shared resource status |
 | GET | `/onboarding/config-status` | Check config onboarding status |
