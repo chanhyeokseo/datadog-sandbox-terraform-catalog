@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import re
+import time
 from pathlib import Path
 from typing import AsyncIterator, Dict, List, Optional
 
@@ -48,25 +49,16 @@ def _resolve_template_vars(command: str) -> str:
 
 
 def _get_eks_resource_info() -> tuple[Optional[str], Optional[Path]]:
-    try:
-        for resource in parser.parse_all_resources():
-            if resource.type != ResourceType.EKS:
-                continue
-            resource_dir = runner.get_resource_directory(resource.id)
-            if resource_dir and resource_dir.exists():
-                return resource.id, resource_dir
-    except Exception as e:
-        logger.debug(f"Failed to resolve EKS resource: {e}")
-
     instances_dir = Path(TERRAFORM_DIR) / "instances"
-    if instances_dir.exists():
-        for instance_dir in sorted(instances_dir.iterdir()):
-            if not instance_dir.is_dir() or not (instance_dir / "main.tf").exists():
-                continue
-            if get_resource_type_from_dir(instance_dir.name) != ResourceType.EKS:
-                continue
-            resource_id = get_resource_id_for_instance(instance_dir)
-            return resource_id, instance_dir
+    if not instances_dir.exists():
+        return None, None
+    for instance_dir in sorted(instances_dir.iterdir()):
+        if not instance_dir.is_dir() or not (instance_dir / "main.tf").exists():
+            continue
+        if get_resource_type_from_dir(instance_dir.name) != ResourceType.EKS:
+            continue
+        resource_id = get_resource_id_for_instance(instance_dir)
+        return resource_id, instance_dir
     return None, None
 
 
@@ -162,8 +154,17 @@ def _configure_kubeconfig(cluster_name: str, region: str) -> tuple[bool, str]:
         return False, str(e)
 
 
-async def _setup_kubeconfig(resource_id: Optional[str], resource_dir: Optional[Path]) -> tuple[bool, list[str]]:
+async def _setup_kubeconfig(resource_id: Optional[str], resource_dir: Optional[Path],
+                            force: bool = False) -> tuple[bool, list[str]]:
     lines = []
+
+    if not force and KUBECONFIG_PATH.exists() and KUBECONFIG_PATH.stat().st_size > 0:
+        age = time.time() - KUBECONFIG_PATH.stat().st_mtime
+        if age < TOKEN_EXPIRY_SECONDS:
+            lines.append("Using existing kubeconfig.\n")
+            return True, lines
+        logger.debug("Kubeconfig token expired (age=%.0fs), refreshing", age)
+
     if resource_dir and resource_id:
         lines.append("Resolving EKS cluster info from Terraform outputs...\n")
         cluster_info = await _get_cluster_info_async(resource_id, resource_dir)

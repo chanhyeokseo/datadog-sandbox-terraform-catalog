@@ -42,7 +42,7 @@ webui/
 │   │   ├── test_eks_config_routes.py
 │   │   └── test_eks_manage.py
 │   └── app/
-│       ├── main.py                    # FastAPI entry point, router mounts, S3 status cache init
+│       ├── main.py                    # FastAPI entry point, router mounts, S3 status cache + EKS preset cache init
 │       ├── init_config.py             # Startup config sync (S3 → Parameter Store → local)
 │       ├── config/
 │       │   ├── resource_config.py     # Resource variables, onboarding phases, common vars
@@ -54,7 +54,7 @@ webui/
 │       │   ├── backend.py             # S3/DynamoDB backend setup endpoints
 │       │   ├── ssh.py                 # SSH WebSocket terminal
 │       │   ├── keys.py               # SSH key management (upload/list/delete)
-│       │   └── eks_manage.py          # EKS preset CRUD, deploy/undeploy streaming
+│       │   └── eks_manage.py          # EKS preset CRUD, deploy/undeploy streaming, kubectl run, deployment tracking
 │       └── services/
 │           ├── terraform_parser.py    # Parse instances, manage variables, S3 status cache
 │           ├── terraform_runner.py    # Async Terraform CLI execution (plan/apply/destroy)
@@ -63,7 +63,7 @@ webui/
 │           ├── s3_config_manager.py   # S3-based tfvars sync (root + per-instance)
 │           ├── backend_manager.py     # S3 bucket + DynamoDB table provisioning
 │           ├── key_manager.py         # SSH key storage (Parameter Store + local fallback)
-│           └── eks_preset_manager.py  # EKS preset discovery, file I/O, command execution
+│           └── eks_preset_manager.py  # EKS preset discovery, file I/O, local cache, deployment tracking
 │
 ├── frontend/
 │   ├── Dockerfile                     # Multi-stage: node:18-alpine → nginx:alpine
@@ -97,7 +97,7 @@ webui/
 │       │   ├── DebugModal.tsx         # Debug/maintenance panel per resource
 │       │   ├── ConfirmModal.tsx       # Reusable confirm dialog
 │       │   ├── OutputModal.tsx        # Terraform output display
-│       │   └── EKSManageModal.tsx     # EKS preset management + deploy UI
+│       │   └── EKSManageModal.tsx     # EKS preset management + deploy + run (kubectl) UI
 │       └── styles/
 │           ├── App.css
 │           ├── Unified.css            # CSS variables, glassmorphism, shared
@@ -221,7 +221,29 @@ Apply/destroy operations are decoupled from the HTTP request lifecycle via backg
 
 ### EKS Config Local-First Read
 
-`GET /eks/config` reads the local `eks-config.auto.tfvars` file first (saved by `POST /eks/config`). Falls back to `terraform output -json` only if the local file does not exist. This ensures saved-but-not-yet-applied configuration changes are preserved across UI reloads. The helper `_parse_eks_config_file()` parses the tfvars format (bool, int, string, list) into a config dict.
+`GET /eks/config` reads the local `eks-config.auto.tfvars` file first (saved by `POST /eks/config`). Falls back to `terraform output -json` only if the local file does not exist. When fetching from terraform output, the result is automatically saved to the local file via `_write_eks_config_file()` so subsequent opens avoid re-running terraform output. The helper `_parse_eks_config_file()` parses the tfvars format (bool, int, string, list) into a config dict.
+
+### EKS Preset Local Cache
+
+EKS preset files (`manifest.json`, yaml files, `_layout.json`) are cached locally to eliminate repeated S3 reads:
+
+1. **Startup** (`main.py` lifespan): `preset_manager.initialize_local_cache()` downloads all files from `eks-presets/` prefix in S3 to `terraform-data/eks/`, sets `_cache_initialized = True`
+2. **Reads**: `get_layout()` reads local `_layout.json` first; `list_presets()` skips `_scan_s3_presets()` when cache is initialized; `sync_preset_to_local()` skips S3 download for presets already present locally
+3. **Writes**: `save_preset()`, `save_preset_file()`, `save_layout()` write to both local and S3 (write-through)
+4. **Refresh**: `POST /presets/refresh` calls `refresh_from_s3()` to force a full re-download; SSO login completion also triggers this
+
+### EKS Preset Command Template Variables
+
+Preset deploy/update/undeploy commands support `{{var_name}}` template syntax. Before execution, `_resolve_template_vars()` reads the root `terraform.tfvars` and replaces all `{{var_name}}` occurrences with actual values. For example, `{{datadog_api_key}}` is resolved to the configured Datadog API key. Unresolved variables are left as-is with a warning log.
+
+### EKS Preset Deployment Tracking
+
+Deployed presets are tracked in `_deployments.json` (local + S3):
+
+1. **Deploy success**: `_stream_action()` calls `on_success` → `preset_manager.mark_deployed(name)` records preset name + UTC timestamp
+2. **Undeploy success**: `preset_manager.mark_undeployed(name)` removes the entry
+3. **Read**: `GET /deployments` returns the current deployment map; Deploy tab shows deployed presets with timestamps
+4. **Storage**: `_deployments.json` is persisted alongside `_layout.json` in S3 under `eks-presets/` prefix
 
 ### Frontend Routing
 
@@ -326,9 +348,12 @@ App
 | POST | `/presets/{name}/clone` | Clone preset to new name |
 | GET | `/presets/{name}/files/{filename}` | Get preset file content |
 | PUT | `/presets/{name}/files/{filename}` | Update preset file content |
-| POST | `/presets/{name}/deploy` | Stream deploy commands (SSE) |
+| POST | `/presets/{name}/deploy` | Stream deploy commands (SSE), marks deployed on success |
 | POST | `/presets/{name}/update` | Stream update commands (SSE) |
-| POST | `/presets/{name}/undeploy` | Stream undeploy commands (SSE) |
+| POST | `/presets/{name}/undeploy` | Stream undeploy commands (SSE), marks undeployed on success |
+| POST | `/presets/refresh` | Force re-download all presets from S3 |
+| GET | `/deployments` | Get deployed presets map (name → timestamp) |
+| POST | `/kubectl` | Execute kubectl/helm command, stream output (SSE) |
 | GET | `/layout` | Get preset tree layout (folders/ordering) |
 | PUT | `/layout` | Save preset tree layout |
 | GET | `/kubeconfig-status` | Check kubeconfig availability |
