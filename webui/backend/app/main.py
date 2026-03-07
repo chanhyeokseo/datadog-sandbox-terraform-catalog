@@ -23,6 +23,7 @@ for _noisy in ('botocore', 'boto3', 'urllib3', 's3transfer'):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    terraform.parser.build_s3_status_cache()
     asyncio.create_task(terraform.runner.warmup_provider_cache())
     asyncio.create_task(credential_manager.background_refresh_loop())
     yield

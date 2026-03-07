@@ -25,6 +25,7 @@ class TerraformParser:
         self._config_manager = None
         self._s3_bucket_available: Optional[bool] = None
         self._cached_s3_manager = None
+        self._s3_status_cache: Optional[Dict[str, ResourceStatus]] = None
 
     @property
     def config_manager(self):
@@ -152,6 +153,12 @@ class TerraformParser:
         return None
 
     def _fetch_all_s3_statuses(self) -> Dict[str, ResourceStatus]:
+        if self._s3_status_cache is not None:
+            logger.debug("S3 status cache hit (%d entries)", len(self._s3_status_cache))
+            return self._s3_status_cache
+        return self._force_fetch_all_s3_statuses()
+
+    def _force_fetch_all_s3_statuses(self) -> Dict[str, ResourceStatus]:
         statuses: Dict[str, ResourceStatus] = {}
         if not self.instances_dir.exists():
             return statuses
@@ -220,6 +227,56 @@ class TerraformParser:
                 statuses[dir_name] = ResourceStatus.DISABLED
 
         return statuses
+
+    def _fetch_single_s3_status(self, dir_name: str) -> ResourceStatus:
+        bucket_name = self._resolve_s3_bucket_name()
+        if not bucket_name:
+            return ResourceStatus.DISABLED
+
+        instance_dir = self.instances_dir / dir_name
+        if not instance_dir.is_dir() or not (instance_dir / "main.tf").exists():
+            return ResourceStatus.DISABLED
+
+        resource_id = get_resource_id_for_instance(instance_dir)
+        region = self.get_aws_env().get("AWS_REGION", "ap-northeast-2")
+
+        try:
+            s3_client = boto3.client("s3", region_name=region)
+            for key_name in (resource_id, dir_name):
+                s3_key = f"instances/{key_name}/terraform.tfstate"
+                try:
+                    response = s3_client.get_object(Bucket=bucket_name, Key=s3_key)
+                    state_data = json.loads(response["Body"].read())
+                    resources = state_data.get("resources", [])
+                    actual = [r for r in resources if r.get("mode") != "data"]
+                    status = ResourceStatus.ENABLED if actual else ResourceStatus.DISABLED
+                    logger.debug("S3 status refresh: %s -> %s", dir_name, status.value)
+                    return status
+                except ClientError as e:
+                    if e.response.get("Error", {}).get("Code") == "NoSuchKey":
+                        continue
+                    raise
+        except Exception as e:
+            logger.debug("S3 status refresh failed for %s: %s", dir_name, e)
+
+        return ResourceStatus.DISABLED
+
+    def build_s3_status_cache(self) -> None:
+        logger.info("Building S3 status cache...")
+        self._s3_status_cache = self._force_fetch_all_s3_statuses()
+        logger.info("S3 status cache built: %d entries", len(self._s3_status_cache))
+
+    def invalidate_s3_status(self, dir_name: Optional[str] = None) -> None:
+        if dir_name is None:
+            logger.debug("Invalidating entire S3 status cache")
+            self.build_s3_status_cache()
+            return
+        logger.debug("Invalidating S3 status cache for: %s", dir_name)
+        new_status = self._fetch_single_s3_status(dir_name)
+        if self._s3_status_cache is not None:
+            self._s3_status_cache[dir_name] = new_status
+        else:
+            self.build_s3_status_cache()
 
     def _check_resource_status_local(self, instance_dir: Path) -> ResourceStatus:
         tfstate_path = instance_dir / "terraform.tfstate"

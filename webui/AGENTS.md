@@ -38,9 +38,11 @@ webui/
 │   │   ├── test_credentials.py
 │   │   ├── test_instance_discovery.py
 │   │   ├── test_key_manager.py
-│   │   └── test_terraform_runner.py
+│   │   ├── test_terraform_runner.py
+│   │   ├── test_eks_config_routes.py
+│   │   └── test_eks_manage.py
 │   └── app/
-│       ├── main.py                    # FastAPI entry point, router mounts
+│       ├── main.py                    # FastAPI entry point, router mounts, S3 status cache init
 │       ├── init_config.py             # Startup config sync (S3 → Parameter Store → local)
 │       ├── config/
 │       │   ├── resource_config.py     # Resource variables, onboarding phases, common vars
@@ -51,15 +53,17 @@ webui/
 │       │   ├── terraform.py           # Terraform + resource + onboarding endpoints
 │       │   ├── backend.py             # S3/DynamoDB backend setup endpoints
 │       │   ├── ssh.py                 # SSH WebSocket terminal
-│       │   └── keys.py               # SSH key management (upload/list/delete)
+│       │   ├── keys.py               # SSH key management (upload/list/delete)
+│       │   └── eks_manage.py          # EKS preset CRUD, deploy/undeploy streaming
 │       └── services/
-│           ├── terraform_parser.py    # Parse instances, manage variables, sync config
+│           ├── terraform_parser.py    # Parse instances, manage variables, S3 status cache
 │           ├── terraform_runner.py    # Async Terraform CLI execution (plan/apply/destroy)
 │           ├── instance_discovery.py  # Map instance dirs → resource IDs and types
 │           ├── config_manager.py      # AWS Parameter Store config persistence
 │           ├── s3_config_manager.py   # S3-based tfvars sync (root + per-instance)
 │           ├── backend_manager.py     # S3 bucket + DynamoDB table provisioning
-│           └── key_manager.py         # SSH key storage (Parameter Store + local fallback)
+│           ├── key_manager.py         # SSH key storage (Parameter Store + local fallback)
+│           └── eks_preset_manager.py  # EKS preset discovery, file I/O, command execution
 │
 ├── frontend/
 │   ├── Dockerfile                     # Multi-stage: node:18-alpine → nginx:alpine
@@ -84,7 +88,7 @@ webui/
 │       │   ├── ResultsPanel.tsx       # Execution results display
 │       │   ├── OnboardingPage.tsx     # Multi-phase setup wizard
 │       │   ├── OnboardingModal.tsx    # Security Group deployment guide
-│       │   ├── ConfigModal.tsx        # Global variable editor
+│       │   ├── ConfigModal.tsx        # Global variable editor (name_prefix, AWS creds read-only)
 │       │   ├── ConnectionsModal.tsx   # SSH connection manager
 │       │   ├── Terminal.tsx           # xterm.js SSH terminal via WebSocket
 │       │   ├── EKSEditor.tsx          # EKS cluster configuration editor
@@ -92,7 +96,8 @@ webui/
 │       │   ├── DescriptionModal.tsx   # Resource DESCRIPTION.md viewer
 │       │   ├── DebugModal.tsx         # Debug/maintenance panel per resource
 │       │   ├── ConfirmModal.tsx       # Reusable confirm dialog
-│       │   └── OutputModal.tsx        # Terraform output display
+│       │   ├── OutputModal.tsx        # Terraform output display
+│       │   └── EKSManageModal.tsx     # EKS preset management + deploy UI
 │       └── styles/
 │           ├── App.css
 │           ├── Unified.css            # CSS variables, glassmorphism, shared
@@ -103,7 +108,8 @@ webui/
 │           ├── SecurityGroupEditor.css
 │           ├── DescriptionModal.css
 │           ├── DebugModal.css
-│           └── ConfirmModal.css
+│           ├── ConfirmModal.css
+│           └── EKSManageModal.css
 │
 └── terraform-data/                    # Persistent volume (gitignored)
     ├── instances/                     # Terraform instance directories
@@ -175,6 +181,21 @@ Config is persisted across container restarts via a 3-tier strategy:
 2. Sync tfvars from S3 (root + all instances)
 3. Fall back to Parameter Store if S3 fails
 4. Start uvicorn
+
+### S3 Status Cache
+
+Resource status (ENABLED/DISABLED) is determined by reading `terraform.tfstate` from S3. To avoid excessive S3 reads on every API call, an in-memory cache layer is used:
+
+1. **Startup** (`main.py` lifespan): `parser.build_s3_status_cache()` fetches all instance states from S3 once and stores them in `_s3_status_cache`
+2. **Reads**: `_fetch_all_s3_statuses()` returns the cached dict immediately without S3 calls
+3. **After apply/destroy**: `invalidate_s3_status(dir_name)` re-fetches only the affected instance's state from S3 and updates the cache entry
+4. **Manual refresh**: `POST /resources/{id}/refresh-status` re-fetches a single instance from S3
+
+Key methods on `TerraformParser`:
+- `build_s3_status_cache()` - full S3 scan, stores result in `_s3_status_cache`
+- `invalidate_s3_status(dir_name)` - single-instance re-fetch, or full rebuild if `dir_name=None`
+- `_force_fetch_all_s3_statuses()` - the actual S3 scan logic (bypasses cache)
+- `_fetch_single_s3_status(dir_name)` - fetch one instance's tfstate from S3
 
 ### Per-Instance Terraform Execution
 
@@ -274,6 +295,25 @@ App
 | DELETE | `/{key_name}` | Delete key |
 | POST | `/{key_name}/description` | Update key description |
 | GET | `/storage/info` | Storage backend info |
+
+### EKS Manage Router (`/api/terraform/eks/manage`)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/presets` | List all EKS presets (OOTB + custom) |
+| GET | `/presets/{name}` | Get preset manifest (files, commands) |
+| POST | `/presets` | Create new custom preset |
+| PUT | `/presets/{name}` | Update preset manifest (description, commands) |
+| DELETE | `/presets/{name}` | Delete custom preset |
+| POST | `/presets/{name}/clone` | Clone preset to new name |
+| GET | `/presets/{name}/files/{filename}` | Get preset file content |
+| PUT | `/presets/{name}/files/{filename}` | Update preset file content |
+| POST | `/presets/{name}/deploy` | Stream deploy commands (SSE) |
+| POST | `/presets/{name}/update` | Stream update commands (SSE) |
+| POST | `/presets/{name}/undeploy` | Stream undeploy commands (SSE) |
+| GET | `/layout` | Get preset tree layout (folders/ordering) |
+| PUT | `/layout` | Save preset tree layout |
+| GET | `/kubeconfig-status` | Check kubeconfig availability |
 
 ### System
 
@@ -404,6 +444,7 @@ Each instance directory contains:
 - `.env` file gitignored
 - No built-in authentication (designed for local/personal use)
 - Per-resource operation locks prevent concurrent modifications
+- `name_prefix`, `aws_access_key_id`, `aws_secret_access_key` are read-only in the Global Configuration UI (set via `.env` / onboarding only)
 
 ## Testing
 

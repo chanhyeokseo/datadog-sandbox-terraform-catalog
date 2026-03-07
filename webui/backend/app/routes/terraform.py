@@ -72,6 +72,39 @@ def _get_eks_config_file(resource_dir: Optional[Path]) -> Optional[Path]:
         return None
     return resource_dir / "eks-config.auto.tfvars"
 
+
+def _parse_eks_config_file(config_path: Path) -> Optional[Dict]:
+    if not config_path.exists():
+        return None
+    try:
+        config: Dict = {}
+        content = config_path.read_text(encoding="utf-8")
+        for line in content.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            match = re.match(r'^(\w+)\s*=\s*(.+)$', line)
+            if not match:
+                continue
+            key, raw = match.group(1), match.group(2).strip()
+            if raw in ("true", "false"):
+                config[key] = raw == "true"
+            elif raw.startswith("["):
+                config[key] = json.loads(raw)
+            elif raw.startswith('"') and raw.endswith('"'):
+                config[key] = raw[1:-1]
+            else:
+                try:
+                    config[key] = int(raw)
+                except ValueError:
+                    config[key] = raw
+        logger.debug("Loaded EKS config from local file: %s (%d keys)", config_path, len(config))
+        return config
+    except Exception as e:
+        logger.warning("Failed to parse EKS config file %s: %s", config_path, e)
+        return None
+
+
 def _parse_terraform_output_json(raw_output: str) -> Dict:
     try:
         parsed = json.loads(raw_output)
@@ -611,12 +644,13 @@ async def get_resources():
 @router.post("/resources/{resource_id}/refresh-status")
 async def refresh_resource_status(resource_id: str):
     try:
-        s3_statuses = parser._fetch_all_s3_statuses()
         target = parser.get_resource_by_id(resource_id)
         if not target:
             raise HTTPException(status_code=404, detail="Resource not found")
         resource_dir = runner.get_resource_directory(resource_id)
         dir_name = resource_dir.name if resource_dir else resource_id
+        parser.invalidate_s3_status(dir_name)
+        s3_statuses = parser._fetch_all_s3_statuses()
         status = s3_statuses.get(dir_name, target.status)
         return {"resource_id": resource_id, "status": status.value if hasattr(status, 'value') else str(status)}
     except HTTPException:
@@ -942,6 +976,7 @@ async def terraform_apply_stream_resource(resource_id: str, auto_approve: bool =
             resource_lock = get_resource_lock(resource_id)
             async with resource_lock:
                 logger.info(f"Acquired lock for {resource_id} (apply)")
+                exit_code = None
                 try:
                     async for chunk in runner.stream_apply(
                         resource_id=resource_id,
@@ -949,9 +984,15 @@ async def terraform_apply_stream_resource(resource_id: str, auto_approve: bool =
                         var_files=var_files,
                         env_extra=aws_env
                     ):
+                        if chunk.startswith("__TF_EXIT__:"):
+                            exit_code = chunk.strip().split(":")[1]
                         yield chunk
                 finally:
                     logger.info(f"Released lock for {resource_id} (apply)")
+                    if exit_code == "0":
+                        res_dir = runner.get_resource_directory(resource_id)
+                        dir_name = res_dir.name if res_dir else None
+                        parser.invalidate_s3_status(dir_name)
         
         return StreamingResponse(
             locked_stream(),
@@ -972,6 +1013,10 @@ async def terraform_force_unlock(resource_id: str, body: dict):
         raise HTTPException(status_code=404, detail="Resource not found")
     aws_env = parser.get_aws_env()
     success, output = await runner.force_unlock(resource_id, lock_id, env_extra=aws_env)
+    if success:
+        res_dir = runner.get_resource_directory(resource_id)
+        dir_name = res_dir.name if res_dir else None
+        parser.invalidate_s3_status(dir_name)
     return {"success": success, "output": output}
 
 
@@ -989,6 +1034,7 @@ async def terraform_destroy_stream_resource(resource_id: str, auto_approve: bool
             resource_lock = get_resource_lock(resource_id)
             async with resource_lock:
                 logger.info(f"Acquired lock for {resource_id} (destroy)")
+                exit_code = None
                 try:
                     async for chunk in runner.stream_destroy(
                         resource_id=resource_id,
@@ -996,9 +1042,15 @@ async def terraform_destroy_stream_resource(resource_id: str, auto_approve: bool
                         var_files=var_files,
                         env_extra=aws_env
                     ):
+                        if chunk.startswith("__TF_EXIT__:"):
+                            exit_code = chunk.strip().split(":")[1]
                         yield chunk
                 finally:
                     logger.info(f"Released lock for {resource_id} (destroy)")
+                    if exit_code == "0":
+                        res_dir = runner.get_resource_directory(resource_id)
+                        dir_name = res_dir.name if res_dir else None
+                        parser.invalidate_s3_status(dir_name)
         
         return StreamingResponse(
             locked_stream(),
@@ -1026,6 +1078,13 @@ async def get_eks_config():
         resource_id, resource_dir = _get_eks_resource_info()
         if not resource_id or not resource_dir:
             return {"error": "EKS resource not found"}
+
+        config_path = _get_eks_config_file(resource_dir)
+        if config_path:
+            local_config = _parse_eks_config_file(config_path)
+            if local_config:
+                return local_config
+
         aws_env = parser.get_aws_env()
         init_ok, init_out = await runner.ensure_terraform_init(resource_dir, env_extra=aws_env)
         if not init_ok:
