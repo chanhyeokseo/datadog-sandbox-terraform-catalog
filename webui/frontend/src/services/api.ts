@@ -260,6 +260,11 @@ export const terraformApi = {
     return response.data;
   },
 
+  getActiveOperations: async (): Promise<Record<string, { operation: string; status: string }>> => {
+    const response = await api.get<Record<string, { operation: string; status: string }>>('/operations/active');
+    return response.data;
+  },
+
   streamApplyResource: async (
     resourceId: string,
     autoApprove: boolean = false,

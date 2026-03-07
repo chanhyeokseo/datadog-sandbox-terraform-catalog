@@ -281,6 +281,73 @@ function App() {
     return () => { if (healthRef.current) clearInterval(healthRef.current); };
   }, [initialLoadPhase]);
 
+  useEffect(() => {
+    if (initialLoadPhase !== 'ready') return;
+    let cancelled = false;
+    const resumeActiveOps = async () => {
+      try {
+        const ops = await api.getActiveOperations();
+        if (cancelled || !ops || Object.keys(ops).length === 0) return;
+        for (const [resourceId, info] of Object.entries(ops)) {
+          const action = info.operation === 'apply' ? 'deploy' : 'destroy';
+          const resultId = Date.now().toString() + '_' + resourceId;
+          setResults(prev => [{
+            id: resultId,
+            action: action.toUpperCase(),
+            status: 'running' as const,
+            message: `Reconnected to running ${action}...`,
+            timestamp: new Date(),
+            output: '',
+          }, ...prev]);
+          setRunningResources(prev => new Map(prev).set(resourceId, action));
+          const streamFn = info.operation === 'apply'
+            ? api.streamApplyResource
+            : api.streamDestroyResource;
+          streamFn(
+            resourceId,
+            false,
+            (chunk) => {
+              setResults(prev => {
+                const updated = [...prev];
+                const idx = updated.findIndex(r => r.id === resultId);
+                if (idx !== -1) {
+                  updated[idx] = { ...updated[idx], output: (updated[idx].output || '') + chunk };
+                }
+                return updated;
+              });
+            },
+            (success) => {
+              setResults(prev => {
+                const updated = [...prev];
+                const idx = updated.findIndex(r => r.id === resultId);
+                if (idx !== -1) {
+                  updated[idx] = {
+                    ...updated[idx],
+                    status: success ? 'success' : 'error',
+                    message: success ? `${action.toUpperCase()} completed successfully` : `${action.toUpperCase()} failed`,
+                  };
+                }
+                return updated;
+              });
+              setRunningResources(prev => {
+                const m = new Map(prev);
+                m.delete(resourceId);
+                return m;
+              });
+              if (success) {
+                setResourceRefreshTrigger(prev => prev + 1);
+              }
+            },
+          );
+        }
+      } catch (err) {
+        console.warn('Failed to check active operations:', err);
+      }
+    };
+    resumeActiveOps();
+    return () => { cancelled = true; };
+  }, [initialLoadPhase]);
+
   const finishLoadingAndRefresh = async () => {
     try {
       const configStatus = await api.getConfigOnboardingStatus();

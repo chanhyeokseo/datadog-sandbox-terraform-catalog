@@ -204,7 +204,22 @@ Each instance runs Terraform independently:
 - Variable file: `-var-file=terraform.tfvars` (instance-specific)
 - Backend: `backend.tf` with S3 state + DynamoDB lock (per-instance key)
 - Streaming: SSE for plan/apply/destroy output, `__TF_EXIT__:{code}` sentinel at completion
-- Concurrency: Per-resource locks prevent simultaneous apply/destroy on same instance
+- Concurrency: Per-resource `asyncio.Lock` prevents simultaneous apply/destroy on same instance
+
+### Background Task Streaming
+
+Apply/destroy operations are decoupled from the HTTP request lifecycle via background tasks, allowing operations to survive browser disconnection:
+
+1. **`TerraformOperation`** dataclass stores `resource_id`, `operation` type, `status`, `output` buffer (list of strings), and `exit_code`
+2. **`active_operations`** dict tracks running/completed operations per resource
+3. **Start**: `GET /apply/stream/{id}` or `GET /destroy/stream/{id}` creates a `TerraformOperation`, launches `asyncio.create_task()`, and returns a `StreamingResponse` reading from the output buffer
+4. **Reconnect**: If the endpoint is called while an operation is already running, it streams from the existing buffer (replay + live tail)
+5. **Frontend auto-resume**: On page load, `App.tsx` calls `GET /operations/active` to detect running operations and automatically reconnects to their output streams
+6. **Cleanup**: A new operation for the same resource replaces the previous entry in `active_operations`
+
+### EKS Config Local-First Read
+
+`GET /eks/config` reads the local `eks-config.auto.tfvars` file first (saved by `POST /eks/config`). Falls back to `terraform output -json` only if the local file does not exist. This ensures saved-but-not-yet-applied configuration changes are preserved across UI reloads. The helper `_parse_eks_config_file()` parses the tfvars format (bool, int, string, list) into a config dict.
 
 ### Frontend Routing
 

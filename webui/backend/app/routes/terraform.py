@@ -1,3 +1,4 @@
+from dataclasses import dataclass, field
 from fastapi import APIRouter, HTTPException, Query, Body
 from fastapi.responses import StreamingResponse
 from typing import List, Dict, Optional
@@ -30,6 +31,18 @@ parser = TerraformParser(TERRAFORM_DIR)
 runner = TerraformRunner(TERRAFORM_DIR)
 
 resource_locks: Dict[str, asyncio.Lock] = {}
+
+
+@dataclass
+class TerraformOperation:
+    resource_id: str
+    operation: str
+    status: str = "running"
+    output: List[str] = field(default_factory=list)
+    exit_code: Optional[int] = None
+
+
+active_operations: Dict[str, TerraformOperation] = {}
 
 _CREDENTIAL_ERROR_KEYWORDS = [
     "token has expired", "token retrieval", "no credentials",
@@ -240,6 +253,9 @@ async def sso_login():
 @router.get("/credentials/sso-status/{session_id}")
 async def sso_status(session_id: str):
     result = await asyncio.to_thread(credential_manager.poll_sso_token, session_id)
+    if result.get("status") == "complete":
+        logger.info("SSO login complete, rebuilding S3 status cache")
+        parser.invalidate_s3_status()
     return result
 
 
@@ -270,6 +286,84 @@ def get_resource_lock(resource_id: str) -> asyncio.Lock:
     if resource_id not in resource_locks:
         resource_locks[resource_id] = asyncio.Lock()
     return resource_locks[resource_id]
+
+
+async def _run_apply_background(
+    op: TerraformOperation,
+    auto_approve: bool,
+    var_files: Optional[List[str]],
+    aws_env: Optional[Dict[str, str]],
+):
+    resource_lock = get_resource_lock(op.resource_id)
+    async with resource_lock:
+        logger.info(f"Background apply started for {op.resource_id}")
+        try:
+            async for chunk in runner.stream_apply(
+                resource_id=op.resource_id,
+                auto_approve=auto_approve,
+                var_files=var_files,
+                env_extra=aws_env,
+            ):
+                op.output.append(chunk)
+                if chunk.startswith("__TF_EXIT__:"):
+                    op.exit_code = int(chunk.strip().split(":")[1])
+        except Exception as e:
+            logger.error(f"Background apply error for {op.resource_id}: {e}")
+            op.output.append(f"Error: {e}\n")
+            op.output.append("__TF_EXIT__:1\n")
+            op.exit_code = 1
+        finally:
+            op.status = "completed" if op.exit_code == 0 else "failed"
+            logger.info(f"Background apply finished for {op.resource_id}: {op.status}")
+            if op.exit_code == 0:
+                res_dir = runner.get_resource_directory(op.resource_id)
+                dir_name = res_dir.name if res_dir else None
+                parser.invalidate_s3_status(dir_name)
+
+
+async def _run_destroy_background(
+    op: TerraformOperation,
+    auto_approve: bool,
+    var_files: Optional[List[str]],
+    aws_env: Optional[Dict[str, str]],
+):
+    resource_lock = get_resource_lock(op.resource_id)
+    async with resource_lock:
+        logger.info(f"Background destroy started for {op.resource_id}")
+        try:
+            async for chunk in runner.stream_destroy(
+                resource_id=op.resource_id,
+                auto_approve=auto_approve,
+                var_files=var_files,
+                env_extra=aws_env,
+            ):
+                op.output.append(chunk)
+                if chunk.startswith("__TF_EXIT__:"):
+                    op.exit_code = int(chunk.strip().split(":")[1])
+        except Exception as e:
+            logger.error(f"Background destroy error for {op.resource_id}: {e}")
+            op.output.append(f"Error: {e}\n")
+            op.output.append("__TF_EXIT__:1\n")
+            op.exit_code = 1
+        finally:
+            op.status = "completed" if op.exit_code == 0 else "failed"
+            logger.info(f"Background destroy finished for {op.resource_id}: {op.status}")
+            if op.exit_code == 0:
+                res_dir = runner.get_resource_directory(op.resource_id)
+                dir_name = res_dir.name if res_dir else None
+                parser.invalidate_s3_status(dir_name)
+
+
+async def _stream_operation_output(op: TerraformOperation):
+    idx = 0
+    while True:
+        if idx < len(op.output):
+            yield op.output[idx]
+            idx += 1
+        elif op.status != "running":
+            break
+        else:
+            await asyncio.sleep(0.1)
 
 
 def _var_files_for_resource(resource_id: str) -> Optional[List[str]]:
@@ -914,12 +1008,13 @@ async def terraform_plan_stream_resource(resource_id: str):
 
 @router.get("/apply/stream/{resource_id}")
 async def terraform_apply_stream_resource(resource_id: str, auto_approve: bool = False):
-    import json
-    import asyncio
-    
+    existing = active_operations.get(resource_id)
+    if existing and existing.status == "running":
+        logger.info(f"Reconnecting to running apply for {resource_id}")
+        return StreamingResponse(_stream_operation_output(existing), media_type="text/plain")
+
     try:
         target_resource = parser.get_resource_by_id(resource_id)
-        
         if not target_resource:
             raise HTTPException(status_code=404, detail="Resource not found")
 
@@ -928,7 +1023,6 @@ async def terraform_apply_stream_resource(resource_id: str, auto_approve: bool =
             resource_dir = runner.get_resource_directory(resource_id)
             if resource_dir:
                 rules_file = resource_dir / "security-group-rules.auto.tfvars"
-                
                 if rules_file.exists():
                     my_ip = None
                     try:
@@ -939,14 +1033,10 @@ async def terraform_apply_stream_resource(resource_id: str, auto_approve: bool =
                             logger.info(f"Fetched current IP for security group update: {my_ip}")
                     except Exception as e:
                         logger.warning(f"Failed to fetch current IP: {e}")
-                    
                     if my_ip:
                         try:
                             with open(rules_file, 'r') as f:
                                 content = f.read()
-                            
-                            import re
-                            
                             def update_ip_in_rule(match):
                                 rule_block = match.group(0)
                                 if 'use_my_ip   = true' in rule_block or 'use_my_ip = true' in rule_block:
@@ -956,48 +1046,23 @@ async def terraform_apply_stream_resource(resource_id: str, auto_approve: bool =
                                         rule_block
                                     )
                                 return rule_block
-                            
                             updated_content = re.sub(
                                 r'\{[^}]+\}',
                                 update_ip_in_rule,
                                 content,
                                 flags=re.DOTALL
                             )
-                            
                             with open(rules_file, 'w') as f:
                                 f.write(updated_content)
-                            
                             logger.info(f"Updated security group rules with current IP: {my_ip}/32")
                         except Exception as e:
                             logger.error(f"Failed to update IP in tfvars: {e}")
-        
+
         aws_env = parser.get_aws_env()
-        async def locked_stream():
-            resource_lock = get_resource_lock(resource_id)
-            async with resource_lock:
-                logger.info(f"Acquired lock for {resource_id} (apply)")
-                exit_code = None
-                try:
-                    async for chunk in runner.stream_apply(
-                        resource_id=resource_id,
-                        auto_approve=auto_approve,
-                        var_files=var_files,
-                        env_extra=aws_env
-                    ):
-                        if chunk.startswith("__TF_EXIT__:"):
-                            exit_code = chunk.strip().split(":")[1]
-                        yield chunk
-                finally:
-                    logger.info(f"Released lock for {resource_id} (apply)")
-                    if exit_code == "0":
-                        res_dir = runner.get_resource_directory(resource_id)
-                        dir_name = res_dir.name if res_dir else None
-                        parser.invalidate_s3_status(dir_name)
-        
-        return StreamingResponse(
-            locked_stream(),
-            media_type="text/plain"
-        )
+        op = TerraformOperation(resource_id=resource_id, operation="apply")
+        active_operations[resource_id] = op
+        asyncio.create_task(_run_apply_background(op, auto_approve, var_files, aws_env))
+        return StreamingResponse(_stream_operation_output(op), media_type="text/plain")
     except Exception as e:
         logger.error(f"Error streaming terraform apply: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1022,43 +1087,34 @@ async def terraform_force_unlock(resource_id: str, body: dict):
 
 @router.get("/destroy/stream/{resource_id}")
 async def terraform_destroy_stream_resource(resource_id: str, auto_approve: bool = False):
+    existing = active_operations.get(resource_id)
+    if existing and existing.status == "running":
+        logger.info(f"Reconnecting to running destroy for {resource_id}")
+        return StreamingResponse(_stream_operation_output(existing), media_type="text/plain")
+
     try:
         target_resource = parser.get_resource_by_id(resource_id)
-        
         if not target_resource:
             raise HTTPException(status_code=404, detail="Resource not found")
 
         var_files = _var_files_for_resource(resource_id)
         aws_env = parser.get_aws_env()
-        async def locked_stream():
-            resource_lock = get_resource_lock(resource_id)
-            async with resource_lock:
-                logger.info(f"Acquired lock for {resource_id} (destroy)")
-                exit_code = None
-                try:
-                    async for chunk in runner.stream_destroy(
-                        resource_id=resource_id,
-                        auto_approve=auto_approve,
-                        var_files=var_files,
-                        env_extra=aws_env
-                    ):
-                        if chunk.startswith("__TF_EXIT__:"):
-                            exit_code = chunk.strip().split(":")[1]
-                        yield chunk
-                finally:
-                    logger.info(f"Released lock for {resource_id} (destroy)")
-                    if exit_code == "0":
-                        res_dir = runner.get_resource_directory(resource_id)
-                        dir_name = res_dir.name if res_dir else None
-                        parser.invalidate_s3_status(dir_name)
-        
-        return StreamingResponse(
-            locked_stream(),
-            media_type="text/plain"
-        )
+        op = TerraformOperation(resource_id=resource_id, operation="destroy")
+        active_operations[resource_id] = op
+        asyncio.create_task(_run_destroy_background(op, auto_approve, var_files, aws_env))
+        return StreamingResponse(_stream_operation_output(op), media_type="text/plain")
     except Exception as e:
         logger.error(f"Error streaming terraform destroy: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/operations/active")
+async def get_active_operations():
+    return {
+        rid: {"operation": op.operation, "status": op.status}
+        for rid, op in active_operations.items()
+        if op.status == "running"
+    }
 
 
 @router.get("/output")
