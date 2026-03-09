@@ -222,7 +222,7 @@ async def check_credentials():
             "arn": identity.get("Arn", ""),
         }
     except ProfileNotFound:
-        aws_profile = os.environ.get("AWS_PROFILE", "")
+        aws_profile = credential_manager.get_aws_profile()
         logger.warning(f"AWS profile not found: {aws_profile}")
         raise HTTPException(
             status_code=401,
@@ -247,7 +247,7 @@ async def check_credentials():
             except Exception as retry_err:
                 logger.warning(f"Credential check failed after refresh: {retry_err}")
 
-        aws_profile = os.environ.get("AWS_PROFILE", "")
+        aws_profile = credential_manager.get_aws_profile()
         sso_command = f"aws sso login --profile={aws_profile}" if aws_profile else "aws sso login"
         sso_configured = credential_manager.get_sso_config() is not None
         raise HTTPException(
@@ -292,6 +292,14 @@ async def sso_status(session_id: str):
 async def credential_health():
     return await asyncio.to_thread(credential_manager.get_credential_health)
 
+
+@router.post("/credentials/debug-expire")
+async def debug_expire_credentials(mode: str = "sts"):
+    if mode not in ("sts", "sso", "all"):
+        raise HTTPException(status_code=400, detail="mode must be 'sts', 'sso', or 'all'")
+    result = await asyncio.to_thread(credential_manager.debug_expire_credentials, mode)
+    logger.warning(f"[DEBUG] Credentials expired via debug endpoint: {result}")
+    return result
 
 
 @router.post("/ensure-data")
@@ -742,7 +750,7 @@ async def get_resources():
         logger.info(f"Loaded {len(resources)} resources with current states")
         return resources
     except ProfileNotFound:
-        aws_profile = os.environ.get("AWS_PROFILE", "")
+        aws_profile = credential_manager.get_aws_profile()
         logger.error(f"AWS profile not found: {aws_profile}")
         raise HTTPException(
             status_code=401,
@@ -755,7 +763,7 @@ async def get_resources():
     except Exception as e:
         logger.error(f"Error getting resources: {e}")
         if _is_credential_error(e):
-            aws_profile = os.environ.get("AWS_PROFILE", "")
+            aws_profile = credential_manager.get_aws_profile()
             sso_command = f"aws sso login --profile={aws_profile}" if aws_profile else "aws sso login"
             raise HTTPException(
                 status_code=401,

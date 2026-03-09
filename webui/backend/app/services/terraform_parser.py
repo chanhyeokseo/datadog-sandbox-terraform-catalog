@@ -344,7 +344,7 @@ class TerraformParser:
             if val:
                 result[env_key] = val
 
-        aws_profile = os.environ.get("AWS_PROFILE", "")
+        aws_profile = os.environ.get("AWS_PROFILE") or os.environ.get("DOGSTAC_AWS_PROFILE", "")
         if aws_profile:
             result["TF_VAR_aws_profile"] = aws_profile
 

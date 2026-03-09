@@ -248,10 +248,16 @@ function App() {
 
   useEffect(() => {
     if (initialLoadPhase !== 'ready') return;
+    let lastCheckTs = 0;
+    const DEBOUNCE_MS = 5000;
+
     const checkHealth = async () => {
+      const now = Date.now();
+      if (now - lastCheckTs < DEBOUNCE_MS) return;
+      lastCheckTs = now;
       try {
         const health = await api.getCredentialHealth();
-        if (health.status === 'expiring_soon') {
+        if (health.status === 'expiring_soon' || health.status === 'expired') {
           try {
             await api.checkCredentials();
           } catch (err: any) {
@@ -265,20 +271,24 @@ function App() {
               setShowSSOModal(true);
             }
           }
-        } else if (health.status === 'expired') {
-          setCredentialError({
-            type: 'expired',
-            ssoCommand: health.sso_profile
-              ? `aws sso login --profile=${health.sso_profile}`
-              : 'aws sso login',
-            ssoConfigured: health.sso_configured,
-          });
-          setShowSSOModal(true);
         }
       } catch {}
     };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') checkHealth();
+    };
+    const onFocus = () => checkHealth();
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('focus', onFocus);
     healthRef.current = setInterval(checkHealth, 300000);
-    return () => { if (healthRef.current) clearInterval(healthRef.current); };
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('focus', onFocus);
+      if (healthRef.current) clearInterval(healthRef.current);
+    };
   }, [initialLoadPhase]);
 
   useEffect(() => {

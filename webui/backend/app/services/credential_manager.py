@@ -54,9 +54,20 @@ class SSOConfig:
 class CredentialManager:
     def __init__(self):
         self._sso_sessions: Dict[str, SSOSession] = {}
+        self._original_profile: str = os.environ.get("AWS_PROFILE", "")
+
+    def get_aws_profile(self) -> str:
+        return self._original_profile or os.environ.get("AWS_PROFILE", "")
+
+    def _unset_aws_profile(self):
+        if "AWS_PROFILE" in os.environ:
+            self._original_profile = os.environ["AWS_PROFILE"]
+            os.environ["DOGSTAC_AWS_PROFILE"] = self._original_profile
+            del os.environ["AWS_PROFILE"]
+            logger.debug(f"Unset AWS_PROFILE from env (stored: {self._original_profile})")
 
     def get_sso_config(self) -> Optional[SSOConfig]:
-        aws_profile = os.environ.get("AWS_PROFILE", "")
+        aws_profile = self.get_aws_profile()
         if not aws_profile:
             logger.debug("No AWS_PROFILE set, SSO config unavailable")
             return None
@@ -177,6 +188,7 @@ class CredentialManager:
             os.environ["AWS_SECRET_ACCESS_KEY"] = role_creds["secretAccessKey"]
             if role_creds.get("sessionToken"):
                 os.environ["AWS_SESSION_TOKEN"] = role_creds["sessionToken"]
+            self._unset_aws_profile()
             logger.info("AWS credentials refreshed via SSO token")
             return True
         except ClientError as e:
@@ -272,6 +284,7 @@ class CredentialManager:
                 os.environ["AWS_SECRET_ACCESS_KEY"] = role_creds["secretAccessKey"]
                 if role_creds.get("sessionToken"):
                     os.environ["AWS_SESSION_TOKEN"] = role_creds["sessionToken"]
+                self._unset_aws_profile()
                 logger.info("SSO login complete, credentials updated")
             except Exception as e:
                 logger.warning(f"SSO token obtained but failed to get role credentials: {e}")
@@ -293,7 +306,7 @@ class CredentialManager:
             return {"status": "error", "message": str(e)}
 
     def get_credential_health(self) -> dict:
-        aws_profile = os.environ.get("AWS_PROFILE", "")
+        aws_profile = self.get_aws_profile()
         sso_config = self.get_sso_config()
         sso_configured = sso_config is not None
 
@@ -343,6 +356,35 @@ class CredentialManager:
                 "sso_profile": aws_profile,
                 "message": str(e),
             }
+
+    def debug_expire_credentials(self, mode: str = "sts") -> dict:
+        result = {"mode": mode, "actions": []}
+
+        if mode in ("sts", "all"):
+            for key in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"):
+                if key in os.environ:
+                    os.environ[key] = "EXPIRED_DEBUG_VALUE"
+            result["actions"].append("sts_credentials_invalidated")
+            logger.warning("[DEBUG] STS credentials invalidated")
+
+        if mode in ("sso", "all"):
+            sso_config = self.get_sso_config()
+            if sso_config:
+                cache_path = self._get_sso_cache_path(sso_config)
+                if cache_path.exists():
+                    with open(cache_path, "r") as f:
+                        data = json.load(f)
+                    data["expiresAt"] = "2020-01-01T00:00:00Z"
+                    with open(cache_path, "w") as f:
+                        json.dump(data, f)
+                    result["actions"].append(f"sso_cache_expired: {cache_path}")
+                    logger.warning(f"[DEBUG] SSO cache token expired at {cache_path}")
+                else:
+                    result["actions"].append("sso_cache_not_found")
+            else:
+                result["actions"].append("no_sso_config")
+
+        return result
 
     async def background_refresh_loop(self):
         logger.info("Credential background refresh loop started")
