@@ -13,6 +13,7 @@ import boto3
 from botocore.exceptions import ClientError, ProfileNotFound
 
 from app.models.schemas import (
+    ResourceStatus,
     ResourceType,
     TerraformResource,
     TerraformStateResponse,
@@ -359,7 +360,12 @@ async def _run_apply_background(
             if op.exit_code == 0:
                 res_dir = runner.get_resource_directory(op.resource_id)
                 dir_name = res_dir.name if res_dir else None
-                parser.invalidate_s3_status(dir_name)
+                new_status = parser.invalidate_s3_status(dir_name)
+                if dir_name and new_status == ResourceStatus.DISABLED:
+                    logger.warning(f"S3 status DISABLED after successful apply for {dir_name}, refreshing credentials and retrying")
+                    refreshed = await asyncio.to_thread(credential_manager.try_refresh_credentials)
+                    if refreshed:
+                        parser.invalidate_s3_status(dir_name)
 
 
 async def _run_destroy_background(

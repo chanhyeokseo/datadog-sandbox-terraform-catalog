@@ -266,17 +266,18 @@ class TerraformParser:
         self._s3_status_cache = self._force_fetch_all_s3_statuses()
         logger.info("S3 status cache built: %d entries", len(self._s3_status_cache))
 
-    def invalidate_s3_status(self, dir_name: Optional[str] = None) -> None:
+    def invalidate_s3_status(self, dir_name: Optional[str] = None) -> Optional[ResourceStatus]:
         if dir_name is None:
             logger.debug("Invalidating entire S3 status cache")
             self.build_s3_status_cache()
-            return
+            return None
         logger.debug("Invalidating S3 status cache for: %s", dir_name)
         new_status = self._fetch_single_s3_status(dir_name)
         if self._s3_status_cache is not None:
             self._s3_status_cache[dir_name] = new_status
         else:
             self.build_s3_status_cache()
+        return new_status
 
     def _check_resource_status_local(self, instance_dir: Path) -> ResourceStatus:
         tfstate_path = instance_dir / "terraform.tfstate"
