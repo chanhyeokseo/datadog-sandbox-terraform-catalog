@@ -44,6 +44,11 @@ ONBOARDING_PHASES = [
     ]),
 ]
 
+HIDDEN_INSTANCES = {
+    "deploy-spring-boot",
+    "ecr-apps",
+}
+
 EXCLUDED_VARIABLES = {
     'ec2_key_name',
     'aws_access_key_id',      # Managed via environment variables

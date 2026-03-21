@@ -91,11 +91,16 @@ class TerraformParser:
         s3_statuses = self._fetch_all_s3_statuses()
         logger.debug("S3 status cache built: %s", {k: v.value for k, v in s3_statuses.items()})
 
+        from app.config.resource_config import HIDDEN_INSTANCES
+
         for instance_dir in sorted(self.instances_dir.iterdir()):
             if not instance_dir.is_dir():
                 continue
 
             dir_name = instance_dir.name
+            if dir_name in HIDDEN_INSTANCES:
+                logger.debug("Skipping hidden instance: %s", dir_name)
+                continue
             resource_type = get_resource_type_from_dir(dir_name)
             main_tf = instance_dir / "main.tf"
             if main_tf.exists():
