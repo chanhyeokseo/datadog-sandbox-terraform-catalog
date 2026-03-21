@@ -14,6 +14,7 @@ from fastapi import APIRouter, HTTPException, Body
 from fastapi.responses import StreamingResponse
 
 from app.models.schemas import ResourceType
+from app.services.credential_manager import credential_manager
 from app.services.eks_preset_manager import EKSPresetManager
 from app.services.terraform_parser import TerraformParser
 from app.services.terraform_runner import TerraformRunner
@@ -102,8 +103,22 @@ async def _get_cluster_info_async(resource_id: str, resource_dir: Path) -> Dict:
     return {}
 
 
+def _build_boto3_session(region: str) -> boto3.Session:
+    access_key = os.environ.get("AWS_ACCESS_KEY_ID")
+    secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY")
+    session_token = os.environ.get("AWS_SESSION_TOKEN")
+    if access_key and secret_key:
+        return boto3.Session(
+            region_name=region,
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
+            aws_session_token=session_token,
+        )
+    return boto3.Session(region_name=region)
+
+
 def _get_eks_token(cluster_name: str, region: str) -> str:
-    session = boto3.Session(region_name=region)
+    session = _build_boto3_session(region)
     sts_client = session.client("sts", region_name=region)
     service_id = sts_client.meta.service_model.service_id
 
@@ -127,29 +142,42 @@ def _get_eks_token(cluster_name: str, region: str) -> str:
     return "k8s-aws-v1." + base64.urlsafe_b64encode(signed_url.encode("utf-8")).decode("utf-8").rstrip("=")
 
 
+def _write_kubeconfig(cluster_name: str, region: str) -> tuple[bool, str]:
+    session = _build_boto3_session(region)
+    eks_client = session.client("eks", region_name=region)
+    cluster = eks_client.describe_cluster(name=cluster_name)["cluster"]
+
+    endpoint = cluster["endpoint"]
+    ca_data = cluster["certificateAuthority"]["data"]
+    token = _get_eks_token(cluster_name, region)
+
+    kubeconfig = {
+        "apiVersion": "v1",
+        "kind": "Config",
+        "clusters": [{"name": cluster_name, "cluster": {"server": endpoint, "certificate-authority-data": ca_data}}],
+        "contexts": [{"name": cluster_name, "context": {"cluster": cluster_name, "user": cluster_name}}],
+        "current-context": cluster_name,
+        "users": [{"name": cluster_name, "user": {"token": token}}],
+    }
+
+    KUBECONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    KUBECONFIG_PATH.write_text(json.dumps(kubeconfig, indent=2))
+    logger.debug(f"Kubeconfig written to {KUBECONFIG_PATH} for cluster {cluster_name}")
+    return True, f"Kubeconfig configured for {cluster_name} at {endpoint}"
+
+
 def _configure_kubeconfig(cluster_name: str, region: str) -> tuple[bool, str]:
     try:
-        eks_client = boto3.client("eks", region_name=region)
-        cluster = eks_client.describe_cluster(name=cluster_name)["cluster"]
-
-        endpoint = cluster["endpoint"]
-        ca_data = cluster["certificateAuthority"]["data"]
-        token = _get_eks_token(cluster_name, region)
-
-        kubeconfig = {
-            "apiVersion": "v1",
-            "kind": "Config",
-            "clusters": [{"name": cluster_name, "cluster": {"server": endpoint, "certificate-authority-data": ca_data}}],
-            "contexts": [{"name": cluster_name, "context": {"cluster": cluster_name, "user": cluster_name}}],
-            "current-context": cluster_name,
-            "users": [{"name": cluster_name, "user": {"token": token}}],
-        }
-
-        KUBECONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        KUBECONFIG_PATH.write_text(json.dumps(kubeconfig, indent=2))
-        logger.debug(f"Kubeconfig written to {KUBECONFIG_PATH} for cluster {cluster_name}")
-        return True, f"Kubeconfig configured for {cluster_name} at {endpoint}"
+        return _write_kubeconfig(cluster_name, region)
     except Exception as e:
+        logger.warning(f"Kubeconfig failed: {e}, attempting SSO credential refresh")
+        refreshed = credential_manager.try_refresh_credentials()
+        if refreshed:
+            try:
+                return _write_kubeconfig(cluster_name, region)
+            except Exception as retry_err:
+                logger.warning(f"Kubeconfig failed after credential refresh: {retry_err}")
+                return False, str(retry_err)
         logger.warning(f"Failed to configure kubeconfig: {e}")
         return False, str(e)
 
