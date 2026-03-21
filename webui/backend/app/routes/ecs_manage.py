@@ -580,6 +580,55 @@ def _list_ecs_container_instances(cluster_name: str, region: str) -> List[Dict]:
     return instances
 
 
+def _check_active_workloads(cluster_name: str, region: str) -> Dict:
+    import boto3
+    client = boto3.client("ecs", region_name=region)
+    services = []
+    paginator = client.get_paginator("list_services")
+    for page in paginator.paginate(cluster=cluster_name):
+        services.extend(page.get("serviceArns", []))
+
+    active_services = []
+    if services:
+        for i in range(0, len(services), 10):
+            batch = services[i:i+10]
+            desc = client.describe_services(cluster=cluster_name, services=batch)
+            for svc in desc.get("services", []):
+                if svc.get("desiredCount", 0) > 0 or svc.get("runningCount", 0) > 0:
+                    active_services.append({
+                        "name": svc.get("serviceName", ""),
+                        "status": svc.get("status", ""),
+                        "running": svc.get("runningCount", 0),
+                        "desired": svc.get("desiredCount", 0),
+                    })
+
+    return {
+        "has_active": len(active_services) > 0,
+        "services": active_services,
+    }
+
+
+@router.get("/has-active-workloads")
+async def has_active_workloads():
+    resource_id, resource_dir = _get_ecs_resource_info()
+    if not resource_dir:
+        return {"has_active": False, "services": []}
+
+    cluster_info = await _get_cluster_info_async(resource_id, resource_dir)
+    cluster_name = cluster_info.get("cluster_name")
+    region = cluster_info.get("region")
+    if not cluster_name:
+        return {"has_active": False, "services": []}
+
+    try:
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, _check_active_workloads, cluster_name, region)
+        return result
+    except Exception as e:
+        logger.error(f"Failed to check active workloads: {e}")
+        return {"has_active": False, "services": [], "error": str(e)}
+
+
 @router.get("/container-instances")
 async def get_container_instances():
     resource_id, resource_dir = _get_ecs_resource_info()

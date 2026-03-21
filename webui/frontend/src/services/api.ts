@@ -799,6 +799,11 @@ export const ecsManageApi = {
     const response = await axios.get<{ cluster_name: string; region: string; instances: ClusterInstance[] }>(`${ECS_MANAGE_BASE}/container-instances`);
     return response.data;
   },
+
+  hasActiveWorkloads: async (): Promise<{ has_active: boolean; services: { name: string; status: string; running: number; desired: number }[] }> => {
+    const response = await axios.get(`${ECS_MANAGE_BASE}/has-active-workloads`);
+    return response.data;
+  },
 };
 
 export const eksManageApi = {

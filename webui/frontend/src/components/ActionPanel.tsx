@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { TerraformResource, TerraformVariable, ResourceType } from '../types';
-import { terraformApi } from '../services/api';
+import { terraformApi, ecsManageApi } from '../services/api';
 import SecurityGroupEditor from './SecurityGroupEditor';
 import EKSEditor from './EKSEditor';
 import DockerAgentEditor from './DockerAgentEditor';
@@ -50,6 +50,7 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
   const [showECSManageModal, setShowECSManageModal] = useState(false);
   const [ecsConnectInfo, setEcsConnectInfo] = useState<{ clusterName: string; clusterArn: string; region: string } | null>(null);
   const [showECSConnectModal, setShowECSConnectModal] = useState(false);
+  const [showHelpModal, setShowHelpModal] = useState(false);
 
   const getOutputsFromStorage = (): OutputData[] => {
     try {
@@ -202,6 +203,20 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
     if (!selectedResource) return;
 
     const resourceId = selectedResource.id;
+
+    if (selectedResource.type === ResourceType.ECS) {
+      try {
+        const result = await ecsManageApi.hasActiveWorkloads();
+        if (result.has_active) {
+          const serviceNames = result.services.map(s => `  - ${s.name} (running: ${s.running})`).join('\n');
+          alert(`Cannot destroy ECS cluster while services are running:\n\n${serviceNames}\n\nPlease undeploy all presets from the Manage panel first.`);
+          return;
+        }
+      } catch (err) {
+        console.error('Failed to check active workloads:', err);
+      }
+    }
+
     const doDestroy = async () => {
       const resultId = onActionStart('destroy', resourceId);
       const controller = new AbortController();
@@ -548,7 +563,10 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
 
       <div className="action-buttons-container">
         <div className="action-section">
-          <h3>Resource Actions</h3>
+          <div className="action-section-header">
+            <h3>Resource Actions</h3>
+            <button className="btn-help" onClick={() => setShowHelpModal(true)} title="What do these buttons do?">?</button>
+          </div>
           
           {selectedResource?.type === ResourceType.SECURITY_GROUP && selectedResource?.status === 'enabled' && !runningAction && (
             <div className="ip-update-hint">
@@ -946,6 +964,47 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
         <ClusterConnectModal
           onClose={() => setShowECSConnectModal(false)}
         />
+      )}
+      {showHelpModal && createPortal(
+        <div className="modal-overlay" onClick={() => setShowHelpModal(false)}>
+          <div className="help-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="help-modal-header">
+              <h3>Resource Actions Guide</h3>
+              <button onClick={() => setShowHelpModal(false)} className="close-button">&times;</button>
+            </div>
+            <div className="help-modal-content">
+              <div className="help-item">
+                <span className="help-badge deploy">Deploy</span>
+                <p>Create the selected resource. Shown when the resource has not been deployed yet.</p>
+              </div>
+              <div className="help-item">
+                <span className="help-badge update">Update</span>
+                <p>Apply Terraform changes to update an already deployed resource with new configuration.</p>
+              </div>
+              <div className="help-item">
+                <span className="help-badge plan">Plan</span>
+                <p>Preview what changes Terraform will make without actually applying them. Use this to verify before deploying.</p>
+              </div>
+              <div className="help-item">
+                <span className="help-badge destroy">Destroy</span>
+                <p>Tear down and remove all infrastructure managed by the selected resource.</p>
+              </div>
+              <div className="help-item">
+                <span className="help-badge connect">Connect</span>
+                <p>Open a connection to the resource. For EC2, this opens an SSH terminal. For ECS, this shows container instances available for SSH.</p>
+              </div>
+              <div className="help-item">
+                <span className="help-badge manage">Manage</span>
+                <p>Open the management panel for EKS/ECS clusters. Deploy presets, run commands, and manage workloads.</p>
+              </div>
+              <div className="help-item">
+                <span className="help-badge configure">Configure Cluster</span>
+                <p>Adjust cluster settings such as node groups, instance types, capacity, and scaling parameters.</p>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );
