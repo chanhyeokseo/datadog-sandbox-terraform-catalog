@@ -35,6 +35,7 @@ COPY instances/ /app/terraform-source/instances/
 COPY modules/ /app/terraform-source/modules/
 COPY apps/ /app/terraform-source/apps/
 COPY eks/ /app/terraform-source/eks/
+COPY ecs/ /app/terraform-source/ecs/
 
 RUN mkdir -p /app/terraform
 

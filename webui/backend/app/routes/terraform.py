@@ -286,6 +286,8 @@ async def sso_status(session_id: str):
         parser.invalidate_s3_status()
         from app.routes.eks_manage import preset_manager as eks_preset_mgr
         eks_preset_mgr.refresh_from_s3()
+        from app.routes.ecs_manage import preset_manager as ecs_preset_mgr
+        ecs_preset_mgr.refresh_from_s3()
     return result
 
 
@@ -414,11 +416,6 @@ async def _stream_operation_output(op: TerraformOperation):
 
 
 def _var_files_for_resource(resource_id: str) -> Optional[List[str]]:
-    """
-    Build list of -var-file paths for terraform commands
-    Each instance uses ONLY its own directory's terraform.tfvars
-    (Root tfvars is synced to instances during onboarding)
-    """
     resource_dir = runner.get_resource_directory(resource_id)
     if not resource_dir:
         return None
@@ -426,6 +423,10 @@ def _var_files_for_resource(resource_id: str) -> Optional[List[str]]:
     inst_tfvars = resource_dir / "terraform.tfvars"
     if inst_tfvars.exists():
         return [str(inst_tfvars)]
+
+    root_tfvars = Path(runner.terraform_dir) / "terraform.tfvars"
+    if root_tfvars.exists():
+        return [str(root_tfvars)]
 
     return None
 
@@ -1231,6 +1232,119 @@ async def update_eks_config(config: Dict):
         return {"success": True, "message": "EKS configuration updated successfully"}
     except Exception as e:
         logger.error(f"Error updating EKS config: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def _get_ecs_resource_info() -> tuple[Optional[str], Optional[Path]]:
+    try:
+        for resource in parser.parse_all_resources():
+            if resource.type != ResourceType.ECS:
+                continue
+            resource_dir = runner.get_resource_directory(resource.id)
+            if resource_dir and resource_dir.exists():
+                logger.debug(f"Resolved ECS resource directory for {resource.id}: {resource_dir}")
+                return resource.id, resource_dir
+    except Exception as e:
+        logger.debug(f"Failed to resolve ECS resource from parsed resources: {e}")
+    if parser.instances_dir.exists():
+        for instance_dir in sorted(parser.instances_dir.iterdir()):
+            if not instance_dir.is_dir() or not (instance_dir / "main.tf").exists():
+                continue
+            if get_resource_type_from_dir(instance_dir.name) != ResourceType.ECS:
+                continue
+            resource_id = get_resource_id_for_instance(instance_dir)
+            logger.debug(f"Resolved ECS resource directory from instances scan for {resource_id}: {instance_dir}")
+            return resource_id, instance_dir
+    logger.debug("No ECS resource directory found while handling config request")
+    return None, None
+
+
+def _get_ecs_config_file(resource_dir: Optional[Path]) -> Optional[Path]:
+    if not resource_dir:
+        return None
+    return resource_dir / "ecs-config.auto.tfvars"
+
+
+def _write_ecs_config_file(config_path: Path, config: Dict) -> None:
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        f"enable_fargate       = {str(config.get('enable_fargate', True)).lower()}",
+        f"enable_ec2           = {str(config.get('enable_ec2', False)).lower()}",
+        f'ec2_instance_type    = "{config.get("ec2_instance_type", "t3.medium")}"',
+        f"ec2_min_size         = {config.get('ec2_min_size', 1)}",
+        f"ec2_max_size         = {config.get('ec2_max_size', 3)}",
+        f"ec2_desired_capacity = {config.get('ec2_desired_capacity', 1)}",
+    ]
+    with open(config_path, 'w') as f:
+        f.write('\n'.join(lines) + '\n')
+
+
+def _extract_ecs_config_from_outputs(outputs: Dict) -> tuple[Dict, List[str]]:
+    config: Dict = {}
+    missing: List[str] = []
+    for name in ['enable_fargate', 'enable_ec2']:
+        value = _get_output_value(outputs, name)
+        if isinstance(value, bool):
+            config[name] = value
+        else:
+            missing.append(name)
+    for name in ['ec2_min_size', 'ec2_max_size', 'ec2_desired_capacity']:
+        value = _get_output_value(outputs, name)
+        if isinstance(value, (int, float)):
+            config[name] = int(value)
+    for name in ['ec2_instance_type']:
+        value = _get_output_value(outputs, name)
+        if isinstance(value, str) and value:
+            config[name] = value
+    return config, missing
+
+
+@router.get("/ecs/config")
+async def get_ecs_config():
+    try:
+        resource_id, resource_dir = _get_ecs_resource_info()
+        if not resource_id or not resource_dir:
+            return {"error": "ECS resource not found"}
+
+        config_path = _get_ecs_config_file(resource_dir)
+        if config_path:
+            local_config = _parse_eks_config_file(config_path)
+            if local_config:
+                return local_config
+
+        aws_env = parser.get_aws_env()
+        init_ok, init_out = await runner.ensure_terraform_init(resource_dir, env_extra=aws_env)
+        if not init_ok:
+            return {"error": "Terraform init failed for ECS resource"}
+        success, output = await runner.output(resource_id=resource_id, env_extra=aws_env)
+        if not success:
+            return {"error": "Failed to read terraform output for ECS resource"}
+        outputs = _parse_terraform_output_json(output)
+        if not outputs:
+            return {"error": "Terraform output for ECS resource is empty or invalid"}
+        config, missing = _extract_ecs_config_from_outputs(outputs)
+
+        if config_path and config:
+            _write_ecs_config_file(config_path, config)
+            logger.debug(f"Cached terraform output to local file: {config_path}")
+
+        return config if config else {"error": "No ECS configuration found"}
+    except Exception as e:
+        logger.error(f"Error getting ECS config: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/ecs/config")
+async def update_ecs_config(config: Dict):
+    try:
+        _, resource_dir = _get_ecs_resource_info()
+        ecs_config_file = _get_ecs_config_file(resource_dir)
+        if not ecs_config_file:
+            raise HTTPException(status_code=404, detail="ECS resource not found")
+        _write_ecs_config_file(ecs_config_file, config)
+        return {"success": True, "message": "ECS configuration updated successfully"}
+    except Exception as e:
+        logger.error(f"Error updating ECS config: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

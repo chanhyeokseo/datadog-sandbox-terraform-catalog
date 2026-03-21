@@ -1,0 +1,193 @@
+.cluster-connect-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+}
+
+.cluster-connect-modal {
+  background: var(--bg-primary);
+  width: 90%;
+  max-width: 900px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border-color);
+}
+
+.cluster-connect-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.cluster-connect-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: var(--text-primary);
+}
+
+.cluster-connect-cluster-name {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  font-family: monospace;
+}
+
+.cluster-connect-close {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0 0.25rem;
+  line-height: 1;
+}
+
+.cluster-connect-close:hover {
+  color: var(--text-primary);
+}
+
+.cluster-connect-body {
+  flex: 1;
+  overflow: auto;
+  padding: 1rem 1.5rem;
+}
+
+.cluster-connect-loading,
+.cluster-connect-empty,
+.cluster-connect-error {
+  text-align: center;
+  padding: 2rem;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.cluster-connect-error {
+  color: #dc3545;
+}
+
+.cluster-connect-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.cluster-connect-table th {
+  text-align: left;
+  padding: 0.6rem 0.75rem;
+  border-bottom: 2px solid var(--border-color);
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.cluster-connect-table td {
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-primary);
+}
+
+.cluster-connect-table tbody tr:hover {
+  background: var(--bg-secondary);
+}
+
+.cluster-connect-table code {
+  font-size: 0.82rem;
+  color: var(--text-primary);
+}
+
+.cluster-connect-name {
+  font-weight: 500;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cluster-connect-state {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 3px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.cluster-connect-state.running {
+  background: rgba(40, 167, 69, 0.15);
+  color: #28a745;
+}
+
+.cluster-connect-state.stopped {
+  background: rgba(220, 53, 69, 0.15);
+  color: #dc3545;
+}
+
+.cluster-connect-state.pending,
+.cluster-connect-state.stopping {
+  background: rgba(255, 193, 7, 0.15);
+  color: #ffc107;
+}
+
+.cluster-connect-ssh-btn {
+  padding: 0.3rem 0.75rem;
+  background: linear-gradient(135deg, rgba(255, 193, 7, 0.5) 0%, rgba(255, 193, 7, 0.3) 100%);
+  border: 1px solid rgba(255, 193, 7, 0.6);
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.cluster-connect-ssh-btn:not(:disabled):hover {
+  background: linear-gradient(135deg, rgba(255, 193, 7, 0.7) 0%, rgba(255, 193, 7, 0.5) 100%);
+  border-color: rgba(255, 193, 7, 0.9);
+}
+
+.cluster-connect-ssh-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.cluster-connect-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding: 0.75rem 1.5rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.cluster-connect-refresh-btn,
+.cluster-connect-close-btn {
+  padding: 0.5rem 1.25rem;
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.cluster-connect-refresh-btn:hover,
+.cluster-connect-close-btn:hover {
+  background: var(--bg-hover);
+}
+
+.cluster-connect-refresh-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

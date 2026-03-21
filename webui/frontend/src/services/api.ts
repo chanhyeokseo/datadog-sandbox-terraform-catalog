@@ -585,6 +585,222 @@ export interface DeploymentInfo {
   deployed_at: string;
 }
 
+export interface ClusterInstance {
+  instance_id: string;
+  name: string;
+  private_ip: string;
+  public_ip: string;
+  state: string;
+  instance_type: string;
+}
+
+const ECS_MANAGE_BASE = '/api/terraform/ecs/manage';
+
+export const ecsManageApi = {
+  getDeployments: async (): Promise<Record<string, DeploymentInfo>> => {
+    const response = await axios.get<{ deployments: Record<string, DeploymentInfo> }>(`${ECS_MANAGE_BASE}/deployments`);
+    return response.data.deployments;
+  },
+
+  listPresets: async (): Promise<{ presets: EKSPreset[] }> => {
+    const response = await axios.get<{ presets: EKSPreset[] }>(`${ECS_MANAGE_BASE}/presets`);
+    return response.data;
+  },
+
+  getPreset: async (name: string): Promise<EKSPreset> => {
+    const response = await axios.get<EKSPreset>(`${ECS_MANAGE_BASE}/presets/${name}`);
+    return response.data;
+  },
+
+  getPresetFile: async (name: string, filename: string): Promise<EKSPresetFileResponse> => {
+    const response = await axios.get<EKSPresetFileResponse>(
+      `${ECS_MANAGE_BASE}/presets/${name}/files/${encodeURIComponent(filename)}`
+    );
+    return response.data;
+  },
+
+  createPreset: async (data: {
+    name: string;
+    description?: string;
+    type?: string;
+    deploy_commands?: string[];
+    update_commands?: string[];
+    undeploy_commands?: string[];
+    files?: Record<string, string>;
+  }): Promise<{ success: boolean; name: string }> => {
+    const response = await axios.post(`${ECS_MANAGE_BASE}/presets`, data);
+    return response.data;
+  },
+
+  updatePresetFile: async (name: string, filename: string, content: string): Promise<{ success: boolean }> => {
+    const response = await axios.put(
+      `${ECS_MANAGE_BASE}/presets/${name}/files/${encodeURIComponent(filename)}`,
+      { content }
+    );
+    return response.data;
+  },
+
+  updatePresetManifest: async (name: string, data: Partial<EKSPreset>): Promise<{ success: boolean }> => {
+    const response = await axios.put(`${ECS_MANAGE_BASE}/presets/${name}`, data);
+    return response.data;
+  },
+
+  deletePreset: async (name: string): Promise<{ success: boolean }> => {
+    const response = await axios.delete(`${ECS_MANAGE_BASE}/presets/${name}`);
+    return response.data;
+  },
+
+  clonePreset: async (name: string, targetName: string): Promise<{ success: boolean; name: string }> => {
+    const response = await axios.post(`${ECS_MANAGE_BASE}/presets/${name}/clone`, { target_name: targetName });
+    return response.data;
+  },
+
+  streamDeploy: async (
+    name: string,
+    onData: (chunk: string) => void,
+    onComplete: (success: boolean) => void,
+    signal?: AbortSignal
+  ): Promise<void> => {
+    const response = await fetch(`${ECS_MANAGE_BASE}/presets/${name}/deploy`, { method: 'POST', signal });
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+    if (!reader) throw new Error('Response body is not readable');
+    const buffer = { current: '' };
+    let exitCode: number | null = null;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        const code = processStreamChunk(buffer, chunk, onData);
+        if (code !== null) exitCode = code;
+      }
+      if (exitCode === null) exitCode = flushStreamBuffer(buffer, onData);
+      onComplete(exitCode === 0);
+    } catch (error) {
+      onData(`\nError: ${error}\n`);
+      onComplete(false);
+    }
+  },
+
+  streamUpdate: async (
+    name: string,
+    onData: (chunk: string) => void,
+    onComplete: (success: boolean) => void,
+    signal?: AbortSignal
+  ): Promise<void> => {
+    const response = await fetch(`${ECS_MANAGE_BASE}/presets/${name}/update`, { method: 'POST', signal });
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+    if (!reader) throw new Error('Response body is not readable');
+    const buffer = { current: '' };
+    let exitCode: number | null = null;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        const code = processStreamChunk(buffer, chunk, onData);
+        if (code !== null) exitCode = code;
+      }
+      if (exitCode === null) exitCode = flushStreamBuffer(buffer, onData);
+      onComplete(exitCode === 0);
+    } catch (error) {
+      onData(`\nError: ${error}\n`);
+      onComplete(false);
+    }
+  },
+
+  streamUndeploy: async (
+    name: string,
+    onData: (chunk: string) => void,
+    onComplete: (success: boolean) => void,
+    signal?: AbortSignal
+  ): Promise<void> => {
+    const response = await fetch(`${ECS_MANAGE_BASE}/presets/${name}/undeploy`, { method: 'POST', signal });
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+    if (!reader) throw new Error('Response body is not readable');
+    const buffer = { current: '' };
+    let exitCode: number | null = null;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        const code = processStreamChunk(buffer, chunk, onData);
+        if (code !== null) exitCode = code;
+      }
+      if (exitCode === null) exitCode = flushStreamBuffer(buffer, onData);
+      onComplete(exitCode === 0);
+    } catch (error) {
+      onData(`\nError: ${error}\n`);
+      onComplete(false);
+    }
+  },
+
+  streamRun: async (
+    command: string,
+    onData: (chunk: string) => void,
+    onComplete: (success: boolean) => void,
+    signal?: AbortSignal
+  ): Promise<void> => {
+    const response = await fetch(`${ECS_MANAGE_BASE}/run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command }),
+      signal,
+    });
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+    if (!reader) throw new Error('Response body is not readable');
+    const buffer = { current: '' };
+    let exitCode: number | null = null;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        const code = processStreamChunk(buffer, chunk, onData);
+        if (code !== null) exitCode = code;
+      }
+      if (exitCode === null) exitCode = flushStreamBuffer(buffer, onData);
+      onComplete(exitCode === 0);
+    } catch (error) {
+      onData(`\nError: ${error}\n`);
+      onComplete(false);
+    }
+  },
+
+  getClusterStatus: async (): Promise<{ configured: boolean; cluster_name: string | null; cluster_arn?: string; region?: string; message?: string }> => {
+    const response = await axios.get<{ configured: boolean; cluster_name: string | null; cluster_arn?: string; region?: string; message?: string }>(`${ECS_MANAGE_BASE}/cluster-status`);
+    return response.data;
+  },
+
+  getLayout: async (): Promise<TreeNode[]> => {
+    const response = await axios.get<{ layout: TreeNode[] }>(`${ECS_MANAGE_BASE}/layout`);
+    return response.data.layout;
+  },
+
+  saveLayout: async (layout: TreeNode[]): Promise<void> => {
+    await axios.put(`${ECS_MANAGE_BASE}/layout`, { layout });
+  },
+
+  refreshPresets: async (): Promise<{ success: boolean }> => {
+    const response = await axios.post(`${ECS_MANAGE_BASE}/presets/refresh`);
+    return response.data;
+  },
+
+  getContainerInstances: async (): Promise<{ cluster_name: string; region: string; instances: ClusterInstance[] }> => {
+    const response = await axios.get<{ cluster_name: string; region: string; instances: ClusterInstance[] }>(`${ECS_MANAGE_BASE}/container-instances`);
+    return response.data;
+  },
+};
+
 export const eksManageApi = {
   getDeployments: async (): Promise<Record<string, DeploymentInfo>> => {
     const response = await axios.get<{ deployments: Record<string, DeploymentInfo> }>(`${EKS_MANAGE_BASE}/deployments`);
@@ -787,4 +1003,5 @@ export const eksManageApi = {
   saveLayout: async (layout: TreeNode[]): Promise<void> => {
     await axios.put(`${EKS_MANAGE_BASE}/layout`, { layout });
   },
+
 };

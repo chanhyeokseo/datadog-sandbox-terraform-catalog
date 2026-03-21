@@ -1,62 +1,43 @@
 import asyncio
-import base64
 import json
 import logging
 import os
 import re
-import time
 from pathlib import Path
 from typing import AsyncIterator, Dict, List, Optional
 
-import boto3
-from botocore.signers import RequestSigner
 from fastapi import APIRouter, HTTPException, Body
 from fastapi.responses import StreamingResponse
 
 from app.models.schemas import ResourceType
-from app.services.credential_manager import credential_manager
-from app.services.eks_preset_manager import EKSPresetManager
+from app.services.ecs_preset_manager import ECSPresetManager
 from app.services.terraform_parser import TerraformParser
 from app.services.terraform_runner import TerraformRunner
 from app.services.instance_discovery import get_resource_id_for_instance, get_resource_type_from_dir
 
-router = APIRouter(prefix="/api/terraform/eks/manage", tags=["eks-manage"])
+router = APIRouter(prefix="/api/terraform/ecs/manage", tags=["ecs-manage"])
 logger = logging.getLogger(__name__)
 
 TERRAFORM_DIR = os.environ.get("TERRAFORM_DIR", "/terraform")
 EXIT_SENTINEL_PREFIX = "__TF_EXIT__:"
-KUBECONFIG_PATH = Path.home() / ".kube" / "config"
-TOKEN_EXPIRY_SECONDS = 900
 
-preset_manager = EKSPresetManager(TERRAFORM_DIR)
+preset_manager = ECSPresetManager(TERRAFORM_DIR)
 parser = TerraformParser(TERRAFORM_DIR)
 runner = TerraformRunner(TERRAFORM_DIR)
 
 _deploy_lock = asyncio.Lock()
-
 _TEMPLATE_RE = re.compile(r'\{\{(\w+)\}\}')
+_ANSI_RE = re.compile(r'\x1b\[[0-9;]*[a-zA-Z]')
 
 
-def _resolve_template_vars(command: str) -> str:
-    root_tfvars = parser._read_tfvars_to_map(Path(TERRAFORM_DIR) / "terraform.tfvars")
-    def _replacer(m):
-        var_name = m.group(1)
-        val = root_tfvars.get(var_name)
-        if val is None:
-            logger.warning(f"Template variable '{var_name}' not found in terraform.tfvars")
-            return m.group(0)
-        return val.strip('"').strip("'")
-    return _TEMPLATE_RE.sub(_replacer, command)
-
-
-def _get_eks_resource_info() -> tuple[Optional[str], Optional[Path]]:
+def _get_ecs_resource_info() -> tuple[Optional[str], Optional[Path]]:
     instances_dir = Path(TERRAFORM_DIR) / "instances"
     if not instances_dir.exists():
         return None, None
     for instance_dir in sorted(instances_dir.iterdir()):
         if not instance_dir.is_dir() or not (instance_dir / "main.tf").exists():
             continue
-        if get_resource_type_from_dir(instance_dir.name) != ResourceType.EKS:
+        if get_resource_type_from_dir(instance_dir.name) != ResourceType.ECS:
             continue
         resource_id = get_resource_id_for_instance(instance_dir)
         return resource_id, instance_dir
@@ -64,29 +45,19 @@ def _get_eks_resource_info() -> tuple[Optional[str], Optional[Path]]:
 
 
 def _parse_cluster_info(outputs: Dict) -> Dict:
-    cluster_name = None
-    region = None
-    kubeconfig_cmd = None
-
+    result = {}
     for key, val in outputs.items():
         value = val.get("value", "") if isinstance(val, dict) else str(val)
         if not value:
             continue
-        kl = key.lower()
-        if kl == "cluster_name":
-            cluster_name = str(value)
-        elif kl == "kubeconfig_command":
-            kubeconfig_cmd = str(value)
-
-    if kubeconfig_cmd and not region:
-        m = re.search(r'--region\s+(\S+)', kubeconfig_cmd)
-        if m:
-            region = m.group(1)
+        result[key.lower()] = str(value)
 
     return {
-        "cluster_name": cluster_name,
-        "region": region or os.environ.get("AWS_REGION", "ap-northeast-2"),
-        "kubeconfig_command": kubeconfig_cmd,
+        "cluster_name": result.get("cluster_name"),
+        "cluster_arn": result.get("cluster_arn"),
+        "region": result.get("region") or os.environ.get("AWS_REGION", "ap-northeast-2"),
+        "task_execution_role_arn": result.get("task_execution_role_arn"),
+        "task_role_arn": result.get("task_role_arn"),
     }
 
 
@@ -99,134 +70,39 @@ async def _get_cluster_info_async(resource_id: str, resource_dir: Path) -> Dict:
             outputs = json.loads(raw_output)
             return _parse_cluster_info(outputs)
     except Exception as e:
-        logger.warning(f"Failed to get cluster info: {e}")
+        logger.warning(f"Failed to get ECS cluster info: {e}")
     return {}
 
 
-def _build_boto3_session(region: str) -> boto3.Session:
-    access_key = os.environ.get("AWS_ACCESS_KEY_ID")
-    secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY")
-    session_token = os.environ.get("AWS_SESSION_TOKEN")
-    if access_key and secret_key:
-        return boto3.Session(
-            region_name=region,
-            aws_access_key_id=access_key,
-            aws_secret_access_key=secret_key,
-            aws_session_token=session_token,
-        )
-    return boto3.Session(region_name=region)
+def _resolve_template_vars(command: str, extra_vars: Dict = None) -> str:
+    root_tfvars = parser._read_tfvars_to_map(Path(TERRAFORM_DIR) / "terraform.tfvars")
+    merged = {**root_tfvars, **(extra_vars or {})}
+
+    def _replacer(m):
+        var_name = m.group(1)
+        val = merged.get(var_name)
+        if val is None:
+            logger.warning(f"Template variable '{var_name}' not found")
+            return m.group(0)
+        return val.strip('"').strip("'")
+    return _TEMPLATE_RE.sub(_replacer, command)
 
 
-def _get_eks_token(cluster_name: str, region: str) -> str:
-    session = _build_boto3_session(region)
-    sts_client = session.client("sts", region_name=region)
-    service_id = sts_client.meta.service_model.service_id
-
-    signer = RequestSigner(
-        service_id, region, "sts", "v4",
-        session.get_credentials(),
-        session._session.get_component("event_emitter"),
-    )
-
-    params = {
-        "method": "GET",
-        "url": f"https://sts.{region}.amazonaws.com/?Action=GetCallerIdentity&Version=2011-06-15",
-        "body": {},
-        "headers": {"x-k8s-aws-id": cluster_name},
-        "context": {},
-    }
-
-    signed_url = signer.generate_presigned_url(
-        params, region_name=region, expires_in=TOKEN_EXPIRY_SECONDS, operation_name="",
-    )
-    return "k8s-aws-v1." + base64.urlsafe_b64encode(signed_url.encode("utf-8")).decode("utf-8").rstrip("=")
-
-
-def _write_kubeconfig(cluster_name: str, region: str) -> tuple[bool, str]:
-    session = _build_boto3_session(region)
-    eks_client = session.client("eks", region_name=region)
-    cluster = eks_client.describe_cluster(name=cluster_name)["cluster"]
-
-    endpoint = cluster["endpoint"]
-    ca_data = cluster["certificateAuthority"]["data"]
-    token = _get_eks_token(cluster_name, region)
-
-    kubeconfig = {
-        "apiVersion": "v1",
-        "kind": "Config",
-        "clusters": [{"name": cluster_name, "cluster": {"server": endpoint, "certificate-authority-data": ca_data}}],
-        "contexts": [{"name": cluster_name, "context": {"cluster": cluster_name, "user": cluster_name}}],
-        "current-context": cluster_name,
-        "users": [{"name": cluster_name, "user": {"token": token}}],
-    }
-
-    KUBECONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    KUBECONFIG_PATH.write_text(json.dumps(kubeconfig, indent=2))
-    logger.debug(f"Kubeconfig written to {KUBECONFIG_PATH} for cluster {cluster_name}")
-    return True, f"Kubeconfig configured for {cluster_name} at {endpoint}"
-
-
-def _configure_kubeconfig(cluster_name: str, region: str) -> tuple[bool, str]:
+async def _stream_shell(cmd_str: str, cwd: str = None, env_extra: Dict = None) -> AsyncIterator[str]:
     try:
-        return _write_kubeconfig(cluster_name, region)
-    except Exception as e:
-        logger.warning(f"Kubeconfig failed: {e}, attempting SSO credential refresh")
-        refreshed = credential_manager.try_refresh_credentials()
-        if refreshed:
-            try:
-                return _write_kubeconfig(cluster_name, region)
-            except Exception as retry_err:
-                logger.warning(f"Kubeconfig failed after credential refresh: {retry_err}")
-                return False, str(retry_err)
-        logger.warning(f"Failed to configure kubeconfig: {e}")
-        return False, str(e)
-
-
-async def _setup_kubeconfig(resource_id: Optional[str], resource_dir: Optional[Path],
-                            force: bool = False) -> tuple[bool, list[str]]:
-    lines = []
-
-    if not force and KUBECONFIG_PATH.exists() and KUBECONFIG_PATH.stat().st_size > 0:
-        age = time.time() - KUBECONFIG_PATH.stat().st_mtime
-        if age < TOKEN_EXPIRY_SECONDS:
-            return True, lines
-        logger.debug("Kubeconfig token expired (age=%.0fs), refreshing", age)
-
-    if resource_dir and resource_id:
-        lines.append("Resolving EKS cluster info from Terraform outputs...\n")
-        cluster_info = await _get_cluster_info_async(resource_id, resource_dir)
-        cluster_name = cluster_info.get("cluster_name")
-        region = cluster_info.get("region")
-
-        if cluster_name:
-            lines.append(f"Cluster: {cluster_name} (region: {region})\n")
-            lines.append("Configuring kubeconfig...\n")
-            success, output = _configure_kubeconfig(cluster_name, region)
-            lines.append(output + "\n")
-            if not success:
-                lines.append("Error: Failed to configure kubeconfig\n")
-                lines.append(f"{EXIT_SENTINEL_PREFIX}1\n")
-                return False, lines
-        else:
-            lines.append("Warning: Could not resolve cluster name from outputs. Using existing kubeconfig.\n")
-    else:
-        lines.append("Warning: EKS resource not found. Using existing kubeconfig.\n")
-    return True, lines
-
-
-async def _stream_shell(cmd_str: str, cwd: str = None) -> AsyncIterator[str]:
-    try:
+        env = {**os.environ, **(env_extra or {})}
         process = await asyncio.create_subprocess_shell(
             cmd_str,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
             cwd=cwd,
+            env=env,
         )
         while True:
             line = await process.stdout.readline()
             if not line:
                 break
-            yield line.decode()
+            yield _ANSI_RE.sub('', line.decode())
         code = (await process.wait()) or 0
         yield f"{EXIT_SENTINEL_PREFIX}{0 if code == 0 else 1}\n"
     except Exception as e:
@@ -234,16 +110,18 @@ async def _stream_shell(cmd_str: str, cwd: str = None) -> AsyncIterator[str]:
         yield f"{EXIT_SENTINEL_PREFIX}1\n"
 
 
-async def _execute_commands(commands: List[str], preset_dir: str) -> AsyncIterator[str]:
+async def _execute_commands(commands: List[str], preset_dir: str,
+                            extra_vars: Dict = None) -> AsyncIterator[str]:
     for cmd_str in commands:
         cmd_str = cmd_str.strip()
         if not cmd_str or cmd_str.startswith("#"):
             continue
 
-        cmd_str = _resolve_template_vars(cmd_str)
-        yield f"\n$ {cmd_str}\n"
+        display_cmd = cmd_str
+        resolved_cmd = _resolve_template_vars(cmd_str, extra_vars)
+        yield f"\n$ {display_cmd}\n"
 
-        async for line in _stream_shell(cmd_str, cwd=preset_dir):
+        async for line in _stream_shell(resolved_cmd, cwd=preset_dir, env_extra=extra_vars):
             if line.startswith(EXIT_SENTINEL_PREFIX):
                 if "1" in line:
                     yield f"Error: command failed (exit 1)\n"
@@ -253,6 +131,73 @@ async def _execute_commands(commands: List[str], preset_dir: str) -> AsyncIterat
             yield line
 
     yield f"{EXIT_SENTINEL_PREFIX}0\n"
+
+
+async def _setup_ecs_env(resource_id: Optional[str],
+                         resource_dir: Optional[Path]) -> tuple[Dict, list[str]]:
+    lines = []
+    extra_vars = {}
+
+    root_tfvars = parser._read_tfvars_to_map(Path(TERRAFORM_DIR) / "terraform.tfvars")
+    for key, val in root_tfvars.items():
+        clean_val = val.strip('"').strip("'")
+        extra_vars[key] = clean_val
+
+    if resource_dir and resource_id:
+        lines.append("Resolving ECS cluster info from Terraform outputs...\n")
+        cluster_info = await _get_cluster_info_async(resource_id, resource_dir)
+        cluster_name = cluster_info.get("cluster_name")
+        region = cluster_info.get("region")
+
+        if cluster_name:
+            lines.append(f"Cluster: {cluster_name} (region: {region})\n")
+            extra_vars["cluster_name"] = cluster_name
+            extra_vars["ecs_cluster_name"] = cluster_name
+            if region:
+                extra_vars["ecs_region"] = region
+            for k in ("task_execution_role_arn", "task_role_arn"):
+                if cluster_info.get(k):
+                    extra_vars[k] = cluster_info[k]
+        else:
+            lines.append("Warning: Could not resolve cluster name from outputs.\n")
+    else:
+        lines.append("Warning: ECS resource not found.\n")
+
+    for key, val in list(extra_vars.items()):
+        extra_vars[f"TF_VAR_{key}"] = val
+
+    return extra_vars, lines
+
+
+async def _stream_action(action_label: str, name: str, commands: List[str],
+                         resource_id: Optional[str], resource_dir: Optional[Path],
+                         on_success=None) -> AsyncIterator[str]:
+    yield f"=== ECS Preset {action_label} ===\n"
+    yield f"Preset: {name}\n\n"
+
+    extra_vars, lines = await _setup_ecs_env(resource_id, resource_dir)
+    for line in lines:
+        yield line
+
+    preset_dir = preset_manager.sync_preset_to_local(name)
+    if not preset_dir:
+        yield "Error: Failed to sync preset files to local\n"
+        yield f"{EXIT_SENTINEL_PREFIX}1\n"
+        return
+
+    yield f"\n{action_label} from: {preset_dir}\n"
+
+    success = True
+    async for line in _execute_commands(commands, str(preset_dir), extra_vars):
+        if line.startswith(EXIT_SENTINEL_PREFIX) and "1" in line:
+            success = False
+        yield line
+
+    if success and on_success:
+        try:
+            on_success()
+        except Exception as e:
+            logger.warning(f"on_success callback failed: {e}")
 
 
 @router.post("/presets/refresh")
@@ -327,7 +272,7 @@ async def create_preset(body: dict = Body(...)):
     success = preset_manager.create_preset(
         name=name,
         description=body.get("description", ""),
-        preset_type=body.get("type", "kubectl"),
+        preset_type=body.get("type", "aws-ecs"),
         deploy_commands=body.get("deploy_commands", []),
         update_commands=body.get("update_commands", []),
         undeploy_commands=body.get("undeploy_commands", []),
@@ -411,39 +356,6 @@ async def delete_preset(name: str):
     return {"success": True}
 
 
-async def _stream_action(action_label: str, name: str, commands: List[str],
-                         resource_id: Optional[str], resource_dir: Optional[Path],
-                         on_success=None) -> AsyncIterator[str]:
-    yield f"=== EKS Preset {action_label} ===\n"
-    yield f"Preset: {name}\n\n"
-
-    ok, lines = await _setup_kubeconfig(resource_id, resource_dir)
-    for line in lines:
-        yield line
-    if not ok:
-        return
-
-    preset_dir = preset_manager.sync_preset_to_local(name)
-    if not preset_dir:
-        yield "Error: Failed to sync preset files to local\n"
-        yield f"{EXIT_SENTINEL_PREFIX}1\n"
-        return
-
-    yield f"\n{action_label} from: {preset_dir}\n"
-
-    success = True
-    async for line in _execute_commands(commands, str(preset_dir)):
-        if line.startswith(EXIT_SENTINEL_PREFIX) and "1" in line:
-            success = False
-        yield line
-
-    if success and on_success:
-        try:
-            on_success()
-        except Exception as e:
-            logger.warning(f"on_success callback failed: {e}")
-
-
 @router.get("/deployments")
 async def get_deployments():
     try:
@@ -463,7 +375,7 @@ async def deploy_preset(name: str):
     if not commands:
         raise HTTPException(status_code=400, detail="No deploy commands defined for this preset")
 
-    resource_id, resource_dir = _get_eks_resource_info()
+    resource_id, resource_dir = _get_ecs_resource_info()
 
     return StreamingResponse(
         _stream_action("Deploy", name, commands, resource_id, resource_dir,
@@ -482,7 +394,7 @@ async def update_preset_deploy(name: str):
     if not commands:
         raise HTTPException(status_code=400, detail="No update commands defined for this preset")
 
-    resource_id, resource_dir = _get_eks_resource_info()
+    resource_id, resource_dir = _get_ecs_resource_info()
 
     return StreamingResponse(
         _stream_action("Update", name, commands, resource_id, resource_dir),
@@ -500,7 +412,7 @@ async def undeploy_preset(name: str):
     if not commands:
         raise HTTPException(status_code=400, detail="No undeploy commands defined for this preset")
 
-    resource_id, resource_dir = _get_eks_resource_info()
+    resource_id, resource_dir = _get_ecs_resource_info()
 
     return StreamingResponse(
         _stream_action("Undeploy", name, commands, resource_id, resource_dir,
@@ -509,54 +421,110 @@ async def undeploy_preset(name: str):
     )
 
 
-@router.post("/kubectl")
-async def run_kubectl(body: dict = Body(...)):
+ECS_API_ACTIONS = {
+    "list-services": lambda c, p: c.list_services(**p),
+    "list-tasks": lambda c, p: c.list_tasks(**p),
+    "describe-clusters": lambda c, p: c.describe_clusters(**p),
+    "describe-services": lambda c, p: c.describe_services(**p),
+    "describe-tasks": lambda c, p: c.describe_tasks(**p),
+    "list-task-definitions": lambda c, p: c.list_task_definitions(**p),
+    "list-container-instances": lambda c, p: c.list_container_instances(**p),
+    "describe-container-instances": lambda c, p: c.describe_container_instances(**p),
+    "describe-task-definition": lambda c, p: c.describe_task_definition(**p),
+    "list-clusters": lambda c, p: c.list_clusters(**p),
+}
+
+
+def _parse_ecs_command(command: str) -> tuple[str, Dict]:
+    tokens = command.split()
+    if len(tokens) < 3 or tokens[0] != "aws" or tokens[1] != "ecs":
+        raise ValueError("Command must start with 'aws ecs <action>'")
+
+    action = tokens[2]
+    if action not in ECS_API_ACTIONS:
+        raise ValueError(f"Unsupported action: {action}. Supported: {', '.join(sorted(ECS_API_ACTIONS))}")
+
+    params: Dict = {}
+    i = 3
+    while i < len(tokens):
+        token = tokens[i]
+        if token.startswith("--"):
+            key = token[2:]
+            parts = key.split("-")
+            camel = parts[0] + "".join(p.capitalize() for p in parts[1:])
+            if i + 1 < len(tokens) and not tokens[i + 1].startswith("--"):
+                i += 1
+                val = tokens[i]
+                if camel in params:
+                    existing = params[camel]
+                    if isinstance(existing, list):
+                        existing.append(val)
+                    else:
+                        params[camel] = [existing, val]
+                else:
+                    params[camel] = val
+            else:
+                params[camel] = True
+        i += 1
+
+    for key in ("services", "tasks", "clusters", "containerInstances"):
+        if key in params and isinstance(params[key], str):
+            params[key] = [params[key]]
+
+    return action, params
+
+
+def _run_ecs_boto3(action: str, params: Dict, region: str) -> str:
+    import boto3
+    client = boto3.client("ecs", region_name=region)
+    handler = ECS_API_ACTIONS[action]
+    response = handler(client, params)
+    response.pop("ResponseMetadata", None)
+    return json.dumps(response, indent=2, default=str)
+
+
+@router.post("/run")
+async def run_command(body: dict = Body(...)):
     command = body.get("command", "").strip()
     if not command:
         raise HTTPException(status_code=400, detail="command is required")
 
-    ALLOWED_BINARIES = {"kubectl", "helm", "istioctl", "kustomize"}
-    BINARY_ALIASES = {"k": "kubectl"}
-    SHELL_META = {"|", "&&", "||", ";", "`", "$(", ">", "<", "&"}
-    for meta in SHELL_META:
-        if meta in command:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Shell operator '{meta}' is not allowed",
-            )
-    tokens = command.split()
-    first_token = tokens[0] if tokens else ""
-    if first_token in BINARY_ALIASES:
-        tokens[0] = BINARY_ALIASES[first_token]
-        command = " ".join(tokens)
-        first_token = tokens[0]
-    if first_token not in ALLOWED_BINARIES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Only {', '.join(sorted(ALLOWED_BINARIES))} commands are allowed",
-        )
-
-    resource_id, resource_dir = _get_eks_resource_info()
+    resource_id, resource_dir = _get_ecs_resource_info()
 
     async def _stream():
-        ok, lines = await _setup_kubeconfig(resource_id, resource_dir)
+        extra_vars, lines = await _setup_ecs_env(resource_id, resource_dir)
         for line in lines:
             yield line
-        if not ok:
-            return
 
-        yield f"$ {command}\n"
-        async for line in _stream_shell(command):
-            yield line
+        resolved = _resolve_template_vars(command, extra_vars)
+        yield f"$ {command}\n\n"
+
+        if resolved.startswith("aws ecs "):
+            try:
+                action, params = _parse_ecs_command(resolved)
+                region = extra_vars.get("region", extra_vars.get("ecs_region", "ap-northeast-2"))
+                loop = asyncio.get_event_loop()
+                result = await loop.run_in_executor(None, _run_ecs_boto3, action, params, region)
+                yield result + "\n"
+                yield f"{EXIT_SENTINEL_PREFIX}0\n"
+            except Exception as e:
+                yield f"Error: {e}\n"
+                yield f"{EXIT_SENTINEL_PREFIX}1\n"
+        elif resolved.split()[0] == "terraform":
+            async for line in _stream_shell(resolved, env_extra=extra_vars):
+                yield line
+        else:
+            yield f"Error: Only 'aws ecs' and 'terraform' commands are supported.\n"
+            yield f"{EXIT_SENTINEL_PREFIX}1\n"
 
     return StreamingResponse(_stream(), media_type="text/plain")
 
 
-@router.get("/kubeconfig-status")
-async def kubeconfig_status():
-    resource_id, resource_dir = _get_eks_resource_info()
+@router.get("/cluster-status")
+async def cluster_status():
+    resource_id, resource_dir = _get_ecs_resource_info()
     if not resource_dir:
-        return {"configured": False, "cluster_name": None, "message": "EKS resource not found"}
+        return {"configured": False, "cluster_name": None, "message": "ECS resource not found"}
 
     cluster_info = await _get_cluster_info_async(resource_id, resource_dir)
     cluster_name = cluster_info.get("cluster_name")
@@ -566,9 +534,70 @@ async def kubeconfig_status():
     return {
         "configured": True,
         "cluster_name": cluster_name,
+        "cluster_arn": cluster_info.get("cluster_arn"),
         "region": cluster_info.get("region"),
-        "kubeconfig_command": cluster_info.get("kubeconfig_command"),
     }
 
 
+def _list_ecs_container_instances(cluster_name: str, region: str) -> List[Dict]:
+    import boto3
+    session = boto3.Session(region_name=region)
+    ecs = session.client("ecs")
+    ec2 = session.client("ec2")
 
+    ci_arns = []
+    paginator = ecs.get_paginator("list_container_instances")
+    for page in paginator.paginate(cluster=cluster_name):
+        ci_arns.extend(page.get("containerInstanceArns", []))
+
+    if not ci_arns:
+        return []
+
+    ci_resp = ecs.describe_container_instances(cluster=cluster_name, containerInstances=ci_arns)
+    ec2_ids = [ci["ec2InstanceId"] for ci in ci_resp.get("containerInstances", []) if ci.get("ec2InstanceId")]
+
+    if not ec2_ids:
+        return []
+
+    ec2_resp = ec2.describe_instances(InstanceIds=ec2_ids)
+    instances = []
+    for reservation in ec2_resp.get("Reservations", []):
+        for inst in reservation.get("Instances", []):
+            name_tag = ""
+            for tag in inst.get("Tags", []):
+                if tag["Key"] == "Name":
+                    name_tag = tag["Value"]
+                    break
+            instances.append({
+                "instance_id": inst["InstanceId"],
+                "name": name_tag,
+                "private_ip": inst.get("PrivateIpAddress", ""),
+                "public_ip": inst.get("PublicIpAddress", ""),
+                "state": inst.get("State", {}).get("Name", "unknown"),
+                "instance_type": inst.get("InstanceType", ""),
+            })
+
+    return instances
+
+
+@router.get("/container-instances")
+async def get_container_instances():
+    resource_id, resource_dir = _get_ecs_resource_info()
+    if not resource_dir:
+        raise HTTPException(status_code=404, detail="ECS resource not found")
+
+    cluster_info = await _get_cluster_info_async(resource_id, resource_dir)
+    cluster_name = cluster_info.get("cluster_name")
+    region = cluster_info.get("region")
+    if not cluster_name:
+        raise HTTPException(status_code=404, detail="Cluster not deployed or outputs unavailable")
+
+    try:
+        loop = asyncio.get_event_loop()
+        instances = await loop.run_in_executor(
+            None, _list_ecs_container_instances, cluster_name, region
+        )
+        return {"cluster_name": cluster_name, "region": region, "instances": instances}
+    except Exception as e:
+        logger.error(f"Failed to list container instances: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

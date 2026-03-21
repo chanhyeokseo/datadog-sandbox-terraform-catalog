@@ -9,6 +9,9 @@ import DebugModal from './DebugModal';
 import DescriptionModal from './DescriptionModal';
 import ConfirmModal from './ConfirmModal';
 import EKSManageModal from './EKSManageModal';
+import ECSEditor from './ECSEditor';
+import ECSManageModal from './ECSManageModal';
+import ClusterConnectModal from './ClusterConnectModal';
 
 interface ActionPanelProps {
   selectedResource: TerraformResource | null;
@@ -43,6 +46,10 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
   const [rdpInfo, setRdpInfo] = useState<{ ip: string; username: string; password: string } | null>(null);
   const [eksConnectInfo, setEksConnectInfo] = useState<{ kubeconfigCommand: string; clusterName: string; ssoCommand: string } | null>(null);
   const [showEKSManageModal, setShowEKSManageModal] = useState(false);
+  const [showECSEditor, setShowECSEditor] = useState(false);
+  const [showECSManageModal, setShowECSManageModal] = useState(false);
+  const [ecsConnectInfo, setEcsConnectInfo] = useState<{ clusterName: string; clusterArn: string; region: string } | null>(null);
+  const [showECSConnectModal, setShowECSConnectModal] = useState(false);
 
   const getOutputsFromStorage = (): OutputData[] => {
     try {
@@ -322,6 +329,41 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
     setShowEKSManageModal(true);
   };
 
+  const handleECSConnect = () => {
+    if (!selectedResource) return;
+
+    const resourceOutput = outputs.find(o => o.resourceId === selectedResource.id);
+    if (resourceOutput?.output) {
+      try {
+        const outputData: Record<string, unknown> = JSON.parse(resourceOutput.output);
+        let clusterName: string | null = null;
+        let clusterArn: string | null = null;
+        let region: string | null = null;
+
+        for (const [key, value] of Object.entries(outputData)) {
+          const keyLower = key.toLowerCase();
+          const strVal = value != null ? String(value) : '';
+          if (!strVal) continue;
+          if (!clusterName && keyLower === 'cluster_name') clusterName = strVal;
+          if (!clusterArn && keyLower === 'cluster_arn') clusterArn = strVal;
+          if (!region && keyLower === 'region') region = strVal;
+        }
+
+        if (clusterName) {
+          setEcsConnectInfo({
+            clusterName,
+            clusterArn: clusterArn || '',
+            region: region || '',
+          });
+        }
+      } catch {
+        // ignore parse errors
+      }
+    }
+
+    setShowECSManageModal(true);
+  };
+
   const handleConnect = async () => {
     if (!selectedResource) return;
 
@@ -579,12 +621,32 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
                 {selectedResource && selectedResource.status === 'enabled' && selectedResource.type === ResourceType.EKS && (
                   <button
                     onClick={handleEKSConnect}
-                    className="btn btn-connect"
+                    className="btn btn-manage"
                     disabled={!!runningAction}
-                    title="Connect to EKS cluster and manage workloads"
+                    title="Manage EKS cluster workloads and presets"
                   >
-                    Connect & Manage
+                    Manage
                   </button>
+                )}
+                {selectedResource && selectedResource.status === 'enabled' && selectedResource.type === ResourceType.ECS && (
+                  <div className="action-buttons-pair">
+                    <button
+                      onClick={() => setShowECSConnectModal(true)}
+                      className="btn btn-connect"
+                      disabled={!!runningAction}
+                      title="Connect to ECS container instances via SSH (EC2 only)"
+                    >
+                      Connect
+                    </button>
+                    <button
+                      onClick={handleECSConnect}
+                      className="btn btn-manage"
+                      disabled={!!runningAction}
+                      title="Manage ECS cluster services and presets"
+                    >
+                      Manage
+                    </button>
+                  </div>
                 )}
               </>
             )}
@@ -609,6 +671,16 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
               </button>
             )}
 
+            {selectedResource && selectedResource.type === ResourceType.ECS && (
+              <button
+                onClick={() => setShowECSEditor(true)}
+                className="btn btn-configure"
+                title="Configure ECS cluster settings"
+              >
+                Configure Cluster
+              </button>
+            )}
+
             {selectedResource && selectedResource.type === ResourceType.EC2 && selectedResource.id === 'ec2_datadog_docker' && (
               <button
                 onClick={() => setShowDockerAgentEditor(true)}
@@ -621,7 +693,7 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
           </div>
         </div>
 
-        {selectedResource?.type !== ResourceType.EKS && (
+        {selectedResource?.type !== ResourceType.EKS && selectedResource?.type !== ResourceType.ECS && (
           <div className="action-section variables-section">
             <div className="section-header-flex">
               <h3>Resource Variables</h3>
@@ -853,6 +925,26 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
         <EKSManageModal
           onClose={() => { setShowEKSManageModal(false); setEksConnectInfo(null); }}
           connectInfo={eksConnectInfo}
+        />
+      )}
+      {showECSEditor && createPortal(
+        <ECSEditor
+          onClose={() => setShowECSEditor(false)}
+          onSave={() => {
+            setShowECSEditor(false);
+          }}
+        />,
+        document.body
+      )}
+      {showECSManageModal && (
+        <ECSManageModal
+          onClose={() => { setShowECSManageModal(false); setEcsConnectInfo(null); }}
+          connectInfo={ecsConnectInfo}
+        />
+      )}
+      {showECSConnectModal && (
+        <ClusterConnectModal
+          onClose={() => setShowECSConnectModal(false)}
         />
       )}
     </div>

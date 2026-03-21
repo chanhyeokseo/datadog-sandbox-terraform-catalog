@@ -688,6 +688,32 @@ class TerraformParser:
             out_lines.append(line)
         return "".join(out_lines)
 
+    def ensure_tfvars_for_new_instances(self) -> int:
+        root_tfvars = self._root_tfvars_path()
+        if not root_tfvars.exists():
+            return 0
+        try:
+            raw_content = root_tfvars.read_text(encoding="utf-8")
+        except OSError:
+            return 0
+        content = self._filter_common_only_lines(raw_content)
+        dir_map = get_resource_directory_map(self.instances_dir)
+        count = 0
+        for _resource_id, dir_name in dir_map.items():
+            instance_dir = self.instances_dir / dir_name
+            if not instance_dir.is_dir():
+                continue
+            dst = instance_dir / "terraform.tfvars"
+            if dst.exists():
+                continue
+            try:
+                dst.write_text(content, encoding="utf-8")
+                count += 1
+                logger.info(f"Provisioned terraform.tfvars for new instance: {dir_name}")
+            except OSError as e:
+                logger.warning(f"Failed to provision tfvars for {dir_name}: {e}")
+        return count
+
     def copy_root_tfvars_to_instances(self) -> bool:
         root_tfvars = self._root_tfvars_path()
         if not root_tfvars.exists():

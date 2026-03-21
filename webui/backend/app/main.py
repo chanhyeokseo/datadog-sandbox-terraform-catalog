@@ -9,7 +9,7 @@ import logging
 if not os.environ.get("AWS_PROFILE", "").strip():
     os.environ.pop("AWS_PROFILE", None)
 
-from app.routes import terraform, ssh, backend, keys, danger_zone, eks_manage
+from app.routes import terraform, ssh, backend, keys, danger_zone, eks_manage, ecs_manage
 from app.services.credential_manager import credential_manager
 
 log_level = os.environ.get('LOG_LEVEL', 'INFO').upper()
@@ -23,8 +23,10 @@ for _noisy in ('botocore', 'boto3', 'urllib3', 's3transfer'):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    terraform.parser.ensure_tfvars_for_new_instances()
     terraform.parser.build_s3_status_cache()
     eks_manage.preset_manager.initialize_local_cache()
+    ecs_manage.preset_manager.initialize_local_cache()
     asyncio.create_task(terraform.runner.warmup_provider_cache())
     asyncio.create_task(credential_manager.background_refresh_loop())
     yield
@@ -51,6 +53,7 @@ app.include_router(backend.router)
 app.include_router(keys.router)
 app.include_router(danger_zone.router)
 app.include_router(eks_manage.router)
+app.include_router(ecs_manage.router)
 
 
 @app.get("/")

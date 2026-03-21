@@ -1,0 +1,19 @@
+{
+  "name": "datadog-amzn1",
+  "description": "Datadog Agent for ECS EC2 (Amazon Linux 1)",
+  "type": "aws-ecs",
+  "built_in": true,
+  "deploy_commands": [
+    "terraform init -input=false -no-color",
+    "terraform apply -auto-approve -no-color"
+  ],
+  "update_commands": [
+    "terraform init -input=false -no-color",
+    "terraform apply -auto-approve -no-color"
+  ],
+  "undeploy_commands": [
+    "terraform init -input=false -no-color",
+    "terraform destroy -auto-approve -no-color"
+  ],
+  "files": ["task-definition.json"]
+}

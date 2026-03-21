@@ -107,10 +107,12 @@ RESOURCE_VARIABLE_CONFIGS: Dict[str, List[ResourceVariableConfig]] = {
     ],
     
     "ecs": [
-        ResourceVariableConfig("ecs_enable_fargate", VariableType.BOOLEAN, True, "Enable Fargate launch type for ECS"),
-        ResourceVariableConfig("ecs_enable_ec2", VariableType.BOOLEAN, False, "Enable EC2 launch type for ECS"),
-        ResourceVariableConfig("ecs_task_cpu", VariableType.STRING, "256", "CPU units for ECS task (256, 512, 1024, 2048, 4096)"),
-        ResourceVariableConfig("ecs_task_memory", VariableType.STRING, "512", "Memory for ECS task in MB (512, 1024, 2048, etc)"),
+        ResourceVariableConfig("enable_fargate", VariableType.BOOLEAN, True, "Enable Fargate capacity provider"),
+        ResourceVariableConfig("enable_ec2", VariableType.BOOLEAN, False, "Enable EC2 capacity provider"),
+        ResourceVariableConfig("ec2_instance_type", VariableType.STRING, "t3.medium", "EC2 instance type for ECS container instances"),
+        ResourceVariableConfig("ec2_min_size", VariableType.NUMBER, 1, "Minimum EC2 instances in ASG"),
+        ResourceVariableConfig("ec2_max_size", VariableType.NUMBER, 3, "Maximum EC2 instances in ASG"),
+        ResourceVariableConfig("ec2_desired_capacity", VariableType.NUMBER, 1, "Desired EC2 instances in ASG"),
     ],
     
     "rds": [

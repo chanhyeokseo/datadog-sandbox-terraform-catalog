@@ -692,8 +692,21 @@ body.light-mode .action-panel {
   margin-top: 0.5rem;
 }
 
-.action-buttons-grid .btn-connect {
+.action-buttons-grid > .btn-connect {
   grid-column: 1 / -1;
+  margin-top: 0.5rem;
+}
+
+.action-buttons-grid > .btn-manage {
+  grid-column: 1 / -1;
+  margin-top: 0.5rem;
+}
+
+.action-buttons-grid > .action-buttons-pair {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
   margin-top: 0.5rem;
 }
 
