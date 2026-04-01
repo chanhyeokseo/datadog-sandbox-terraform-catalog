@@ -136,6 +136,7 @@ resource "aws_db_instance" "main" {
   username = var.db_username
   password = var.db_password
 
+  parameter_group_name   = var.parameter_group_name
   db_subnet_group_name   = aws_db_subnet_group.main[0].name
   vpc_security_group_ids = [aws_security_group.db.id]
   publicly_accessible    = var.publicly_accessible

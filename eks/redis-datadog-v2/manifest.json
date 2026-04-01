@@ -1,0 +1,16 @@
+{
+  "name": "redis-datadog-v2",
+  "description": "Redis with Datadog autodiscovery v2 annotations",
+  "type": "kubectl",
+  "built_in": true,
+  "deploy_commands": [
+    "kubectl apply -f deployment.yaml"
+  ],
+  "update_commands": [
+    "kubectl apply -f deployment.yaml"
+  ],
+  "undeploy_commands": [
+    "kubectl delete -f deployment.yaml --ignore-not-found"
+  ],
+  "files": ["deployment.yaml"]
+}

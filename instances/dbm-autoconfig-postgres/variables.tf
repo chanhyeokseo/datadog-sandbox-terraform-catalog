@@ -44,19 +44,29 @@ variable "datadog_agent_version" {
 }
 variable "rds_username" {
   type    = string
-  default = ""
+  default = "datadog"
 }
 variable "rds_password" {
-  type    = string
-  default = ""
+  type      = string
+  sensitive = true
+
+  validation {
+    condition     = length(var.rds_password) >= 8
+    error_message = "rds_password must be at least 8 characters."
+  }
 }
 variable "rds_instance_class" {
   type    = string
   default = "db.t3.micro"
 }
-variable "security_group_ids" {
-  type    = list(string)
-  default = []
+variable "dbm_postgres_datadog_password" {
+  type      = string
+  sensitive = true
+
+  validation {
+    condition     = length(var.dbm_postgres_datadog_password) >= 8
+    error_message = "dbm_postgres_datadog_password must be at least 8 characters."
+  }
 }
 variable "aws_access_key_id" {
   type    = string

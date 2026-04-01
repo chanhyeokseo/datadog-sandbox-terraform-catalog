@@ -51,6 +51,7 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
   const [ecsConnectInfo, setEcsConnectInfo] = useState<{ clusterName: string; clusterArn: string; region: string } | null>(null);
   const [showECSConnectModal, setShowECSConnectModal] = useState(false);
   const [showHelpModal, setShowHelpModal] = useState(false);
+  const [checkingWorkloads, setCheckingWorkloads] = useState(false);
 
   const getOutputsFromStorage = (): OutputData[] => {
     try {
@@ -205,15 +206,27 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
     const resourceId = selectedResource.id;
 
     if (selectedResource.type === ResourceType.ECS) {
+      setCheckingWorkloads(true);
       try {
         const result = await ecsManageApi.hasActiveWorkloads();
         if (result.has_active) {
-          const serviceNames = result.services.map(s => `  - ${s.name} (running: ${s.running})`).join('\n');
-          alert(`Cannot destroy ECS cluster while services are running:\n\n${serviceNames}\n\nPlease undeploy all presets from the Manage panel first.`);
+          const parts: string[] = [];
+          if (result.services.length > 0) {
+            parts.push('Active services:\n' + result.services.map(s => `  - ${s.name} (running: ${s.running})`).join('\n'));
+          }
+          if (result.running_tasks > 0) {
+            parts.push(`Running tasks: ${result.running_tasks}`);
+          }
+          if (result.deployed_presets?.length > 0) {
+            parts.push('Deployed presets:\n' + result.deployed_presets.map(p => `  - ${p}`).join('\n'));
+          }
+          alert(`Cannot destroy ECS cluster while workloads are active:\n\n${parts.join('\n\n')}\n\nPlease undeploy all presets from the Manage panel first.`);
           return;
         }
       } catch (err) {
         console.error('Failed to check active workloads:', err);
+      } finally {
+        setCheckingWorkloads(false);
       }
     }
 
@@ -610,13 +623,13 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
                 </button>
                 <button
                   onClick={handleDestroy}
-                  disabled={!selectedResource || selectedResource.status === 'disabled' || !!runningAction}
+                  disabled={!selectedResource || selectedResource.status === 'disabled' || !!runningAction || checkingWorkloads}
                   className="btn btn-destroy"
-                  title={!selectedResource ? 'Select a resource first' : runningAction ? `${runningAction} is running for this resource` : selectedResource.status === 'disabled' ? 'Not deployed yet' : 'Destroy resource'}
+                  title={!selectedResource ? 'Select a resource first' : runningAction ? `${runningAction} is running for this resource` : checkingWorkloads ? 'Checking active workloads...' : selectedResource.status === 'disabled' ? 'Not deployed yet' : 'Destroy resource'}
                 >
-                  Destroy
+                  {checkingWorkloads ? 'Checking...' : 'Destroy'}
                 </button>
-                {selectedResource && selectedResource.status === 'enabled' && selectedResource.type === ResourceType.EC2 && (
+                {selectedResource && selectedResource.status === 'enabled' && (selectedResource.type === ResourceType.EC2 || selectedResource.type === ResourceType.DBM) && (
                   <button
                     onClick={handleConnect}
                     className="btn btn-connect"
@@ -750,7 +763,7 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
                     ) : (
                       <div className="variable-view">
                         <span className="variable-value">
-                          {variable.sensitive ? '***' : variable.value || '(empty)'}
+                          {variable.sensitive ? (variable.value ? '***' : '(empty)') : variable.value || '(empty)'}
                         </span>
                         <button 
                           onClick={() => handleEditVariable(variable.name, variable.value || '')} 

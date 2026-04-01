@@ -1,0 +1,7 @@
+{
+  "name": "nginx",
+  "description": "Nginx web server for ECS EC2",
+  "type": "aws-ecs",
+  "built_in": true,
+  "files": ["task-definition.json"]
+}

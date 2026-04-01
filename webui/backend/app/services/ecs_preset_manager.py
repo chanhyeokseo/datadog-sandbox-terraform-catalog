@@ -292,7 +292,14 @@ class ECSPresetManager:
         if not self.save_preset(target_name, {**manifest, "files": file_list}):
             return False
 
-        for filename in file_list:
+        source_dir = self.ecs_dir / source_name
+        all_files = set(file_list)
+        if source_dir.exists():
+            for f in source_dir.iterdir():
+                if f.is_file() and f.name != "manifest.json":
+                    all_files.add(f.name)
+
+        for filename in all_files:
             content = self.get_preset_file(source_name, filename)
             if content is not None:
                 self.save_preset_file(target_name, filename, content)
@@ -352,28 +359,79 @@ class ECSPresetManager:
 
         return self._sync_layout(layout, all_presets)
 
+    OOTB_CATEGORIES = [
+        ("ootb-agent", "OOTB-Agent", ["datadog-"]),
+        ("ootb-nginx", "OOTB-Nginx", ["nginx"]),
+        ("ootb-redis", "OOTB-Redis", ["redis"]),
+    ]
+
+    def _classify_ootb(self, name: str) -> str:
+        for folder_id, _, prefixes in self.OOTB_CATEGORIES:
+            if any(name.startswith(p) for p in prefixes):
+                return folder_id
+        return "ootb-other"
+
     def _build_default_layout(self, all_presets: Dict[str, Dict]) -> List[Dict]:
         ootb = [n for n, p in all_presets.items() if p.get("built_in")]
         custom = [n for n, p in all_presets.items() if not p.get("built_in")]
         layout: List[Dict] = []
         if ootb:
-            layout.append({"id": "ootb", "type": "folder", "name": "ootb", "children": sorted(ootb)})
+            groups: Dict[str, List[str]] = {}
+            for name in sorted(ootb):
+                cat = self._classify_ootb(name)
+                groups.setdefault(cat, []).append(name)
+            for folder_id, folder_name, _ in self.OOTB_CATEGORIES:
+                if folder_id in groups:
+                    layout.append({"id": folder_id, "type": "folder", "name": folder_name, "children": groups[folder_id]})
+            if "ootb-other" in groups:
+                layout.append({"id": "ootb-other", "type": "folder", "name": "OOTB-Other", "children": groups["ootb-other"]})
         for name in sorted(custom):
             layout.append({"id": name, "type": "preset"})
         return layout
 
+    def _migrate_old_ootb(self, layout: List[Dict]) -> List[Dict]:
+        old_ootb = next((n for n in layout if n["type"] == "folder" and n["id"] == "ootb"), None)
+        if not old_ootb:
+            return layout
+        logger.info("Migrating legacy 'ootb' folder to component sub-folders")
+        layout = [n for n in layout if not (n["type"] == "folder" and n["id"] == "ootb")]
+        groups: Dict[str, List[str]] = {}
+        for name in old_ootb.get("children", []):
+            cat = self._classify_ootb(name)
+            groups.setdefault(cat, []).append(name)
+        insert_idx = 0
+        for folder_id, folder_name, _ in self.OOTB_CATEGORIES:
+            if folder_id in groups:
+                layout.insert(insert_idx, {"id": folder_id, "type": "folder", "name": folder_name, "children": groups[folder_id]})
+                insert_idx += 1
+        if "ootb-other" in groups:
+            layout.insert(insert_idx, {"id": "ootb-other", "type": "folder", "name": "OOTB-Other", "children": groups["ootb-other"]})
+        return layout
+
     def _sync_layout(self, layout: List[Dict], all_presets: Dict[str, Dict]) -> List[Dict]:
+        layout = self._migrate_old_ootb(layout)
         placed = set()
+        ootb_folders: Dict[str, Dict] = {}
         for node in layout:
             if node["type"] == "folder":
                 node["children"] = [c for c in node.get("children", []) if c in all_presets]
                 placed.update(node["children"])
+                if node["id"].startswith("ootb-"):
+                    ootb_folders[node["id"]] = node
             else:
                 placed.add(node["id"])
         layout = [n for n in layout if n["type"] == "folder" or n["id"] in all_presets]
-        for name in all_presets:
+        for name, preset in all_presets.items():
             if name not in placed:
-                layout.append({"id": name, "type": "preset"})
+                if preset.get("built_in"):
+                    cat = self._classify_ootb(name)
+                    if cat not in ootb_folders:
+                        cat_name = next((fn for fi, fn, _ in self.OOTB_CATEGORIES if fi == cat), "OOTB-Other")
+                        ootb_folders[cat] = {"id": cat, "type": "folder", "name": cat_name, "children": []}
+                        layout.insert(0, ootb_folders[cat])
+                    ootb_folders[cat]["children"].append(name)
+                else:
+                    layout.append({"id": name, "type": "preset"})
         return layout
 
     def save_layout(self, layout: List[Dict]) -> bool:

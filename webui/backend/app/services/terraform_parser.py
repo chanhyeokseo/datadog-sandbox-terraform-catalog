@@ -586,8 +586,12 @@ class TerraformParser:
 
     def _write_tfvars_line(self, tfvars_path: Path, var_name: str, var_value: str) -> bool:
         logger.debug("_write_tfvars_line: var=%s target=%s", var_name, tfvars_path.resolve())
-        escaped = self._escape_tfvars_value(var_value)
-        line_content = f'{var_name} = "{escaped}"\n'
+        stripped = var_value.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            line_content = f'{var_name} = {stripped}\n'
+        else:
+            escaped = self._escape_tfvars_value(var_value)
+            line_content = f'{var_name} = "{escaped}"\n'
         if not line_content.endswith('\n'):
             line_content += '\n'
         if not tfvars_path.exists():

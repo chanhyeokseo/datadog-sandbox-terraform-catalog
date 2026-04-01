@@ -1,0 +1,27 @@
+apiVersion: datadoghq.com/v2alpha1
+kind: DatadogAgent
+metadata:
+  name: datadog
+spec:
+  global:
+    clusterName: "your-cluster-name-here"
+    site: "datadoghq.com"
+    clusterAgentTokenSecret:
+      secretName: "datadog-secret"
+      keyName: "token"
+    credentials:
+      apiSecret:
+        secretName: "datadog-secret"
+        keyName: "api-key"
+  features:
+    clusterChecks:
+      enabled: true
+    orchestratorExplorer:
+      enabled: true
+    admissionController:
+      agentSidecarInjection:
+        enabled: true
+        provider: fargate
+  override:
+    nodeAgent:
+      disabled: true

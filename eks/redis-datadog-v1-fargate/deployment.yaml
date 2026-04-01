@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-datadog-v1-fargate
+  namespace: fargate
+  labels:
+    app: redis-datadog-v1-fargate
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis-datadog-v1-fargate
+  template:
+    metadata:
+      labels:
+        app: redis-datadog-v1-fargate
+        tags.datadoghq.com/service: redis
+        agent.datadoghq.com/sidecar: fargate
+      annotations:
+        ad.datadoghq.com/redis.check_names: '["redisdb"]'
+        ad.datadoghq.com/redis.init_configs: '[{}]'
+        ad.datadoghq.com/redis.instances: '[{"host":"%%host%%","port":"%%port%%"}]'
+    spec:
+      containers:
+      - name: redis
+        image: redis:latest
+        ports:
+        - containerPort: 6379
+        resources:
+          requests:
+            cpu: "256m"
+            memory: "512Mi"
+          limits:
+            cpu: "256m"
+            memory: "512Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-datadog-v1-fargate
+  namespace: fargate
+spec:
+  selector:
+    app: redis-datadog-v1-fargate
+  ports:
+  - port: 6379
+    targetPort: 6379

@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-fargate
+  namespace: fargate
+  labels:
+    app: redis-fargate
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis-fargate
+  template:
+    metadata:
+      labels:
+        app: redis-fargate
+    spec:
+      containers:
+      - name: redis
+        image: redis:latest
+        ports:
+        - containerPort: 6379
+        resources:
+          requests:
+            cpu: "256m"
+            memory: "512Mi"
+          limits:
+            cpu: "256m"
+            memory: "512Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-fargate
+  namespace: fargate
+spec:
+  selector:
+    app: redis-fargate
+  ports:
+  - port: 6379
+    targetPort: 6379

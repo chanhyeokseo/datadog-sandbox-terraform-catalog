@@ -1,0 +1,7 @@
+{
+  "name": "nginx-datadog-v1",
+  "description": "Nginx with Datadog autodiscovery v1 for ECS EC2",
+  "type": "aws-ecs",
+  "built_in": true,
+  "files": ["task-definition.json"]
+}

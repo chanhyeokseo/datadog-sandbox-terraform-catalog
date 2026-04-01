@@ -1,0 +1,20 @@
+{
+  "containerDefinitions": [
+    {
+      "name": "redis",
+      "image": "redis:latest",
+      "cpu": 128,
+      "memory": 256,
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 6379,
+          "hostPort": 0,
+          "protocol": "tcp"
+        }
+      ]
+    }
+  ],
+  "volumes": [],
+  "family": "redis"
+}

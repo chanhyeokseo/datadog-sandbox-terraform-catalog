@@ -25,6 +25,18 @@ type TabId = 'connection' | 'presets' | 'editor' | 'deploy' | 'run';
 
 const STORAGE_KEY = 'eks-last-preset';
 
+const CREDENTIAL_ERROR_PATTERNS = [
+  'no valid credential', 'cached sso token is expired',
+  'refresh cached credentials', 'unable to locate credentials',
+  'expired token', 'token has expired', 'invalidclienttokenid',
+  'security token included in the request is expired',
+];
+
+const hasCredentialError = (text: string): boolean => {
+  const lower = text.toLowerCase();
+  return CREDENTIAL_ERROR_PATTERNS.some(p => lower.includes(p));
+};
+
 const highlightYaml = (text: string): string => {
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   return text.split('\n').map(line => {
@@ -112,13 +124,14 @@ const EKSManageModal = ({ onClose, connectInfo }: EKSManageModalProps) => {
   const runAbortRef = useRef<AbortController | null>(null);
   const [runHistory, setRunHistory] = useState<string[]>([]);
   const [runHistoryIdx, setRunHistoryIdx] = useState(-1);
+  const credErrorRef = useRef(false);
 
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createName, setCreateName] = useState('');
   const [createDesc, setCreateDesc] = useState('');
 
   const [treeLayout, setTreeLayout] = useState<TreeNode[]>([]);
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['ootb']));
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['ootb-agent', 'ootb-istio', 'ootb-nginx', 'ootb-redis']));
   const [dragActiveId, setDragActiveId] = useState<string | null>(null);
   const presetsMap = useRef<Record<string, EKSPreset>>({});
   const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -316,26 +329,33 @@ const EKSManageModal = ({ onClose, connectInfo }: EKSManageModalProps) => {
     return presets.find(p => p.name === name)?.built_in ?? false;
   };
 
+  const onStreamChunk = (chunk: string) => {
+    setDeployLog(prev => prev + chunk);
+    if (deployLogRef.current) deployLogRef.current.scrollTop = deployLogRef.current.scrollHeight;
+    if (hasCredentialError(chunk)) credErrorRef.current = true;
+  };
+
+  const onStreamDone = (success: boolean, opts?: { onSuccess?: () => void }) => {
+    setDeployStatus(success ? 'success' : 'error');
+    setDeploying(false);
+    if (success && opts?.onSuccess) opts.onSuccess();
+    if (!success && credErrorRef.current) {
+      window.dispatchEvent(new CustomEvent('sso-credential-expired'));
+      credErrorRef.current = false;
+    }
+  };
+
   const handleDeploy = async () => {
     if (!deployPreset || deploying) return;
     setDeploying(true);
     setDeployLog('');
     setDeployStatus('running');
+    credErrorRef.current = false;
     abortRef.current = new AbortController();
     try {
       await eksManageApi.streamDeploy(
-        deployPreset,
-        (chunk) => {
-          setDeployLog(prev => prev + chunk);
-          if (deployLogRef.current) {
-            deployLogRef.current.scrollTop = deployLogRef.current.scrollHeight;
-          }
-        },
-        (success) => {
-          setDeployStatus(success ? 'success' : 'error');
-          setDeploying(false);
-          if (success) loadDeployments();
-        },
+        deployPreset, onStreamChunk,
+        (success) => onStreamDone(success, { onSuccess: loadDeployments }),
         abortRef.current.signal,
       );
     } catch (e) {
@@ -351,21 +371,12 @@ const EKSManageModal = ({ onClose, connectInfo }: EKSManageModalProps) => {
     setDeploying(true);
     setDeployLog('');
     setDeployStatus('running');
+    credErrorRef.current = false;
     abortRef.current = new AbortController();
     try {
       await eksManageApi.streamUndeploy(
-        deployPreset,
-        (chunk) => {
-          setDeployLog(prev => prev + chunk);
-          if (deployLogRef.current) {
-            deployLogRef.current.scrollTop = deployLogRef.current.scrollHeight;
-          }
-        },
-        (success) => {
-          setDeployStatus(success ? 'success' : 'error');
-          setDeploying(false);
-          if (success) loadDeployments();
-        },
+        deployPreset, onStreamChunk,
+        (success) => onStreamDone(success, { onSuccess: loadDeployments }),
         abortRef.current.signal,
       );
     } catch (e) {
@@ -380,20 +391,12 @@ const EKSManageModal = ({ onClose, connectInfo }: EKSManageModalProps) => {
     setDeploying(true);
     setDeployLog('');
     setDeployStatus('running');
+    credErrorRef.current = false;
     abortRef.current = new AbortController();
     try {
       await eksManageApi.streamUpdate(
-        deployPreset,
-        (chunk) => {
-          setDeployLog(prev => prev + chunk);
-          if (deployLogRef.current) {
-            deployLogRef.current.scrollTop = deployLogRef.current.scrollHeight;
-          }
-        },
-        (success) => {
-          setDeployStatus(success ? 'success' : 'error');
-          setDeploying(false);
-        },
+        deployPreset, onStreamChunk,
+        (success) => onStreamDone(success),
         abortRef.current.signal,
       );
     } catch (e) {
@@ -882,6 +885,7 @@ const EKSManageModal = ({ onClose, connectInfo }: EKSManageModalProps) => {
     setRunRunning(true);
     setRunOutput('');
     setRunStatus('running');
+    credErrorRef.current = false;
     setRunHistory(prev => {
       const next = prev.filter(h => h !== cmd.trim());
       next.unshift(cmd.trim());
@@ -895,10 +899,15 @@ const EKSManageModal = ({ onClose, connectInfo }: EKSManageModalProps) => {
         (chunk) => {
           setRunOutput(prev => prev + chunk);
           if (runLogRef.current) runLogRef.current.scrollTop = runLogRef.current.scrollHeight;
+          if (hasCredentialError(chunk)) credErrorRef.current = true;
         },
         (success) => {
           setRunStatus(success ? 'success' : 'error');
           setRunRunning(false);
+          if (!success && credErrorRef.current) {
+            window.dispatchEvent(new CustomEvent('sso-credential-expired'));
+            credErrorRef.current = false;
+          }
         },
         runAbortRef.current.signal,
       );
@@ -1040,6 +1049,20 @@ const EKSManageModal = ({ onClose, connectInfo }: EKSManageModalProps) => {
           <button className="eks-btn-undeploy" onClick={handleUndeploy} disabled={deploying || !deployPreset}>
             Delete
           </button>
+          <button
+            className="eks-btn-force-delete"
+            disabled={deploying || !deployPreset || !deployedPresets[deployPreset]}
+            onClick={async () => {
+              if (!deployPreset) return;
+              if (!window.confirm(`Force remove "${deployPreset}" from deployed list?\n(No undeploy commands will be executed)`)) return;
+              try { await eksManageApi.forceDelete(deployPreset); loadDeployments(); } catch {}
+            }}
+          >
+            Force Delete
+          </button>
+        </div>
+        <div className="eks-deploy-hint">
+          Force Delete removes the preset from the deployed list only, without executing any undeploy commands.
         </div>
         {deployStatus !== 'idle' && (
           <div className={`eks-deploy-status ${deployStatus}`}>

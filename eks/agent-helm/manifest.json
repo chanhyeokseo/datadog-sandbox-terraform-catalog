@@ -15,7 +15,8 @@
   ],
   "undeploy_commands": [
     "helm uninstall datadog-agent",
-    "kubectl delete secret datadog-secret"
+    "kubectl delete secret datadog-secret",
+    "kubectl delete mutatingwebhookconfigurations,validatingwebhookconfigurations datadog-webhook --ignore-not-found"
   ],
   "files": ["datadog-values.yaml", "README.md"]
 }

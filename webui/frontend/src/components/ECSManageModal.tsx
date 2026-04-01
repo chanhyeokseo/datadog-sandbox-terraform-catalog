@@ -25,6 +25,18 @@ type TabId = 'connection' | 'presets' | 'editor' | 'deploy' | 'run';
 
 const STORAGE_KEY = 'ecs-last-preset';
 
+const CREDENTIAL_ERROR_PATTERNS = [
+  'no valid credential', 'cached sso token is expired',
+  'refresh cached credentials', 'unable to locate credentials',
+  'expired token', 'token has expired', 'invalidclienttokenid',
+  'security token included in the request is expired',
+];
+
+const hasCredentialError = (text: string): boolean => {
+  const lower = text.toLowerCase();
+  return CREDENTIAL_ERROR_PATTERNS.some(p => lower.includes(p));
+};
+
 const highlightYaml = (text: string): string => {
   const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   return text.split('\n').map(line => {
@@ -60,150 +72,9 @@ const highlightJson = (text: string): string => {
   }).join('\n');
 };
 
-const highlightCode = (text: string, filename: string, viewAs?: 'json' | 'yaml'): string => {
-  if (viewAs === 'yaml') return highlightYaml(text);
-  if (viewAs === 'json') return highlightJson(text);
+const highlightCode = (text: string, filename: string): string => {
   if (filename.endsWith('.json')) return highlightJson(text);
   return highlightYaml(text);
-};
-
-const jsonToYaml = (data: unknown, indent = 0): string => {
-  const pad = '  '.repeat(indent);
-  if (data === null || data === undefined) return 'null';
-  if (typeof data === 'boolean') return data ? 'true' : 'false';
-  if (typeof data === 'number') return String(data);
-  if (typeof data === 'string') {
-    if (data === '' || /[:{}\[\],&*#?|<>=!%@`\n]/.test(data) || /^\s|\s$/.test(data)
-      || /^(true|false|null|yes|no|on|off)$/i.test(data) || /^[\d.+-]/.test(data))
-      return JSON.stringify(data);
-    return data;
-  }
-  if (Array.isArray(data)) {
-    if (data.length === 0) return '[]';
-    return data.map(item => {
-      const inner = jsonToYaml(item, indent + 1);
-      if (typeof item === 'object' && item !== null) {
-        return `${pad}-\n${inner.split('\n').map(l => pad + '  ' + l.trimStart()).join('\n')}`;
-      }
-      return `${pad}- ${inner.trimStart()}`;
-    }).join('\n');
-  }
-  if (typeof data === 'object') {
-    const entries = Object.entries(data as Record<string, unknown>);
-    if (entries.length === 0) return '{}';
-    return entries.map(([k, v]) => {
-      const needsQuote = /[:{}\[\],&*#?|<>=!%@`]/.test(k) || k === '';
-      const keyStr = needsQuote ? JSON.stringify(k) : k;
-      if (typeof v === 'object' && v !== null &&
-          ((Array.isArray(v) && v.length > 0) || (!Array.isArray(v) && Object.keys(v).length > 0))) {
-        return `${pad}${keyStr}:\n${jsonToYaml(v, indent + 1)}`;
-      }
-      return `${pad}${keyStr}: ${jsonToYaml(v, indent + 1).trimStart()}`;
-    }).join('\n');
-  }
-  return String(data);
-};
-
-const yamlToJson = (text: string): unknown => {
-  const lines = text.split('\n');
-  let pos = 0;
-
-  const peekIndent = (): number => {
-    while (pos < lines.length && /^\s*(#|$)/.test(lines[pos])) pos++;
-    if (pos >= lines.length) return -1;
-    return lines[pos].search(/\S/);
-  };
-
-  const parseValue = (raw: string): unknown => {
-    const s = raw.trim();
-    if (s === '' || s === 'null' || s === '~') return null;
-    if (s === 'true' || s === 'yes') return true;
-    if (s === 'false' || s === 'no') return false;
-    if (s === '[]') return [];
-    if (s === '{}') return {};
-    if (/^-?\d+$/.test(s)) return parseInt(s, 10);
-    if (/^-?\d+\.\d+$/.test(s)) return parseFloat(s);
-    if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'")))
-      return s.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-    if (s.startsWith('[') || s.startsWith('{')) return JSON.parse(s);
-    return s;
-  };
-
-  const parseBlock = (minIndent: number): unknown => {
-    const indent = peekIndent();
-    if (indent < minIndent || pos >= lines.length) return null;
-
-    const firstLine = lines[pos];
-    const stripped = firstLine.trimStart();
-
-    if (stripped.startsWith('- ') || stripped === '-') {
-      const arr: unknown[] = [];
-      while (pos < lines.length) {
-        const ci = peekIndent();
-        if (ci < indent || ci === -1) break;
-        const ln = lines[pos].trimStart();
-        if (!ln.startsWith('-')) break;
-        const after = ln.slice(1).trim();
-        pos++;
-        if (after === '' || after.includes(':')) {
-          if (after !== '' && after.includes(':')) {
-            pos--;
-            const fakeIndent = lines[pos].indexOf('-') + 2;
-            const rebuilt = ' '.repeat(fakeIndent) + after;
-            const origLine = lines[pos];
-            lines[pos] = rebuilt;
-            const saved = pos;
-            const val = parseBlock(fakeIndent);
-            if (pos === saved) pos++;
-            lines[saved] = origLine;
-            arr.push(val);
-          } else {
-            arr.push(parseBlock(indent + 1));
-          }
-        } else {
-          arr.push(parseValue(after));
-        }
-      }
-      return arr;
-    }
-
-    if (stripped.includes(':')) {
-      const obj: Record<string, unknown> = {};
-      while (pos < lines.length) {
-        const ci = peekIndent();
-        if (ci < indent || ci === -1) break;
-        if (ci > indent) { pos++; continue; }
-        const ln = lines[pos];
-        const match = ln.match(/^(\s*)((?:"[^"]*"|'[^']*'|[^:#])+):\s*(.*)/);
-        if (!match) { pos++; continue; }
-        const key = match[2].trim().replace(/^["']|["']$/g, '');
-        const rest = match[3].trim();
-        pos++;
-        if (rest === '' || rest === '|' || rest === '>') {
-          obj[key] = parseBlock(indent + 1);
-          if (obj[key] === null) obj[key] = rest === '' ? null : '';
-        } else {
-          obj[key] = parseValue(rest);
-        }
-      }
-      return obj;
-    }
-
-    pos++;
-    return parseValue(stripped);
-  };
-
-  return parseBlock(0);
-};
-
-const convertJsonToYaml = (jsonStr: string): string => {
-  const data = JSON.parse(jsonStr);
-  return jsonToYaml(data);
-};
-
-const convertYamlToJson = (yamlStr: string): string => {
-  const data = yamlToJson(yamlStr);
-  return JSON.stringify(data, null, 2);
 };
 
 const SortablePreset = ({ id, children }: { id: string; children: React.ReactNode }) => {
@@ -262,6 +133,7 @@ const ECSManageModal = ({ onClose, connectInfo }: ECSManageModalProps) => {
   const deployLogRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const highlightRef = useRef<HTMLPreElement>(null);
+  const credErrorRef = useRef(false);
 
   const [runCommand, setRunCommand] = useState('');
   const [runOutput, setRunOutput] = useState('');
@@ -272,15 +144,12 @@ const ECSManageModal = ({ onClose, connectInfo }: ECSManageModalProps) => {
   const [runHistory, setRunHistory] = useState<string[]>([]);
   const [runHistoryIdx, setRunHistoryIdx] = useState(-1);
 
-  const [viewFormat, setViewFormat] = useState<'original' | 'json' | 'yaml'>('original');
-  const [convertError, setConvertError] = useState<string | null>(null);
-
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createName, setCreateName] = useState('');
   const [createDesc, setCreateDesc] = useState('');
 
   const [treeLayout, setTreeLayout] = useState<TreeNode[]>([]);
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['ootb']));
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['ootb-agent', 'ootb-nginx', 'ootb-redis']));
   const [dragActiveId, setDragActiveId] = useState<string | null>(null);
   const presetsMap = useRef<Record<string, EKSPreset>>({});
   const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -374,8 +243,6 @@ const ECSManageModal = ({ onClose, connectInfo }: ECSManageModalProps) => {
       setEditorActiveFile(filename);
       setEditorContent(content);
       setEditorDirty(false);
-      setViewFormat('original');
-      setConvertError(null);
     } catch (e) {
       console.error('Failed to load file:', e);
       setEditorContent(`Error loading file: ${filename}`);
@@ -459,17 +326,33 @@ const ECSManageModal = ({ onClose, connectInfo }: ECSManageModalProps) => {
     return presets.find(p => p.name === name)?.built_in ?? false;
   };
 
+  const onStreamChunk = (chunk: string) => {
+    setDeployLog(prev => prev + chunk);
+    if (deployLogRef.current) deployLogRef.current.scrollTop = deployLogRef.current.scrollHeight;
+    if (hasCredentialError(chunk)) credErrorRef.current = true;
+  };
+
+  const onStreamDone = (success: boolean, opts?: { onSuccess?: () => void }) => {
+    setDeployStatus(success ? 'success' : 'error');
+    setDeploying(false);
+    if (success && opts?.onSuccess) opts.onSuccess();
+    if (!success && credErrorRef.current) {
+      window.dispatchEvent(new CustomEvent('sso-credential-expired'));
+      credErrorRef.current = false;
+    }
+  };
+
   const handleDeploy = async () => {
     if (!deployPreset || deploying) return;
     setDeploying(true);
     setDeployLog('');
     setDeployStatus('running');
+    credErrorRef.current = false;
     abortRef.current = new AbortController();
     try {
       await ecsManageApi.streamDeploy(
-        deployPreset,
-        (chunk) => { setDeployLog(prev => prev + chunk); if (deployLogRef.current) deployLogRef.current.scrollTop = deployLogRef.current.scrollHeight; },
-        (success) => { setDeployStatus(success ? 'success' : 'error'); setDeploying(false); if (success) loadDeployments(); },
+        deployPreset, onStreamChunk,
+        (success) => onStreamDone(success, { onSuccess: loadDeployments }),
         abortRef.current.signal,
       );
     } catch (e) {
@@ -485,12 +368,12 @@ const ECSManageModal = ({ onClose, connectInfo }: ECSManageModalProps) => {
     setDeploying(true);
     setDeployLog('');
     setDeployStatus('running');
+    credErrorRef.current = false;
     abortRef.current = new AbortController();
     try {
       await ecsManageApi.streamUndeploy(
-        deployPreset,
-        (chunk) => { setDeployLog(prev => prev + chunk); if (deployLogRef.current) deployLogRef.current.scrollTop = deployLogRef.current.scrollHeight; },
-        (success) => { setDeployStatus(success ? 'success' : 'error'); setDeploying(false); if (success) loadDeployments(); },
+        deployPreset, onStreamChunk,
+        (success) => onStreamDone(success, { onSuccess: loadDeployments }),
         abortRef.current.signal,
       );
     } catch (e) {
@@ -505,12 +388,12 @@ const ECSManageModal = ({ onClose, connectInfo }: ECSManageModalProps) => {
     setDeploying(true);
     setDeployLog('');
     setDeployStatus('running');
+    credErrorRef.current = false;
     abortRef.current = new AbortController();
     try {
       await ecsManageApi.streamUpdate(
-        deployPreset,
-        (chunk) => { setDeployLog(prev => prev + chunk); if (deployLogRef.current) deployLogRef.current.scrollTop = deployLogRef.current.scrollHeight; },
-        (success) => { setDeployStatus(success ? 'success' : 'error'); setDeploying(false); },
+        deployPreset, onStreamChunk,
+        (success) => onStreamDone(success),
         abortRef.current.signal,
       );
     } catch (e) {
@@ -520,44 +403,12 @@ const ECSManageModal = ({ onClose, connectInfo }: ECSManageModalProps) => {
     }
   };
 
-  const isConvertible = (filename: string) => filename.endsWith('.json') || filename.endsWith('.yaml') || filename.endsWith('.yml');
-
-  const getEffectiveFormat = (): 'json' | 'yaml' => {
-    if (viewFormat !== 'original') return viewFormat;
-    return editorActiveFile.endsWith('.json') ? 'json' : 'yaml';
-  };
-
-  const handleFormatToggle = () => {
-    setConvertError(null);
-    const current = getEffectiveFormat();
-    const target = current === 'json' ? 'yaml' : 'json';
-    try {
-      const converted = target === 'yaml'
-        ? convertJsonToYaml(editorContent)
-        : convertYamlToJson(editorContent);
-      setEditorContent(converted);
-      setEditorDirty(true);
-      setViewFormat(target);
-    } catch (e) {
-      setConvertError(`Conversion failed: ${(e as Error).message}`);
-    }
-  };
-
-  const handleSaveFileWithConvert = async () => {
+  const handleSaveFile = async () => {
     if (!editorPreset || !editorActiveFile) return;
     setEditorSaving(true);
     try {
-      let contentToSave = editorContent;
-      if (editorActiveFile.endsWith('.json') && viewFormat === 'yaml') {
-        contentToSave = convertYamlToJson(editorContent);
-      } else if ((editorActiveFile.endsWith('.yaml') || editorActiveFile.endsWith('.yml')) && viewFormat === 'json') {
-        contentToSave = convertJsonToYaml(JSON.parse(editorContent));
-      }
-      await ecsManageApi.updatePresetFile(editorPreset, editorActiveFile, contentToSave);
+      await ecsManageApi.updatePresetFile(editorPreset, editorActiveFile, editorContent);
       setEditorDirty(false);
-      setConvertError(null);
-    } catch (e) {
-      setConvertError(`Save failed: ${(e as Error).message}`);
     } finally {
       setEditorSaving(false);
     }
@@ -576,7 +427,7 @@ const ECSManageModal = ({ onClose, connectInfo }: ECSManageModalProps) => {
     }
     if ((e.metaKey || e.ctrlKey) && e.key === 's') {
       e.preventDefault();
-      handleSaveFileWithConvert();
+      handleSaveFile();
     }
   };
 
@@ -876,43 +727,15 @@ const ECSManageModal = ({ onClose, connectInfo }: ECSManageModalProps) => {
               <>
                 <div className="eks-editor-toolbar">
                   <span className="eks-editor-filename">{editorActiveFile}</span>
-                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginLeft: 'auto' }}>
-                    {isConvertible(editorActiveFile) && (
-                      <div
-                        onClick={handleFormatToggle}
-                        title={`Switch to ${getEffectiveFormat() === 'json' ? 'YAML' : 'JSON'}`}
-                        style={{
-                          display: 'inline-flex', cursor: 'pointer', borderRadius: '4px', overflow: 'hidden',
-                          border: '1px solid var(--border-color, #444)', fontSize: '11px', fontWeight: 600, lineHeight: '22px',
-                        }}
-                      >
-                        <span style={{
-                          padding: '0 8px',
-                          background: getEffectiveFormat() === 'json' ? 'var(--accent-color, #4f8ff7)' : 'transparent',
-                          color: getEffectiveFormat() === 'json' ? '#fff' : 'var(--text-secondary, #aaa)',
-                        }}>JSON</span>
-                        <span style={{
-                          padding: '0 8px',
-                          background: getEffectiveFormat() === 'yaml' ? 'var(--accent-color, #4f8ff7)' : 'transparent',
-                          color: getEffectiveFormat() === 'yaml' ? '#fff' : 'var(--text-secondary, #aaa)',
-                        }}>YAML</span>
-                      </div>
-                    )}
-                    {!readonly && (
-                      <button className="eks-btn-save" onClick={handleSaveFileWithConvert} disabled={!editorDirty || editorSaving}>
-                        {editorSaving ? 'Saving...' : 'Save'}
-                      </button>
-                    )}
-                  </div>
+                  {!readonly && (
+                    <button className="eks-btn-save" style={{ marginLeft: 'auto' }} onClick={handleSaveFile} disabled={!editorDirty || editorSaving}>
+                      {editorSaving ? 'Saving...' : 'Save'}
+                    </button>
+                  )}
                 </div>
-                {convertError && (
-                  <div style={{ padding: '6px 12px', background: '#3a1c1c', color: '#f87171', fontSize: '12px', borderBottom: '1px solid #5c2020' }}>
-                    {convertError}
-                  </div>
-                )}
                 <div className="eks-code-editor">
                   <pre className="eks-code-highlight" ref={highlightRef} aria-hidden="true">
-                    <code dangerouslySetInnerHTML={{ __html: highlightCode(editorContent, editorActiveFile, viewFormat !== 'original' ? viewFormat : undefined) + '\n' }} />
+                    <code dangerouslySetInnerHTML={{ __html: highlightCode(editorContent, editorActiveFile) + '\n' }} />
                   </pre>
                   <textarea
                     className={`eks-editor-textarea ${readonly ? 'readonly' : ''}`}
@@ -979,6 +802,7 @@ const ECSManageModal = ({ onClose, connectInfo }: ECSManageModalProps) => {
     setRunRunning(true);
     setRunOutput('');
     setRunStatus('running');
+    credErrorRef.current = false;
     setRunHistory(prev => {
       const next = prev.filter(h => h !== cmd.trim());
       next.unshift(cmd.trim());
@@ -989,8 +813,19 @@ const ECSManageModal = ({ onClose, connectInfo }: ECSManageModalProps) => {
     try {
       await ecsManageApi.streamRun(
         cmd.trim(),
-        (chunk) => { setRunOutput(prev => prev + chunk); if (runLogRef.current) runLogRef.current.scrollTop = runLogRef.current.scrollHeight; },
-        (success) => { setRunStatus(success ? 'success' : 'error'); setRunRunning(false); },
+        (chunk) => {
+          setRunOutput(prev => prev + chunk);
+          if (runLogRef.current) runLogRef.current.scrollTop = runLogRef.current.scrollHeight;
+          if (hasCredentialError(chunk)) credErrorRef.current = true;
+        },
+        (success) => {
+          setRunStatus(success ? 'success' : 'error');
+          setRunRunning(false);
+          if (!success && credErrorRef.current) {
+            window.dispatchEvent(new CustomEvent('sso-credential-expired'));
+            credErrorRef.current = false;
+          }
+        },
         runAbortRef.current.signal,
       );
     } catch (e) {
@@ -1082,6 +917,20 @@ const ECSManageModal = ({ onClose, connectInfo }: ECSManageModalProps) => {
           <button className="eks-btn-update" onClick={handleUpdate} disabled={deploying || !deployPreset || !hasUpdateCmds}
             title={hasUpdateCmds ? 'Update existing deployment' : 'No update commands defined'}>Update</button>
           <button className="eks-btn-undeploy" onClick={handleUndeploy} disabled={deploying || !deployPreset}>Delete</button>
+          <button
+            className="eks-btn-force-delete"
+            disabled={deploying || !deployPreset || !deployedPresets[deployPreset]}
+            onClick={async () => {
+              if (!deployPreset) return;
+              if (!window.confirm(`Force remove "${deployPreset}" from deployed list?\n(No undeploy commands will be executed)`)) return;
+              try { await ecsManageApi.forceDelete(deployPreset); loadDeployments(); } catch {}
+            }}
+          >
+            Force Delete
+          </button>
+        </div>
+        <div className="eks-deploy-hint">
+          Force Delete removes the preset from the deployed list only, without executing any undeploy commands.
         </div>
         {deployStatus !== 'idle' && (
           <div className={`eks-deploy-status ${deployStatus}`}>

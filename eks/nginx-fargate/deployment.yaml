@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-fargate
+  namespace: fargate
+  labels:
+    app: nginx-fargate
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx-fargate
+  template:
+    metadata:
+      labels:
+        app: nginx-fargate
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:latest
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            cpu: "256m"
+            memory: "512Mi"
+          limits:
+            cpu: "256m"
+            memory: "512Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-fargate
+  namespace: fargate
+spec:
+  selector:
+    app: nginx-fargate
+  ports:
+  - port: 80
+    targetPort: 80

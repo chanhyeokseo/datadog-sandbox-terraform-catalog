@@ -880,6 +880,34 @@ body.light-mode .eks-code-editor {
   color: var(--text-tertiary);
 }
 
+.eks-btn-force-delete {
+  padding: 10px 24px;
+  background: rgba(244, 67, 54, 0.1);
+  color: rgba(244, 67, 54, 0.6);
+  border: 1px solid rgba(244, 67, 54, 0.2);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.eks-btn-force-delete:hover:not(:disabled) {
+  background: rgba(244, 67, 54, 0.2);
+  border-color: rgba(244, 67, 54, 0.4);
+  color: #f44336;
+}
+
+.eks-btn-force-delete:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.eks-deploy-hint {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  padding: 4px 0;
+}
+
 /* Update button */
 .eks-btn-update {
   padding: 10px 24px;

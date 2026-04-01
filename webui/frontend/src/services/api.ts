@@ -800,8 +800,13 @@ export const ecsManageApi = {
     return response.data;
   },
 
-  hasActiveWorkloads: async (): Promise<{ has_active: boolean; services: { name: string; status: string; running: number; desired: number }[] }> => {
+  hasActiveWorkloads: async (): Promise<{ has_active: boolean; services: { name: string; status: string; running: number; desired: number }[]; running_tasks: number; deployed_presets: string[] }> => {
     const response = await axios.get(`${ECS_MANAGE_BASE}/has-active-workloads`);
+    return response.data;
+  },
+
+  forceDelete: async (name: string): Promise<{ success: boolean }> => {
+    const response = await axios.post(`${ECS_MANAGE_BASE}/presets/${name}/force-delete`);
     return response.data;
   },
 };
@@ -1009,4 +1014,8 @@ export const eksManageApi = {
     await axios.put(`${EKS_MANAGE_BASE}/layout`, { layout });
   },
 
+  forceDelete: async (name: string): Promise<{ success: boolean }> => {
+    const response = await axios.post(`${EKS_MANAGE_BASE}/presets/${name}/force-delete`);
+    return response.data;
+  },
 };

@@ -1,0 +1,85 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-datadog-v2-fargate-config
+  namespace: fargate
+data:
+  default.conf: |
+    server {
+      listen 80;
+      location / {
+        root /usr/share/nginx/html;
+        index index.html index.htm;
+      }
+      location /nginx_status {
+        stub_status on;
+        allow all;
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-datadog-v2-fargate
+  namespace: fargate
+  labels:
+    app: nginx-datadog-v2-fargate
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx-datadog-v2-fargate
+  template:
+    metadata:
+      labels:
+        app: nginx-datadog-v2-fargate
+        tags.datadoghq.com/env: "dev"
+        tags.datadoghq.com/service: "nginx"
+        tags.datadoghq.com/version: "latest"
+        agent.datadoghq.com/sidecar: fargate
+      annotations:
+        ad.datadoghq.com/nginx.checks: |
+          {
+            "nginx": {
+              "init_config": {},
+              "instances": [
+                {
+                  "nginx_status_url": "http://%%host%%:%%port%%/nginx_status"
+                }
+              ]
+            }
+          }
+        ad.datadoghq.com/nginx.logs: '[{"source":"nginx","service":"nginx"}]'
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:latest
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            cpu: "256m"
+            memory: "512Mi"
+          limits:
+            cpu: "256m"
+            memory: "512Mi"
+        volumeMounts:
+        - name: nginx-config
+          mountPath: /etc/nginx/conf.d/default.conf
+          subPath: default.conf
+      volumes:
+      - name: nginx-config
+        configMap:
+          name: nginx-datadog-v2-fargate-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-datadog-v2-fargate
+  namespace: fargate
+spec:
+  selector:
+    app: nginx-datadog-v2-fargate
+  ports:
+  - port: 80
+    targetPort: 80

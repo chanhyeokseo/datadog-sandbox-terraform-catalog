@@ -52,12 +52,23 @@ def _parse_cluster_info(outputs: Dict) -> Dict:
             continue
         result[key.lower()] = str(value)
 
+    subnet_ids = []
+    sg_ids = []
+    for key, val in outputs.items():
+        raw = val.get("value", "") if isinstance(val, dict) else val
+        if key.lower() == "subnet_ids" and isinstance(raw, list):
+            subnet_ids = [str(s) for s in raw]
+        elif key.lower() == "security_group_ids" and isinstance(raw, list):
+            sg_ids = [str(s) for s in raw]
+
     return {
         "cluster_name": result.get("cluster_name"),
         "cluster_arn": result.get("cluster_arn"),
         "region": result.get("region") or os.environ.get("AWS_REGION", "ap-northeast-2"),
         "task_execution_role_arn": result.get("task_execution_role_arn"),
         "task_role_arn": result.get("task_role_arn"),
+        "subnet_ids": subnet_ids,
+        "security_group_ids": sg_ids,
     }
 
 
@@ -110,28 +121,6 @@ async def _stream_shell(cmd_str: str, cwd: str = None, env_extra: Dict = None) -
         yield f"{EXIT_SENTINEL_PREFIX}1\n"
 
 
-async def _execute_commands(commands: List[str], preset_dir: str,
-                            extra_vars: Dict = None) -> AsyncIterator[str]:
-    for cmd_str in commands:
-        cmd_str = cmd_str.strip()
-        if not cmd_str or cmd_str.startswith("#"):
-            continue
-
-        display_cmd = cmd_str
-        resolved_cmd = _resolve_template_vars(cmd_str, extra_vars)
-        yield f"\n$ {display_cmd}\n"
-
-        async for line in _stream_shell(resolved_cmd, cwd=preset_dir, env_extra=extra_vars):
-            if line.startswith(EXIT_SENTINEL_PREFIX):
-                if "1" in line:
-                    yield f"Error: command failed (exit 1)\n"
-                    yield line
-                    return
-                continue
-            yield line
-
-    yield f"{EXIT_SENTINEL_PREFIX}0\n"
-
 
 async def _setup_ecs_env(resource_id: Optional[str],
                          resource_dir: Optional[Path]) -> tuple[Dict, list[str]]:
@@ -163,41 +152,329 @@ async def _setup_ecs_env(resource_id: Optional[str],
     else:
         lines.append("Warning: ECS resource not found.\n")
 
-    for key, val in list(extra_vars.items()):
-        extra_vars[f"TF_VAR_{key}"] = val
-
     return extra_vars, lines
 
 
-async def _stream_action(action_label: str, name: str, commands: List[str],
-                         resource_id: Optional[str], resource_dir: Optional[Path],
-                         on_success=None) -> AsyncIterator[str]:
-    yield f"=== ECS Preset {action_label} ===\n"
+def _read_td_json(preset_dir: Path, extra_vars: Dict) -> Dict:
+    td_path = preset_dir / "task-definition.json"
+    raw = td_path.read_text()
+    for placeholder in ("__DATADOG_API_KEY__",):
+        var_name = placeholder.strip("_").lower()
+        val = extra_vars.get(var_name, "")
+        if val:
+            raw = raw.replace(placeholder, val)
+    return json.loads(raw)
+
+
+def _boto3_register_td(td: Dict, cluster_name: str, cluster_info: Dict, region: str) -> Dict:
+    import boto3
+    client = boto3.client("ecs", region_name=region)
+
+    params = {
+        "family": f"{cluster_name}-{td['family']}",
+        "containerDefinitions": td["containerDefinitions"],
+    }
+
+    if td.get("networkMode"):
+        params["networkMode"] = td["networkMode"]
+    if td.get("requiresCompatibilities"):
+        params["requiresCompatibilities"] = td["requiresCompatibilities"]
+    if td.get("cpu"):
+        params["cpu"] = str(td["cpu"])
+    if td.get("memory"):
+        params["memory"] = str(td["memory"])
+    if td.get("pidMode"):
+        params["pidMode"] = td["pidMode"]
+    if td.get("volumes"):
+        params["volumes"] = td["volumes"]
+
+    exec_role = cluster_info.get("task_execution_role_arn")
+    if exec_role:
+        params["executionRoleArn"] = exec_role
+    task_role = cluster_info.get("task_role_arn")
+    if task_role:
+        params["taskRoleArn"] = task_role
+
+    resp = client.register_task_definition(**params)
+    return resp["taskDefinition"]
+
+
+def _boto3_create_service(td_arn: str, td: Dict, cluster_name: str,
+                          cluster_info: Dict, region: str, preset_name: str) -> Dict:
+    import boto3
+    client = boto3.client("ecs", region_name=region)
+
+    is_fargate = "FARGATE" in td.get("requiresCompatibilities", [])
+    service_name = f"{cluster_name}-{td['family']}"
+
+    params = {
+        "cluster": cluster_name,
+        "serviceName": service_name,
+        "taskDefinition": td_arn,
+        "launchType": "FARGATE" if is_fargate else "EC2",
+        "tags": [{"key": "preset", "value": preset_name}],
+    }
+
+    if is_fargate:
+        params["desiredCount"] = 1
+        subnet_ids = cluster_info.get("subnet_ids", [])
+        sg_ids = cluster_info.get("security_group_ids", [])
+        params["networkConfiguration"] = {
+            "awsvpcConfiguration": {
+                "subnets": subnet_ids,
+                "securityGroups": sg_ids,
+                "assignPublicIp": "ENABLED",
+            }
+        }
+    else:
+        params["schedulingStrategy"] = "DAEMON"
+
+    return client.create_service(**params)
+
+
+def _boto3_update_service(td_arn: str, td: Dict, cluster_name: str,
+                          cluster_info: Dict, region: str) -> Dict:
+    import boto3
+    client = boto3.client("ecs", region_name=region)
+
+    service_name = f"{cluster_name}-{td['family']}"
+    is_fargate = "FARGATE" in td.get("requiresCompatibilities", [])
+
+    params = {
+        "cluster": cluster_name,
+        "service": service_name,
+        "taskDefinition": td_arn,
+    }
+    if is_fargate:
+        subnet_ids = cluster_info.get("subnet_ids", [])
+        sg_ids = cluster_info.get("security_group_ids", [])
+        params["networkConfiguration"] = {
+            "awsvpcConfiguration": {
+                "subnets": subnet_ids,
+                "securityGroups": sg_ids,
+                "assignPublicIp": "ENABLED",
+            }
+        }
+    return client.update_service(**params)
+
+
+def _boto3_delete_service(td_family: str, cluster_name: str, region: str) -> None:
+    import boto3
+    client = boto3.client("ecs", region_name=region)
+    service_name = f"{cluster_name}-{td_family}"
+
+    try:
+        client.update_service(cluster=cluster_name, service=service_name, desiredCount=0)
+    except Exception:
+        pass
+    try:
+        client.delete_service(cluster=cluster_name, service=service_name, force=True)
+    except Exception as e:
+        logger.warning(f"delete_service failed: {e}")
+
+    paginator = client.get_paginator("list_task_definitions")
+    for page in paginator.paginate(familyPrefix=f"{cluster_name}-{td_family}", status="ACTIVE"):
+        for arn in page.get("taskDefinitionArns", []):
+            try:
+                client.deregister_task_definition(taskDefinition=arn)
+            except Exception:
+                pass
+
+
+async def _stream_boto3_deploy(name: str, resource_id: Optional[str],
+                               resource_dir: Optional[Path]) -> AsyncIterator[str]:
+    yield f"=== ECS Preset Deploy ===\n"
     yield f"Preset: {name}\n\n"
+
+    from app.init_config import ensure_terraform_data
+    try:
+        result = await asyncio.to_thread(ensure_terraform_data)
+        if result.get("recovered"):
+            yield "Configuration restored from S3.\n"
+    except Exception as e:
+        logger.warning(f"ensure_terraform_data failed: {e}")
+
+    if not preset_manager._cache_initialized:
+        yield "Syncing preset cache from S3...\n"
+        await asyncio.to_thread(preset_manager.initialize_local_cache)
 
     extra_vars, lines = await _setup_ecs_env(resource_id, resource_dir)
     for line in lines:
         yield line
 
-    preset_dir = preset_manager.sync_preset_to_local(name)
-    if not preset_dir:
-        yield "Error: Failed to sync preset files to local\n"
+    cluster_name = extra_vars.get("cluster_name")
+    region = extra_vars.get("ecs_region") or extra_vars.get("region")
+    if not cluster_name or not region:
+        yield "Error: Could not resolve cluster name or region\n"
         yield f"{EXIT_SENTINEL_PREFIX}1\n"
         return
 
-    yield f"\n{action_label} from: {preset_dir}\n"
+    preset_dir = preset_manager.sync_preset_to_local(name)
+    if not preset_dir:
+        yield "Error: Failed to sync preset files\n"
+        yield f"{EXIT_SENTINEL_PREFIX}1\n"
+        return
 
-    success = True
-    async for line in _execute_commands(commands, str(preset_dir), extra_vars):
-        if line.startswith(EXIT_SENTINEL_PREFIX) and "1" in line:
-            success = False
+    try:
+        td = _read_td_json(preset_dir, extra_vars)
+    except Exception as e:
+        yield f"Error reading task-definition.json: {e}\n"
+        yield f"{EXIT_SENTINEL_PREFIX}1\n"
+        return
+
+    cluster_info = await _get_cluster_info_async(resource_id, resource_dir)
+    is_fargate = "FARGATE" in td.get("requiresCompatibilities", [])
+    yield f"\nFamily: {td['family']} ({'Fargate' if is_fargate else 'EC2'})\n"
+
+    yield "\nRegistering task definition...\n"
+    try:
+        td_result = await asyncio.to_thread(
+            _boto3_register_td, td, cluster_name, cluster_info, region)
+        td_arn = td_result["taskDefinitionArn"]
+        yield f"  -> {td_arn}\n"
+    except Exception as e:
+        yield f"Error registering task definition: {e}\n"
+        yield f"{EXIT_SENTINEL_PREFIX}1\n"
+        return
+
+    yield "\nCreating service...\n"
+    try:
+        await asyncio.to_thread(
+            _boto3_create_service, td_arn, td, cluster_name, cluster_info, region, name)
+        yield f"  -> Service: {cluster_name}-{td['family']}\n"
+    except Exception as e:
+        yield f"Error creating service: {e}\n"
+        yield f"{EXIT_SENTINEL_PREFIX}1\n"
+        return
+
+    yield "\nDeploy complete.\n"
+    try:
+        preset_manager.mark_deployed(name)
+    except Exception as e:
+        logger.warning(f"mark_deployed failed: {e}")
+    yield f"{EXIT_SENTINEL_PREFIX}0\n"
+
+
+async def _stream_boto3_update(name: str, resource_id: Optional[str],
+                               resource_dir: Optional[Path]) -> AsyncIterator[str]:
+    yield f"=== ECS Preset Update ===\n"
+    yield f"Preset: {name}\n\n"
+
+    from app.init_config import ensure_terraform_data
+    try:
+        await asyncio.to_thread(ensure_terraform_data)
+    except Exception:
+        pass
+
+    if not preset_manager._cache_initialized:
+        await asyncio.to_thread(preset_manager.initialize_local_cache)
+
+    extra_vars, lines = await _setup_ecs_env(resource_id, resource_dir)
+    for line in lines:
         yield line
 
-    if success and on_success:
-        try:
-            on_success()
-        except Exception as e:
-            logger.warning(f"on_success callback failed: {e}")
+    cluster_name = extra_vars.get("cluster_name")
+    region = extra_vars.get("ecs_region") or extra_vars.get("region")
+    if not cluster_name or not region:
+        yield "Error: Could not resolve cluster name or region\n"
+        yield f"{EXIT_SENTINEL_PREFIX}1\n"
+        return
+
+    preset_dir = preset_manager.sync_preset_to_local(name)
+    if not preset_dir:
+        yield "Error: Failed to sync preset files\n"
+        yield f"{EXIT_SENTINEL_PREFIX}1\n"
+        return
+
+    try:
+        td = _read_td_json(preset_dir, extra_vars)
+    except Exception as e:
+        yield f"Error reading task-definition.json: {e}\n"
+        yield f"{EXIT_SENTINEL_PREFIX}1\n"
+        return
+
+    cluster_info = await _get_cluster_info_async(resource_id, resource_dir)
+
+    yield "\nRegistering new task definition revision...\n"
+    try:
+        td_result = await asyncio.to_thread(
+            _boto3_register_td, td, cluster_name, cluster_info, region)
+        td_arn = td_result["taskDefinitionArn"]
+        yield f"  -> {td_arn}\n"
+    except Exception as e:
+        yield f"Error registering task definition: {e}\n"
+        yield f"{EXIT_SENTINEL_PREFIX}1\n"
+        return
+
+    yield "\nUpdating service...\n"
+    try:
+        await asyncio.to_thread(
+            _boto3_update_service, td_arn, td, cluster_name, cluster_info, region)
+        yield f"  -> Service updated: {cluster_name}-{td['family']}\n"
+    except Exception as e:
+        yield f"Error updating service: {e}\n"
+        yield f"{EXIT_SENTINEL_PREFIX}1\n"
+        return
+
+    yield "\nUpdate complete.\n"
+    yield f"{EXIT_SENTINEL_PREFIX}0\n"
+
+
+async def _stream_boto3_undeploy(name: str, resource_id: Optional[str],
+                                 resource_dir: Optional[Path]) -> AsyncIterator[str]:
+    yield f"=== ECS Preset Undeploy ===\n"
+    yield f"Preset: {name}\n\n"
+
+    from app.init_config import ensure_terraform_data
+    try:
+        await asyncio.to_thread(ensure_terraform_data)
+    except Exception:
+        pass
+
+    if not preset_manager._cache_initialized:
+        await asyncio.to_thread(preset_manager.initialize_local_cache)
+
+    extra_vars, lines = await _setup_ecs_env(resource_id, resource_dir)
+    for line in lines:
+        yield line
+
+    cluster_name = extra_vars.get("cluster_name")
+    region = extra_vars.get("ecs_region") or extra_vars.get("region")
+    if not cluster_name or not region:
+        yield "Error: Could not resolve cluster name or region\n"
+        yield f"{EXIT_SENTINEL_PREFIX}1\n"
+        return
+
+    preset_dir = preset_manager.sync_preset_to_local(name)
+    if not preset_dir:
+        yield "Error: Failed to sync preset files\n"
+        yield f"{EXIT_SENTINEL_PREFIX}1\n"
+        return
+
+    try:
+        td = _read_td_json(preset_dir, extra_vars)
+    except Exception as e:
+        yield f"Error reading task-definition.json: {e}\n"
+        yield f"{EXIT_SENTINEL_PREFIX}1\n"
+        return
+
+    td_family = td["family"]
+    yield f"\nRemoving service: {cluster_name}-{td_family}\n"
+    try:
+        await asyncio.to_thread(
+            _boto3_delete_service, td_family, cluster_name, region)
+        yield "  -> Service deleted\n"
+    except Exception as e:
+        yield f"Error deleting service: {e}\n"
+        yield f"{EXIT_SENTINEL_PREFIX}1\n"
+        return
+
+    yield "\nUndeploy complete.\n"
+    try:
+        preset_manager.mark_undeployed(name)
+    except Exception as e:
+        logger.warning(f"mark_undeployed failed: {e}")
+    yield f"{EXIT_SENTINEL_PREFIX}0\n"
 
 
 @router.post("/presets/refresh")
@@ -371,15 +648,9 @@ async def deploy_preset(name: str):
     if not preset:
         raise HTTPException(status_code=404, detail=f"Preset not found: {name}")
 
-    commands = preset.get("deploy_commands", [])
-    if not commands:
-        raise HTTPException(status_code=400, detail="No deploy commands defined for this preset")
-
     resource_id, resource_dir = _get_ecs_resource_info()
-
     return StreamingResponse(
-        _stream_action("Deploy", name, commands, resource_id, resource_dir,
-                        on_success=lambda: preset_manager.mark_deployed(name)),
+        _stream_boto3_deploy(name, resource_id, resource_dir),
         media_type="text/plain",
     )
 
@@ -390,14 +661,9 @@ async def update_preset_deploy(name: str):
     if not preset:
         raise HTTPException(status_code=404, detail=f"Preset not found: {name}")
 
-    commands = preset.get("update_commands", [])
-    if not commands:
-        raise HTTPException(status_code=400, detail="No update commands defined for this preset")
-
     resource_id, resource_dir = _get_ecs_resource_info()
-
     return StreamingResponse(
-        _stream_action("Update", name, commands, resource_id, resource_dir),
+        _stream_boto3_update(name, resource_id, resource_dir),
         media_type="text/plain",
     )
 
@@ -408,17 +674,17 @@ async def undeploy_preset(name: str):
     if not preset:
         raise HTTPException(status_code=404, detail=f"Preset not found: {name}")
 
-    commands = preset.get("undeploy_commands", [])
-    if not commands:
-        raise HTTPException(status_code=400, detail="No undeploy commands defined for this preset")
-
     resource_id, resource_dir = _get_ecs_resource_info()
-
     return StreamingResponse(
-        _stream_action("Undeploy", name, commands, resource_id, resource_dir,
-                        on_success=lambda: preset_manager.mark_undeployed(name)),
+        _stream_boto3_undeploy(name, resource_id, resource_dir),
         media_type="text/plain",
     )
+
+
+@router.post("/presets/{name}/force-delete")
+async def force_delete_preset(name: str):
+    preset_manager.mark_undeployed(name)
+    return {"success": True, "message": f"Preset '{name}' removed from deployed list"}
 
 
 ECS_API_ACTIONS = {
@@ -583,28 +849,50 @@ def _list_ecs_container_instances(cluster_name: str, region: str) -> List[Dict]:
 def _check_active_workloads(cluster_name: str, region: str) -> Dict:
     import boto3
     client = boto3.client("ecs", region_name=region)
-    services = []
-    paginator = client.get_paginator("list_services")
-    for page in paginator.paginate(cluster=cluster_name):
-        services.extend(page.get("serviceArns", []))
 
     active_services = []
-    if services:
-        for i in range(0, len(services), 10):
-            batch = services[i:i+10]
+    try:
+        paginator = client.get_paginator("list_services")
+        service_arns = []
+        for page in paginator.paginate(cluster=cluster_name):
+            service_arns.extend(page.get("serviceArns", []))
+        for i in range(0, len(service_arns), 10):
+            batch = service_arns[i:i+10]
             desc = client.describe_services(cluster=cluster_name, services=batch)
             for svc in desc.get("services", []):
-                if svc.get("desiredCount", 0) > 0 or svc.get("runningCount", 0) > 0:
-                    active_services.append({
-                        "name": svc.get("serviceName", ""),
-                        "status": svc.get("status", ""),
-                        "running": svc.get("runningCount", 0),
-                        "desired": svc.get("desiredCount", 0),
-                    })
+                if svc.get("status") != "ACTIVE":
+                    continue
+                active_services.append({
+                    "name": svc.get("serviceName", ""),
+                    "status": svc.get("status", ""),
+                    "running": svc.get("runningCount", 0),
+                    "desired": svc.get("desiredCount", 0),
+                })
+    except Exception as e:
+        logger.warning(f"Failed to list services: {e}")
+
+    running_tasks = 0
+    try:
+        resp = client.list_tasks(cluster=cluster_name, desiredStatus="RUNNING")
+        running_tasks = len(resp.get("taskArns", []))
+    except Exception as e:
+        logger.warning(f"Failed to list tasks: {e}")
+
+    deployed_presets = []
+    try:
+        deployments = preset_manager.get_deployments()
+        deployed_presets = [name for name, info in deployments.items()
+                           if info.get("status") == "deployed"]
+    except Exception:
+        pass
+
+    has_active = len(active_services) > 0 or running_tasks > 0
 
     return {
-        "has_active": len(active_services) > 0,
+        "has_active": has_active,
         "services": active_services,
+        "running_tasks": running_tasks,
+        "deployed_presets": deployed_presets,
     }
 
 
@@ -612,13 +900,13 @@ def _check_active_workloads(cluster_name: str, region: str) -> Dict:
 async def has_active_workloads():
     resource_id, resource_dir = _get_ecs_resource_info()
     if not resource_dir:
-        return {"has_active": False, "services": []}
+        return {"has_active": False, "services": [], "running_tasks": 0, "deployed_presets": []}
 
     cluster_info = await _get_cluster_info_async(resource_id, resource_dir)
     cluster_name = cluster_info.get("cluster_name")
     region = cluster_info.get("region")
     if not cluster_name:
-        return {"has_active": False, "services": []}
+        return {"has_active": False, "services": [], "running_tasks": 0, "deployed_presets": []}
 
     try:
         loop = asyncio.get_event_loop()
@@ -626,7 +914,7 @@ async def has_active_workloads():
         return result
     except Exception as e:
         logger.error(f"Failed to check active workloads: {e}")
-        return {"has_active": False, "services": [], "error": str(e)}
+        return {"has_active": False, "services": [], "running_tasks": 0, "deployed_presets": [], "error": str(e)}
 
 
 @router.get("/container-instances")

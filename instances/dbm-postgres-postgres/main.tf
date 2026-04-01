@@ -30,6 +30,16 @@ data "aws_subnet" "public" {
 data "aws_subnet" "private" {
   id = var.private_subnet_id
 }
+data "aws_security_group" "dogstac" {
+  filter {
+    name   = "tag:Name"
+    values = ["${var.name_prefix}-personal-sg"]
+  }
+  filter {
+    name   = "vpc-id"
+    values = [var.vpc_id]
+  }
+}
 
 locals {
   name_prefix = var.name_prefix
@@ -51,7 +61,7 @@ module "dbm_postgres_ec2" {
   name_prefix        = "${local.name_prefix}-dbm-postgres"
   instance_type      = var.ec2_instance_type
   subnet_id          = local.vpc.public_subnet_id
-  security_group_ids = var.security_group_ids
+  security_group_ids = [data.aws_security_group.dogstac.id]
   key_name           = var.ec2_key_name
   custom_ami_id      = data.aws_ami.amazon_linux_2023.id
   datadog_api_key       = var.datadog_api_key
@@ -74,6 +84,7 @@ module "dbm_postgres_rds" {
   allocated_storage       = 20
   subnet_ids              = [local.vpc.private_subnet_id, local.vpc.public_subnet_id]
   vpc_id                  = local.vpc.vpc_id
-  allowed_security_groups = var.security_group_ids
+  allowed_security_groups = [data.aws_security_group.dogstac.id]
+  backup_retention_period = 0
   common_tags             = local.common_tags
 }

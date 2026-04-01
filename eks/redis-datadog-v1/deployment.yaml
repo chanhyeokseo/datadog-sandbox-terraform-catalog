@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-datadog-v1
+  labels:
+    app: redis-datadog-v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis-datadog-v1
+  template:
+    metadata:
+      labels:
+        app: redis-datadog-v1
+        tags.datadoghq.com/service: redis
+      annotations:
+        ad.datadoghq.com/redis.check_names: '["redisdb"]'
+        ad.datadoghq.com/redis.init_configs: '[{}]'
+        ad.datadoghq.com/redis.instances: '[{"host":"%%host%%","port":"%%port%%"}]'
+    spec:
+      containers:
+      - name: redis
+        image: redis:latest
+        ports:
+        - containerPort: 6379
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-datadog-v1
+spec:
+  selector:
+    app: redis-datadog-v1
+  ports:
+  - port: 6379
+    targetPort: 6379

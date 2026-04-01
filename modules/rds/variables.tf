@@ -113,6 +113,12 @@ variable "common_tags" {
   default     = {}
 }
 
+variable "parameter_group_name" {
+  description = "Name of the DB parameter group to associate (null for default)"
+  type        = string
+  default     = null
+}
+
 variable "service" {
   description = "Service name for tagging (e.g., rds, docdb)"
   type        = string

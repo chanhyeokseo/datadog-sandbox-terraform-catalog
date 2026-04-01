@@ -1,0 +1,28 @@
+{
+  "name": "agent-datadog-operator-fargate",
+  "description": "Datadog Agent via Datadog Operator (Fargate, Admission Controller sidecar)",
+  "type": "kubectl",
+  "built_in": true,
+  "deploy_commands": [
+    "kubectl create secret generic datadog-secret --from-literal api-key={{datadog_api_key}} --from-literal token=$(openssl rand -hex 16)",
+    "kubectl create namespace fargate --dry-run=client -o yaml | kubectl apply -f -",
+    "kubectl create secret generic datadog-secret -n fargate --from-literal api-key={{datadog_api_key}} --from-literal token=$(kubectl get secret datadog-secret -o jsonpath='{.data.token}' | base64 -d)",
+    "helm repo add datadog https://helm.datadoghq.com --force-update",
+    "helm repo update",
+    "helm upgrade --install datadog-operator datadog/datadog-operator",
+    "kubectl apply -f datadog-agent.yaml"
+  ],
+  "update_commands": [
+    "helm repo update",
+    "helm upgrade datadog-operator datadog/datadog-operator",
+    "kubectl apply -f datadog-agent.yaml"
+  ],
+  "undeploy_commands": [
+    "kubectl delete -f datadog-agent.yaml --ignore-not-found",
+    "helm uninstall datadog-operator",
+    "kubectl delete secret datadog-secret --ignore-not-found",
+    "kubectl delete secret datadog-secret -n fargate --ignore-not-found",
+    "kubectl delete mutatingwebhookconfigurations,validatingwebhookconfigurations datadog-webhook --ignore-not-found"
+  ],
+  "files": ["datadog-agent.yaml", "README.md"]
+}

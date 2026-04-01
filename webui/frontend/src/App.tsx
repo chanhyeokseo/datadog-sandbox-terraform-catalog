@@ -292,6 +292,26 @@ function App() {
   }, [initialLoadPhase]);
 
   useEffect(() => {
+    const handleCredExpired = async () => {
+      try {
+        await api.checkCredentials();
+      } catch (err: any) {
+        if (err?.response?.status === 401) {
+          const detail = err?.response?.data?.detail;
+          setCredentialError({
+            type: 'expired',
+            ssoCommand: detail?.sso_command || 'aws sso login',
+            ssoConfigured: detail?.sso_configured ?? false,
+          });
+          setShowSSOModal(true);
+        }
+      }
+    };
+    window.addEventListener('sso-credential-expired', handleCredExpired);
+    return () => window.removeEventListener('sso-credential-expired', handleCredExpired);
+  }, []);
+
+  useEffect(() => {
     if (initialLoadPhase !== 'ready') return;
     let cancelled = false;
     const resumeActiveOps = async () => {

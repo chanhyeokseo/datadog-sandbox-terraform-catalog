@@ -1,0 +1,17 @@
+{
+  "name": "redis-fargate",
+  "description": "Redis server on EKS Fargate",
+  "type": "kubectl",
+  "built_in": true,
+  "deploy_commands": [
+    "kubectl create namespace fargate --dry-run=client -o yaml | kubectl apply -f -",
+    "kubectl apply -f deployment.yaml"
+  ],
+  "update_commands": [
+    "kubectl apply -f deployment.yaml"
+  ],
+  "undeploy_commands": [
+    "kubectl delete -f deployment.yaml --ignore-not-found"
+  ],
+  "files": ["deployment.yaml"]
+}

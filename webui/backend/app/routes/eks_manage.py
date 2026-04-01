@@ -417,6 +417,18 @@ async def _stream_action(action_label: str, name: str, commands: List[str],
     yield f"=== EKS Preset {action_label} ===\n"
     yield f"Preset: {name}\n\n"
 
+    from app.init_config import ensure_terraform_data
+    try:
+        result = await asyncio.to_thread(ensure_terraform_data)
+        if result.get("recovered"):
+            yield "Configuration restored from S3.\n"
+    except Exception as e:
+        logger.warning(f"ensure_terraform_data failed: {e}")
+
+    if not preset_manager._cache_initialized:
+        yield "Syncing preset cache from S3...\n"
+        await asyncio.to_thread(preset_manager.initialize_local_cache)
+
     ok, lines = await _setup_kubeconfig(resource_id, resource_dir)
     for line in lines:
         yield line
@@ -507,6 +519,12 @@ async def undeploy_preset(name: str):
                         on_success=lambda: preset_manager.mark_undeployed(name)),
         media_type="text/plain",
     )
+
+
+@router.post("/presets/{name}/force-delete")
+async def force_delete_preset(name: str):
+    preset_manager.mark_undeployed(name)
+    return {"success": True, "message": f"Preset '{name}' removed from deployed list"}
 
 
 @router.post("/kubectl")

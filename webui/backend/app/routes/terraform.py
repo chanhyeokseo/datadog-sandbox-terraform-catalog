@@ -849,30 +849,28 @@ async def update_instance_variable(resource_id: str, var_name: str, payload: dic
         resource = parser.get_resource_by_id(resource_id)
         if not resource:
             raise HTTPException(status_code=404, detail="Resource not found")
-        parts = resource.file_path.split("/")
-        if len(parts) < 2:
-            raise HTTPException(status_code=500, detail="Invalid resource file_path")
-        instance_dir = Path(TERRAFORM_DIR) / "instances" / parts[1]
-        tfvars_path = instance_dir / "terraform.tfvars"
-        root_tfvars = Path(TERRAFORM_DIR) / "terraform.tfvars"
-        if parts[1] == ".." or tfvars_path == root_tfvars:
-            raise HTTPException(
-                status_code=500,
-                detail="Cannot write instance variable to root terraform.tfvars"
-            )
-        if not instance_dir.exists() or not instance_dir.is_dir():
-            raise HTTPException(
-                status_code=500,
-                detail=f"Instance directory not found: {instance_dir}"
-            )
-        success = parser.write_tfvars_to_path(tfvars_path, var_name, value)
+
+        from app.config import (
+            get_resource_type_for_variables,
+            get_resource_variables as get_resource_variable_configs,
+            VariableType,
+        )
+        effective_type = get_resource_type_for_variables(resource.type.value, resource.id)
+        configs = {c.name: c for c in get_resource_variable_configs(effective_type)}
+        config = configs.get(var_name)
+        if config and config.var_type == VariableType.LIST and not value.startswith("["):
+            items = [item.strip() for item in value.split(",") if item.strip()]
+            value = json.dumps(items)
+            logger.debug("Converted list variable %s: %s", var_name, value)
+
+        success = parser.write_instance_tfvars(resource_id, var_name, value)
         if not success:
             raise HTTPException(
                 status_code=500,
                 detail="Failed to update variable (instance directory not found or not writable)"
             )
         parser.remove_non_common_from_root(var_name)
-        logger.info(f"Updated variable {var_name} for resource {resource_id} -> {tfvars_path}")
+        logger.info(f"Updated variable {var_name} for resource {resource_id}")
         return {"success": True, "message": f"Variable {var_name} updated"}
     except HTTPException:
         raise

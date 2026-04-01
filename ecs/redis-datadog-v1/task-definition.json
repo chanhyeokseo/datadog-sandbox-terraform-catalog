@@ -1,0 +1,25 @@
+{
+  "containerDefinitions": [
+    {
+      "name": "redis",
+      "image": "redis:latest",
+      "cpu": 128,
+      "memory": 256,
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 6379,
+          "hostPort": 0,
+          "protocol": "tcp"
+        }
+      ],
+      "dockerLabels": {
+        "com.datadoghq.ad.check_names": "[\"redisdb\"]",
+        "com.datadoghq.ad.init_configs": "[{}]",
+        "com.datadoghq.ad.instances": "[{\"host\": \"%%host%%\", \"port\": \"%%port%%\"}]"
+      }
+    }
+  ],
+  "volumes": [],
+  "family": "redis-datadog-v1"
+}

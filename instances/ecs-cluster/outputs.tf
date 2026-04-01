@@ -45,3 +45,13 @@ output "ec2_max_size" {
 output "ec2_desired_capacity" {
   value = var.ec2_desired_capacity
 }
+
+output "subnet_ids" {
+  value = var.enable_ec2 ? [var.public_subnet_id, var.public_subnet2_id] : [var.public_subnet_id, var.public_subnet2_id]
+}
+
+output "security_group_ids" {
+  value = length(var.security_group_ids) > 0 ? var.security_group_ids : (
+    var.enable_ec2 ? try([data.aws_security_group.personal[0].id], []) : []
+  )
+}

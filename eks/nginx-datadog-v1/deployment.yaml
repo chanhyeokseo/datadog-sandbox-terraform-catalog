@@ -1,0 +1,63 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-datadog-v1-config
+data:
+  default.conf: |
+    server {
+      listen 80;
+      location / {
+        root /usr/share/nginx/html;
+        index index.html index.htm;
+      }
+      location /nginx_status {
+        stub_status on;
+        allow all;
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-datadog-v1
+  labels:
+    app: nginx-datadog-v1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx-datadog-v1
+  template:
+    metadata:
+      labels:
+        app: nginx-datadog-v1
+        tags.datadoghq.com/service: nginx
+      annotations:
+        ad.datadoghq.com/nginx.check_names: '["nginx"]'
+        ad.datadoghq.com/nginx.init_configs: '[{}]'
+        ad.datadoghq.com/nginx.instances: '[{"nginx_status_url":"http://%%host%%:%%port%%/nginx_status"}]'
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:latest
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: nginx-config
+          mountPath: /etc/nginx/conf.d/default.conf
+          subPath: default.conf
+      volumes:
+      - name: nginx-config
+        configMap:
+          name: nginx-datadog-v1-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-datadog-v1
+spec:
+  selector:
+    app: nginx-datadog-v1
+  ports:
+  - port: 80
+    targetPort: 80
