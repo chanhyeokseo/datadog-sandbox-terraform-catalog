@@ -145,7 +145,8 @@ class CredentialManager:
             logger.debug(f"Failed to read SSO cache: {e}")
             return None
 
-    def _write_sso_cache(self, sso_config: "SSOConfig", access_token: str, expires_in: int):
+    def _write_sso_cache(self, sso_config: "SSOConfig", access_token: str, expires_in: int,
+                         refresh_token: str = "", client_id: str = "", client_secret: str = ""):
         AWS_SSO_CACHE_DIR.mkdir(parents=True, exist_ok=True)
         cache_path = self._get_sso_cache_path(sso_config)
         from datetime import datetime, timezone, timedelta
@@ -156,9 +157,66 @@ class CredentialManager:
             "accessToken": access_token,
             "expiresAt": expires_at.strftime("%Y-%m-%dT%H:%M:%SZ"),
         }
+        if refresh_token:
+            data["refreshToken"] = refresh_token
+        if client_id:
+            data["clientId"] = client_id
+        if client_secret:
+            data["clientSecret"] = client_secret
         with open(cache_path, "w") as f:
             json.dump(data, f)
-        logger.debug(f"SSO token cached at {cache_path}, expires at {expires_at}")
+        logger.debug(f"SSO token cached at {cache_path}, expires at {expires_at}, "
+                     f"refresh_token={'present' if refresh_token else 'absent'}")
+
+    def _read_sso_cache_raw(self, sso_config: "SSOConfig") -> Optional[dict]:
+        cache_path = self._get_sso_cache_path(sso_config)
+        if not cache_path.exists():
+            return None
+        try:
+            with open(cache_path, "r") as f:
+                return json.load(f)
+        except Exception as e:
+            logger.debug(f"Failed to read raw SSO cache: {e}")
+            return None
+
+    def _try_refresh_sso_token(self, sso_config: "SSOConfig") -> bool:
+        raw = self._read_sso_cache_raw(sso_config)
+        if not raw:
+            return False
+
+        refresh_token = raw.get("refreshToken", "")
+        client_id = raw.get("clientId", "")
+        client_secret = raw.get("clientSecret", "")
+        if not all([refresh_token, client_id, client_secret]):
+            logger.debug("SSO cache missing refresh token or client credentials, cannot refresh SSO token")
+            return False
+
+        try:
+            oidc = boto3.client("sso-oidc", region_name=sso_config.sso_region)
+            token_response = oidc.create_token(
+                clientId=client_id,
+                clientSecret=client_secret,
+                grantType="refresh_token",
+                refreshToken=refresh_token,
+            )
+            new_access_token = token_response["accessToken"]
+            new_expires_in = token_response.get("expiresIn", 28800)
+            new_refresh_token = token_response.get("refreshToken", refresh_token)
+
+            self._write_sso_cache(
+                sso_config, new_access_token, new_expires_in,
+                refresh_token=new_refresh_token,
+                client_id=client_id,
+                client_secret=client_secret,
+            )
+            logger.info("SSO access token refreshed via refresh token")
+            return True
+        except ClientError as e:
+            logger.warning(f"SSO token refresh via refresh_token failed: {e}")
+            return False
+        except Exception as e:
+            logger.warning(f"Unexpected error during SSO token refresh: {e}")
+            return False
 
     def try_refresh_credentials(self) -> bool:
         sso_config = self.get_sso_config()
@@ -168,8 +226,13 @@ class CredentialManager:
 
         cached = self._read_sso_cache(sso_config)
         if not cached:
-            logger.debug("No valid SSO cache token, cannot refresh")
-            return False
+            logger.debug("No valid SSO cache token, attempting refresh via refresh token")
+            if not self._try_refresh_sso_token(sso_config):
+                logger.debug("SSO token refresh failed, cannot refresh credentials")
+                return False
+            cached = self._read_sso_cache(sso_config)
+            if not cached:
+                return False
 
         access_token = cached.get("accessToken")
         if not access_token:
@@ -210,6 +273,11 @@ class CredentialManager:
             client_reg = oidc.register_client(
                 clientName="DogSTAC",
                 clientType="public",
+                scopes=["sso:account:access"],
+                grantTypes=[
+                    "urn:ietf:params:oauth:grant-type:device_code",
+                    "refresh_token",
+                ],
             )
             client_id = client_reg["clientId"]
             client_secret = client_reg["clientSecret"]
@@ -267,10 +335,16 @@ class CredentialManager:
 
             access_token = token_response["accessToken"]
             expires_in = token_response.get("expiresIn", 28800)
+            refresh_token = token_response.get("refreshToken", "")
 
             sso_config = self.get_sso_config()
             if sso_config:
-                self._write_sso_cache(sso_config, access_token, expires_in)
+                self._write_sso_cache(
+                    sso_config, access_token, expires_in,
+                    refresh_token=refresh_token,
+                    client_id=session.client_id,
+                    client_secret=session.client_secret,
+                )
 
             try:
                 sso_client = boto3.client("sso", region_name=session.sso_region)
@@ -350,8 +424,13 @@ class CredentialManager:
 
         except Exception as e:
             logger.debug(f"Credential health check failed: {e}")
+            status = "expired"
+            if sso_configured and sso_config:
+                raw = self._read_sso_cache_raw(sso_config)
+                if raw and raw.get("refreshToken"):
+                    status = "refreshable"
             return {
-                "status": "expired",
+                "status": status,
                 "sso_configured": sso_configured,
                 "sso_profile": aws_profile,
                 "message": str(e),
@@ -392,7 +471,7 @@ class CredentialManager:
             await asyncio.sleep(CREDENTIAL_HEALTH_INTERVAL)
             try:
                 health = await asyncio.to_thread(self.get_credential_health)
-                if health["status"] in ("expired", "expiring_soon"):
+                if health["status"] in ("expired", "expiring_soon", "refreshable"):
                     logger.info(f"Credential status: {health['status']}, attempting auto-refresh")
                     refreshed = await asyncio.to_thread(self.try_refresh_credentials)
                     if refreshed:
