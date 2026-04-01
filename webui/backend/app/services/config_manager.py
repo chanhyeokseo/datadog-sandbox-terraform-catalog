@@ -231,6 +231,73 @@ class ConfigManager:
                 logger.warning(f"Failed to load key from Parameter Store: {e}")
             return None
 
+    @property
+    def _root_tfvars_param_name(self) -> str:
+        return f"{self._namespace_prefix}/tfvars/root"
+
+    @property
+    def _instance_overrides_param_name(self) -> str:
+        return f"{self._namespace_prefix}/config/instances/variables"
+
+    def _put_secure_param(self, name: str, value: str, description: str) -> bool:
+        if not self.ssm_client:
+            logger.warning("SSM client not available")
+            return False
+        if not value:
+            return self._delete_param(name)
+        try:
+            size_kb = len(value.encode('utf-8')) / 1024
+            tier = "Advanced" if size_kb > 4 else "Standard"
+            self.ssm_client.put_parameter(
+                Name=name, Value=value, Type='SecureString',
+                Tier=tier, Overwrite=True, Description=description,
+            )
+            logger.debug(f"Saved to Parameter Store: {name}")
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to save to Parameter Store ({name}): {e}")
+            return False
+
+    def _delete_param(self, name: str) -> bool:
+        if not self.ssm_client:
+            return False
+        try:
+            self.ssm_client.delete_parameter(Name=name)
+            logger.debug(f"Deleted from Parameter Store: {name}")
+            return True
+        except Exception as e:
+            if "ParameterNotFound" in str(type(e).__name__):
+                return True
+            logger.warning(f"Failed to delete from Parameter Store ({name}): {e}")
+            return False
+
+    def _get_secure_param(self, name: str) -> Optional[str]:
+        if not self.ssm_client:
+            return None
+        try:
+            response = self.ssm_client.get_parameter(Name=name, WithDecryption=True)
+            return response['Parameter']['Value']
+        except Exception as e:
+            if "ParameterNotFound" not in str(type(e).__name__):
+                logger.debug(f"Failed to load from Parameter Store ({name}): {e}")
+            return None
+
+    def save_tfvars(self, content: str) -> bool:
+        return self._put_secure_param(
+            self._root_tfvars_param_name, content, "root terraform.tfvars"
+        )
+
+    def load_tfvars(self) -> Optional[str]:
+        return self._get_secure_param(self._root_tfvars_param_name)
+
+    def save_instance_overrides(self, content: str) -> bool:
+        return self._put_secure_param(
+            self._instance_overrides_param_name, content, "per-instance variable overrides"
+        )
+
+    def load_instance_overrides(self) -> Optional[str]:
+        return self._get_secure_param(self._instance_overrides_param_name)
+
     def generate_bucket_name(self, name_prefix: str) -> str:
         creds_hash = self._get_credentials_hash()
         safe = name_prefix.lower().replace('_', '-')

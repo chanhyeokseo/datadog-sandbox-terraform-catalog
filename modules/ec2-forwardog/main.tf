@@ -124,6 +124,8 @@ resource "aws_instance" "forwardog" {
 
   user_data = local.forwardog_user_data
 
+  monitoring = var.enable_detailed_monitoring
+
   user_data_replace_on_change = true
 
   lifecycle {
@@ -131,8 +133,8 @@ resource "aws_instance" "forwardog" {
   }
 
   root_block_device {
-    volume_size           = 30
-    volume_type           = "gp3"
+    volume_size           = var.root_volume_size
+    volume_type           = var.root_volume_type
     delete_on_termination = true
     encrypted             = true
 

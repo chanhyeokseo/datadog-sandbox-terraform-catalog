@@ -42,54 +42,87 @@ def write_tfvars_file(variables: dict, tfvars_path: Path):
         return False
 
 
-def get_s3_bucket_name():
+def _apply_overrides_to_content(content: str, overrides: dict) -> str:
+    import re as _re
+    lines = content.splitlines(keepends=True)
+    applied = set()
+    result = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith('#') and '=' in stripped:
+            var = stripped.split('=', 1)[0].strip()
+            if var in overrides:
+                result.append(f'{var} = "{overrides[var]}"\n')
+                applied.add(var)
+                continue
+        result.append(line)
+    for var in sorted(set(overrides) - applied):
+        result.append(f'{var} = "{overrides[var]}"\n')
+    return ''.join(result)
+
+
+def sync_tfvars_from_ssm():
     from app.services.config_manager import ConfigManager
-
-    try:
-        config_manager = ConfigManager()
-        name_prefix = config_manager._get_name_prefix_from_tfvars()
-        if name_prefix == 'default':
-            logger.debug("No name_prefix configured, skipping bucket name generation")
-            return None
-        return config_manager.generate_bucket_name(name_prefix)
-    except Exception as e:
-        logger.warning(f"Could not determine S3 bucket name: {e}")
-        return None
-
-
-def sync_from_s3():
-    """Download configuration files from S3"""
-    from app.services.s3_config_manager import S3ConfigManager
-
-    bucket_name = get_s3_bucket_name()
-    if not bucket_name:
-        logger.debug("S3 bucket name not available, skipping S3 sync")
-        return False
-
-    logger.info(f"📦 Syncing configuration from S3 bucket: {bucket_name}")
+    from app.services.terraform_parser import TerraformParser
+    from app.config import get_root_allowed_variable_names
 
     terraform_dir = Path(os.environ.get('TERRAFORM_DIR', '/app/terraform'))
     instances_dir = terraform_dir / 'instances'
 
-    s3_manager = S3ConfigManager(bucket_name)
+    try:
+        config_manager = ConfigManager(terraform_dir=str(terraform_dir))
+        name_prefix = config_manager._get_name_prefix_from_tfvars()
+        if name_prefix == 'default':
+            logger.debug("No name_prefix configured, skipping Parameter Store tfvars sync")
+            return False
+    except Exception as e:
+        logger.warning(f"Could not initialize ConfigManager for tfvars sync: {e}")
+        return False
 
-    # Download root terraform.tfvars
-    root_success = s3_manager.download_root_tfvars(terraform_dir)
-    if root_success:
-        logger.info("✓ Downloaded root terraform.tfvars from S3")
+    logger.info("Syncing tfvars from Parameter Store...")
+
+    root_path = terraform_dir / 'terraform.tfvars'
+    root_content = config_manager.load_tfvars()
+    if root_content:
+        root_path.parent.mkdir(parents=True, exist_ok=True)
+        root_path.write_text(root_content, encoding='utf-8')
+        logger.info("Restored root terraform.tfvars from Parameter Store")
+    elif root_path.exists():
+        root_content = root_path.read_text(encoding='utf-8')
+        logger.info("Using existing local root terraform.tfvars")
     else:
-        logger.debug("Root terraform.tfvars not found in S3 (may not exist yet)")
+        logger.debug("Root tfvars not available")
+        return False
 
-    # Download all instance terraform.tfvars
-    results = s3_manager.sync_all_instances_from_s3(instances_dir)
+    allowed = get_root_allowed_variable_names()
+    filtered_lines = []
+    for line in root_content.splitlines(keepends=True):
+        stripped = line.strip()
+        if not stripped or stripped.startswith('#') or '=' not in stripped:
+            filtered_lines.append(line)
+            continue
+        var = stripped.split('=', 1)[0].strip()
+        if var in allowed:
+            filtered_lines.append(line)
+    common_content = ''.join(filtered_lines)
 
-    success_count = sum(1 for success in results.values() if success)
-    if success_count > 0:
-        logger.info(f"✓ Downloaded {success_count} instance tfvars from S3")
-    else:
-        logger.debug("No instance tfvars found in S3 (may not exist yet)")
+    overrides_raw = config_manager.load_instance_overrides() or ""
+    overrides_map = TerraformParser.parse_overrides(overrides_raw)
 
-    return root_success or success_count > 0
+    restored = 0
+    if instances_dir.exists():
+        for inst_dir in sorted(instances_dir.iterdir()):
+            if not inst_dir.is_dir() or not (inst_dir / 'main.tf').exists():
+                continue
+            inst_name = inst_dir.name
+            inst_content = common_content
+            if inst_name in overrides_map:
+                inst_content = _apply_overrides_to_content(inst_content, overrides_map[inst_name])
+            (inst_dir / 'terraform.tfvars').write_text(inst_content, encoding='utf-8')
+            restored += 1
+
+    logger.info(f"Restored {restored} instance tfvars ({len(overrides_map)} with overrides)")
+    return True
 
 
 def regenerate_backend_files():
@@ -204,10 +237,10 @@ def init_from_parameter_store():
     terraform_dir = os.environ.get('TERRAFORM_DIR', '/app/terraform')
     tfvars_path = Path(terraform_dir) / 'terraform.tfvars'
 
-    s3_synced = sync_from_s3()
+    ssm_synced = sync_tfvars_from_ssm()
 
-    if s3_synced:
-        logger.info("Configuration restored from S3")
+    if ssm_synced:
+        logger.info("Configuration restored from Parameter Store (tfvars)")
         regenerate_backend_files()
         restore_key_from_parameter_store()
         return True
@@ -234,8 +267,8 @@ def init_from_parameter_store():
 
     if success:
         logger.info(f"Initialized config from Parameter Store ({len(variables)} variables)")
-        logger.info("Retrying S3 sync with resolved bucket name...")
-        sync_from_s3()
+        logger.info("Retrying tfvars sync with resolved namespace...")
+        sync_tfvars_from_ssm()
         regenerate_backend_files()
         restore_key_from_parameter_store()
     else:

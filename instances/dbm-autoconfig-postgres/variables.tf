@@ -30,6 +30,22 @@ variable "ec2_instance_type" {
   type    = string
   default = "t3.micro"
 }
+variable "ec2_associate_public_ip" {
+  type    = bool
+  default = true
+}
+variable "ec2_root_volume_size" {
+  type    = number
+  default = 30
+}
+variable "ec2_root_volume_type" {
+  type    = string
+  default = "gp3"
+}
+variable "ec2_enable_detailed_monitoring" {
+  type    = bool
+  default = false
+}
 variable "datadog_api_key" {
   type    = string
   default = ""

@@ -49,7 +49,11 @@ module "ec2_basic" {
   instance_type      = var.ec2_instance_type
   subnet_id          = local.vpc.public_subnet_id
   security_group_ids = local.security_group_ids
-  key_name           = var.ec2_key_name
-  custom_ami_id      = data.aws_ami.amazon_linux_2023.id
-  common_tags        = local.common_tags
+  key_name            = var.ec2_key_name
+  custom_ami_id       = data.aws_ami.amazon_linux_2023.id
+  associate_public_ip        = var.ec2_associate_public_ip
+  root_volume_size           = var.ec2_root_volume_size
+  root_volume_type           = var.ec2_root_volume_type
+  enable_detailed_monitoring = var.ec2_enable_detailed_monitoring
+  common_tags         = local.common_tags
 }

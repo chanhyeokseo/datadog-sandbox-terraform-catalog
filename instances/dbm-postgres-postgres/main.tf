@@ -62,8 +62,12 @@ module "dbm_postgres_ec2" {
   instance_type      = var.ec2_instance_type
   subnet_id          = local.vpc.public_subnet_id
   security_group_ids = [data.aws_security_group.dogstac.id]
-  key_name           = var.ec2_key_name
-  custom_ami_id      = data.aws_ami.amazon_linux_2023.id
+  key_name            = var.ec2_key_name
+  custom_ami_id       = data.aws_ami.amazon_linux_2023.id
+  associate_public_ip        = var.ec2_associate_public_ip
+  root_volume_size           = var.ec2_root_volume_size
+  root_volume_type           = var.ec2_root_volume_type
+  enable_detailed_monitoring = var.ec2_enable_detailed_monitoring
   datadog_api_key       = var.datadog_api_key
   datadog_site          = var.datadog_site
   datadog_agent_version = var.datadog_agent_version

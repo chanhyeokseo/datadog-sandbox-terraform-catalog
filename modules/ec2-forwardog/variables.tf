@@ -39,6 +39,21 @@ variable "associate_public_ip" {
   default     = true
 }
 
+variable "root_volume_size" {
+  type    = number
+  default = 30
+}
+
+variable "root_volume_type" {
+  type    = string
+  default = "gp3"
+}
+
+variable "enable_detailed_monitoring" {
+  type    = bool
+  default = false
+}
+
 variable "datadog_api_key" {
   description = "Datadog API key for agent authentication"
   type        = string

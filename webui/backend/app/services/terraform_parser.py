@@ -23,8 +23,6 @@ class TerraformParser:
         self.terraform_dir = Path(terraform_dir)
         self.instances_dir = self.terraform_dir / "instances"
         self._config_manager = None
-        self._s3_bucket_available: Optional[bool] = None
-        self._cached_s3_manager = None
         self._s3_status_cache: Optional[Dict[str, ResourceStatus]] = None
 
     @property
@@ -137,9 +135,13 @@ class TerraformParser:
         return resource
 
     def _resolve_s3_bucket_name(self) -> Optional[str]:
-        bucket = self._get_s3_bucket_name()
-        if bucket:
-            return bucket
+        try:
+            name_prefix = self.config_manager._get_name_prefix_from_tfvars()
+            bucket = self.config_manager.generate_bucket_name(name_prefix)
+            if bucket:
+                return bucket
+        except Exception:
+            pass
         if not self.instances_dir.exists():
             return None
         for instance_dir in self.instances_dir.iterdir():
@@ -624,12 +626,8 @@ class TerraformParser:
         logger.debug("write_root_tfvars: var=%s path=%s", var_name, path)
         success = self._write_tfvars_line(path, var_name, var_value)
 
-        # Sync to S3 after successful write
         if success:
-            self._sync_root_tfvars_to_s3()
-
-        # Note: Parameter Store sync removed from here
-        # Call sync_to_parameter_store() manually after onboarding is complete
+            self._sync_root_tfvars_to_ssm()
 
         return success
 
@@ -666,9 +664,8 @@ class TerraformParser:
             return False
         success = self._write_tfvars_line(path, var_name, var_value)
 
-        # Sync to S3 after successful write
         if success:
-            self._sync_instance_tfvars_to_s3(resource_id, path)
+            self._sync_instance_override_to_ssm(path.parent.name, var_name, var_value)
 
         return success
 
@@ -730,8 +727,7 @@ class TerraformParser:
         dir_map = get_resource_directory_map(self.instances_dir)
         ok = False
 
-        # Sync root tfvars to S3 first
-        self._sync_root_tfvars_to_s3()
+        self._sync_root_tfvars_to_ssm()
 
         for _resource_id, dir_name in dir_map.items():
             instance_dir = self.instances_dir / dir_name
@@ -741,10 +737,10 @@ class TerraformParser:
             try:
                 dst.write_text(content, encoding="utf-8")
                 ok = True
-                # Sync each instance tfvars to S3
-                self._sync_instance_tfvars_to_s3(_resource_id, dst)
             except OSError:
                 pass
+
+        self.config_manager.save_instance_overrides("")
         return ok
 
     def copy_root_tfvars_to_resource(self, resource_id: str) -> bool:
@@ -757,6 +753,7 @@ class TerraformParser:
                 raw_content = root_tfvars.read_text(encoding="utf-8")
                 content = self._filter_common_only_lines(raw_content)
                 (instance_dir / "terraform.tfvars").write_text(content, encoding="utf-8")
+                self._clear_instance_overrides(instance_dir.name)
                 return True
             except OSError:
                 return False
@@ -765,6 +762,7 @@ class TerraformParser:
             return True
         try:
             tfvars_path.unlink()
+            self._clear_instance_overrides(instance_dir.name)
             return True
         except OSError:
             return False
@@ -782,58 +780,84 @@ class TerraformParser:
         except OSError:
             return False
 
-    def _get_s3_bucket_name(self) -> Optional[str]:
+    def _sync_root_tfvars_to_ssm(self) -> bool:
         try:
-            name_prefix = self.config_manager._get_name_prefix_from_tfvars()
-            return self.config_manager.generate_bucket_name(name_prefix)
-        except Exception as e:
-            logger.debug(f"Could not determine S3 bucket name: {e}")
-            return None
-
-    def _get_s3_manager(self):
-        from app.services.s3_config_manager import S3ConfigManager
-        bucket_name = self._get_s3_bucket_name()
-        if not bucket_name:
-            return None
-        if self._cached_s3_manager is None or self._cached_s3_manager.bucket_name != bucket_name:
-            self._cached_s3_manager = S3ConfigManager(bucket_name)
-        return self._cached_s3_manager
-
-    def mark_s3_available(self):
-        self._s3_bucket_available = True
-
-    def _sync_root_tfvars_to_s3(self) -> bool:
-        if self._s3_bucket_available is False:
-            return False
-        try:
-            s3_manager = self._get_s3_manager()
-            if not s3_manager:
+            root_path = self.terraform_dir / "terraform.tfvars"
+            if not root_path.exists():
                 return False
-            success = s3_manager.upload_root_tfvars(self.terraform_dir)
-            if success:
-                self._s3_bucket_available = True
-            elif self._s3_bucket_available is None:
-                self._s3_bucket_available = False
-            return success
+            content = root_path.read_text(encoding="utf-8")
+            return self.config_manager.save_tfvars(content)
         except Exception as e:
-            logger.warning(f"Failed to sync root tfvars to S3: {e}")
+            logger.warning(f"Failed to sync root tfvars to Parameter Store: {e}")
             return False
 
-    def _sync_instance_tfvars_to_s3(self, resource_id: str, tfvars_path: Path) -> bool:
-        if self._s3_bucket_available is False:
-            return False
+    @staticmethod
+    def parse_overrides(content: str) -> Dict[str, Dict[str, str]]:
+        result: Dict[str, Dict[str, str]] = {}
+        for line in content.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            dot_pos = line.find('.')
+            eq_pos = line.find('=', dot_pos + 1) if dot_pos >= 0 else -1
+            if dot_pos < 0 or eq_pos < 0:
+                continue
+            inst = line[:dot_pos]
+            var = line[dot_pos + 1:eq_pos]
+            val = line[eq_pos + 1:]
+            result.setdefault(inst, {})[var] = val
+        return result
+
+    @staticmethod
+    def serialize_overrides(overrides: Dict[str, Dict[str, str]]) -> str:
+        lines = []
+        for inst in sorted(overrides):
+            for var in sorted(overrides[inst]):
+                lines.append(f"{inst}.{var}={overrides[inst][var]}")
+        return '\n'.join(lines)
+
+    def _read_root_var_value(self, var_name: str) -> Optional[str]:
+        root_path = self.terraform_dir / "terraform.tfvars"
+        if not root_path.exists():
+            return None
+        for line in root_path.read_text(encoding="utf-8").splitlines():
+            m = re.match(r'^' + re.escape(var_name) + r'\s*=\s*"([^"]*)"', line.strip())
+            if m:
+                return m.group(1)
+        return None
+
+    def _sync_instance_override_to_ssm(self, instance_name: str, var_name: str, var_value: str) -> bool:
         try:
-            s3_manager = self._get_s3_manager()
-            if not s3_manager:
-                return False
-            instance_dir = tfvars_path.parent
-            instance_name = instance_dir.name
-            success = s3_manager.upload_instance_tfvars(instance_dir, instance_name)
-            if success:
-                self._s3_bucket_available = True
-            elif self._s3_bucket_available is None:
-                self._s3_bucket_available = False
-            return success
+            raw = self.config_manager.load_instance_overrides() or ""
+            overrides = self.parse_overrides(raw)
+            root_value = self._read_root_var_value(var_name)
+
+            if var_value == root_value:
+                if instance_name in overrides:
+                    overrides[instance_name].pop(var_name, None)
+                    if not overrides[instance_name]:
+                        del overrides[instance_name]
+            else:
+                overrides.setdefault(instance_name, {})[var_name] = var_value
+
+            serialized = self.serialize_overrides(overrides)
+            if not serialized:
+                serialized = ""
+            return self.config_manager.save_instance_overrides(serialized)
         except Exception as e:
-            logger.warning(f"Failed to sync instance tfvars to S3: {e}")
+            logger.warning(f"Failed to sync instance override to Parameter Store: {e}")
+            return False
+
+    def _clear_instance_overrides(self, instance_name: str) -> bool:
+        try:
+            raw = self.config_manager.load_instance_overrides() or ""
+            overrides = self.parse_overrides(raw)
+            if instance_name in overrides:
+                del overrides[instance_name]
+                return self.config_manager.save_instance_overrides(
+                    self.serialize_overrides(overrides)
+                )
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to clear overrides for {instance_name}: {e}")
             return False

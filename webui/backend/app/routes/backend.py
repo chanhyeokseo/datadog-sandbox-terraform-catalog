@@ -87,21 +87,20 @@ async def setup_backend(request: BackendSetupRequest):
         try:
             from app.services.terraform_parser import TerraformParser
             parser = TerraformParser(TERRAFORM_DIR)
-            parser.mark_s3_available()
 
             copied = parser.copy_root_tfvars_to_instances()
 
             result["tfvars_synced"] = {
                 "root_copied_to_instances": copied,
-                "message": "Root terraform.tfvars copied to all instances and synced to S3"
+                "message": "Root terraform.tfvars copied to all instances and synced to Parameter Store"
             }
 
             if copied:
-                logger.info("Successfully copied root tfvars to all instances and synced to S3")
+                logger.info("Successfully copied root tfvars to all instances and synced to Parameter Store")
             else:
                 logger.warning("Root terraform.tfvars not found or failed to copy")
         except Exception as e:
-            logger.warning(f"Failed to sync tfvars to S3: {e}")
+            logger.warning(f"Failed to sync tfvars: {e}")
             result["tfvars_sync_error"] = str(e)
 
         return {
