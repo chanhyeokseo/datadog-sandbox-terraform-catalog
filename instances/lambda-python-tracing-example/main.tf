@@ -36,7 +36,7 @@ module "lambda_python_tracing_example" {
 
   datadog_extension_layer_version = 91
   datadog_python_layer_version    = 120
-  datadog_api_key                 = var.datadog_api_key
+  datadog_api_key                 = data.aws_ssm_parameter.datadog_api_key.value
   datadog_env                     = var.team
   datadog_service                 = "python-tracing-example-app"
   datadog_site                    = var.datadog_site

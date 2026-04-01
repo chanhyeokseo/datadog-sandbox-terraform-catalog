@@ -1454,7 +1454,8 @@ async def update_docker_agent_config(config: Dict):
 
         root_vars = parser._read_tfvars_to_map(parser._root_tfvars_path())
         instance_vars = parser.get_instance_tfvars_map(_DOCKER_AGENT_RESOURCE_ID)
-        merged = {**root_vars, **instance_vars}
+        sensitive_vars = parser.config_manager.load_all_sensitive_variables()
+        merged = {**root_vars, **instance_vars, **sensitive_vars}
         resolved_command = _resolve_docker_agent_placeholders(docker_run_command, merged)
 
         if is_deployed:

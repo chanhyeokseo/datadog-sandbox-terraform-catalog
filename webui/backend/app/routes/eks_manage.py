@@ -39,11 +39,13 @@ _TEMPLATE_RE = re.compile(r'\{\{(\w+)\}\}')
 
 def _resolve_template_vars(command: str) -> str:
     root_tfvars = parser._read_tfvars_to_map(Path(TERRAFORM_DIR) / "terraform.tfvars")
+    sensitive_vars = parser.config_manager.load_all_sensitive_variables()
+    merged = {**root_tfvars, **sensitive_vars}
     def _replacer(m):
         var_name = m.group(1)
-        val = root_tfvars.get(var_name)
+        val = merged.get(var_name)
         if val is None:
-            logger.warning(f"Template variable '{var_name}' not found in terraform.tfvars")
+            logger.warning(f"Template variable '{var_name}' not found")
             return m.group(0)
         return val.strip('"').strip("'")
     return _TEMPLATE_RE.sub(_replacer, command)

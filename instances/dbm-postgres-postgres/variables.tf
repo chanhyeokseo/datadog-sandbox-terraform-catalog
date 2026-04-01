@@ -46,10 +46,6 @@ variable "ec2_enable_detailed_monitoring" {
   type    = bool
   default = false
 }
-variable "datadog_api_key" {
-  type    = string
-  default = ""
-}
 variable "datadog_site" {
   type    = string
   default = "datadoghq.com"
@@ -62,23 +58,9 @@ variable "rds_username" {
   type    = string
   default = "datadog"
 }
-variable "rds_password" {
-  type      = string
-  sensitive = true
-
-  validation {
-    condition     = length(var.rds_password) >= 8
-    error_message = "rds_password must be at least 8 characters."
-  }
-}
 variable "rds_instance_class" {
   type    = string
   default = "db.t3.micro"
-}
-variable "dbm_postgres_datadog_password" {
-  type      = string
-  default   = ""
-  sensitive = true
 }
 variable "aws_access_key_id" {
   type    = string

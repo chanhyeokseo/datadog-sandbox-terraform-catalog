@@ -23,10 +23,6 @@ variable "team" {
 variable "name_prefix" {
   type = string
 }
-variable "datadog_api_key" {
-  type    = string
-  default = ""
-}
 variable "ec2_associate_public_ip" {
   type    = bool
   default = true

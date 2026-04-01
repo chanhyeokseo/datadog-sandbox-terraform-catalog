@@ -10,7 +10,7 @@ from botocore.exceptions import ClientError
 
 logger = logging.getLogger(__name__)
 from app.models.schemas import TerraformResource, ResourceStatus, TerraformVariable
-from app.config import get_variable_names_for_resource, is_common_variable, is_excluded_variable, get_ordered_common_variables, get_resource_only_variable_names, get_root_allowed_variable_names
+from app.config import get_variable_names_for_resource, is_common_variable, is_excluded_variable, is_sensitive_variable, get_ordered_common_variables, get_resource_only_variable_names, get_root_allowed_variable_names, SENSITIVE_VARIABLES
 from app.services.instance_discovery import (
     get_resource_id_for_instance,
     get_resource_type_from_dir,
@@ -399,10 +399,17 @@ class TerraformParser:
                         file_map[var_name] = (var_value, sensitive)
             except Exception:
                 raise
+
+        ssm_sensitive = self.config_manager.load_all_sensitive_variables()
+        for var_name, value in ssm_sensitive.items():
+            file_map[var_name] = (value, True)
+
         try:
             ordered = get_ordered_common_variables()
         except Exception:
             ordered = sorted(file_map.keys()) if file_map else []
+
+        sensitive_names_in_ssm = set(ssm_sensitive.keys())
         variables = []
         for var_name in ordered:
             sensitive = any(k in var_name.lower() for k in ['password', 'key', 'secret', 'token'])
@@ -416,11 +423,22 @@ class TerraformParser:
                 sensitive=sensitive,
                 is_common=True
             ))
+
+        for var_name in sorted(SENSITIVE_VARIABLES):
+            if var_name not in {v.name for v in variables}:
+                has_value = var_name in sensitive_names_in_ssm
+                variables.append(TerraformVariable(
+                    name=var_name,
+                    value="***" if has_value else "",
+                    sensitive=True,
+                    is_common=True
+                ))
+
         resource_only = get_resource_only_variable_names()
         for var_name in sorted(file_map.keys()):
             if var_name in resource_only:
                 continue
-            if not is_common_variable(var_name):
+            if not is_common_variable(var_name) and not is_sensitive_variable(var_name):
                 entry = file_map.get(var_name, ("", False))
                 raw_value, _ = entry
                 sensitive = any(k in var_name.lower() for k in ['password', 'key', 'secret', 'token'])
@@ -622,6 +640,11 @@ class TerraformParser:
         if var_name not in get_root_allowed_variable_names():
             logger.warning("Blocked write to root terraform.tfvars: var_name=%s not in allowed list", var_name)
             return False
+
+        if is_sensitive_variable(var_name):
+            logger.debug("write_root_tfvars: routing sensitive var=%s to SSM only", var_name)
+            return self.config_manager.save_sensitive_variable(var_name, var_value)
+
         path = self._root_tfvars_path()
         logger.debug("write_root_tfvars: var=%s path=%s", var_name, path)
         success = self._write_tfvars_line(path, var_name, var_value)
@@ -654,6 +677,10 @@ class TerraformParser:
         return self._write_tfvars_line(tfvars_path, var_name, var_value)
 
     def write_instance_tfvars(self, resource_id: str, var_name: str, var_value: str) -> bool:
+        if is_sensitive_variable(var_name):
+            logger.debug("write_instance_tfvars: routing sensitive var=%s to SSM only", var_name)
+            return self.config_manager.save_sensitive_variable(var_name, var_value)
+
         path = self._instance_tfvars_path(resource_id)
         if path is None:
             logger.debug("write_instance_tfvars: no path for resource_id=%s", resource_id)
@@ -683,9 +710,13 @@ class TerraformParser:
                 continue
             key_part, _, _ = stripped.partition("=")
             var_name = key_part.strip()
-            if re.match(r"^\w+$", var_name) and var_name not in allowed:
-                logger.debug("Filtering out non-common variable from sync: %s", var_name)
-                continue
+            if re.match(r"^\w+$", var_name):
+                if var_name not in allowed:
+                    logger.debug("Filtering out non-common variable from sync: %s", var_name)
+                    continue
+                if is_sensitive_variable(var_name):
+                    logger.debug("Filtering out sensitive variable from tfvars: %s", var_name)
+                    continue
             out_lines.append(line)
         return "".join(out_lines)
 
@@ -780,13 +811,28 @@ class TerraformParser:
         except OSError:
             return False
 
+    def _filter_sensitive_lines(self, content: str) -> str:
+        out_lines = []
+        for line in content.splitlines(keepends=True):
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#") or "=" not in stripped:
+                out_lines.append(line)
+                continue
+            key_part, _, _ = stripped.partition("=")
+            var_name = key_part.strip()
+            if re.match(r"^\w+$", var_name) and is_sensitive_variable(var_name):
+                continue
+            out_lines.append(line)
+        return "".join(out_lines)
+
     def _sync_root_tfvars_to_ssm(self) -> bool:
         try:
             root_path = self.terraform_dir / "terraform.tfvars"
             if not root_path.exists():
                 return False
             content = root_path.read_text(encoding="utf-8")
-            return self.config_manager.save_tfvars(content)
+            filtered = self._filter_sensitive_lines(content)
+            return self.config_manager.save_tfvars(filtered)
         except Exception as e:
             logger.warning(f"Failed to sync root tfvars to Parameter Store: {e}")
             return False

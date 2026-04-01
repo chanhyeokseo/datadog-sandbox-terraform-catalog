@@ -55,7 +55,7 @@ module "ec2_datadog_docker" {
   root_volume_size           = var.ec2_root_volume_size
   root_volume_type           = var.ec2_root_volume_type
   enable_detailed_monitoring = var.ec2_enable_detailed_monitoring
-  datadog_api_key      = var.datadog_api_key
+  datadog_api_key      = data.aws_ssm_parameter.datadog_api_key.value
   datadog_site         = var.datadog_site
   datadog_agent_image  = var.datadog_agent_image
   docker_run_command   = var.docker_run_command

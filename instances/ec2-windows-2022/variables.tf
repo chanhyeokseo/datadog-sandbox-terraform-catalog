@@ -51,10 +51,6 @@ variable "security_group_ids" {
   type    = list(string)
   default = []
 }
-variable "datadog_api_key" {
-  type    = string
-  default = ""
-}
 variable "aws_access_key_id" {
   type    = string
   default = ""

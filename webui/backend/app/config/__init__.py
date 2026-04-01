@@ -1,6 +1,7 @@
 from .resource_config import (
     COMMON_VARIABLES,
     EXCLUDED_VARIABLES,
+    SENSITIVE_VARIABLES,
     ONBOARDING_PHASES,
     REQUIRED_CONFIG_VARIABLES,
     RESOURCE_VARIABLE_CONFIGS,
@@ -14,11 +15,13 @@ from .resource_config import (
     get_variable_names_for_resource,
     is_common_variable,
     is_excluded_variable,
+    is_sensitive_variable,
 )
 
 __all__ = [
     'COMMON_VARIABLES',
     'EXCLUDED_VARIABLES',
+    'SENSITIVE_VARIABLES',
     'ONBOARDING_PHASES',
     'REQUIRED_CONFIG_VARIABLES',
     'RESOURCE_VARIABLE_CONFIGS',
@@ -32,4 +35,5 @@ __all__ = [
     'get_variable_names_for_resource',
     'is_common_variable',
     'is_excluded_variable',
+    'is_sensitive_variable',
 ]

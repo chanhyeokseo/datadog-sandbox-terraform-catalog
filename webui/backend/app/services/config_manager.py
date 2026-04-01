@@ -298,6 +298,30 @@ class ConfigManager:
     def load_instance_overrides(self) -> Optional[str]:
         return self._get_secure_param(self._instance_overrides_param_name)
 
+    @property
+    def _sensitive_param_prefix(self) -> str:
+        name_prefix = self._get_name_prefix_from_tfvars()
+        safe_prefix = ''.join(c if c.isalnum() or c in '-_' else '-' for c in name_prefix)[:64]
+        return f"/dogstac-{safe_prefix}/sensitive"
+
+    def save_sensitive_variable(self, var_name: str, value: str) -> bool:
+        param_name = f"{self._sensitive_param_prefix}/{var_name}"
+        logger.debug(f"Saving sensitive variable to SSM: {param_name}")
+        return self._put_secure_param(param_name, value, f"sensitive variable: {var_name}")
+
+    def load_sensitive_variable(self, var_name: str) -> Optional[str]:
+        param_name = f"{self._sensitive_param_prefix}/{var_name}"
+        return self._get_secure_param(param_name)
+
+    def load_all_sensitive_variables(self) -> Dict[str, str]:
+        from app.config import SENSITIVE_VARIABLES
+        result: Dict[str, str] = {}
+        for var_name in SENSITIVE_VARIABLES:
+            value = self.load_sensitive_variable(var_name)
+            if value:
+                result[var_name] = value
+        return result
+
     def generate_bucket_name(self, name_prefix: str) -> str:
         creds_hash = self._get_credentials_hash()
         safe = name_prefix.lower().replace('_', '-')

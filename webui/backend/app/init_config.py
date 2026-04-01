@@ -18,27 +18,26 @@ logger = logging.getLogger(__name__)
 
 
 def write_tfvars_file(variables: dict, tfvars_path: Path):
-    """Write variables dictionary to terraform.tfvars file"""
+    from app.config import is_sensitive_variable
     try:
-        # Ensure directory exists
         tfvars_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Write to file
         with open(tfvars_path, 'w', encoding='utf-8') as f:
             for key, value in sorted(variables.items()):
-                # Handle different value types
                 if value is None or value == '':
                     continue
+                if is_sensitive_variable(key):
+                    logger.debug(f"Skipping sensitive variable from tfvars: {key}")
+                    continue
 
-                # Escape quotes in string values
                 escaped_value = str(value).replace('"', '\\"')
                 f.write(f'{key} = "{escaped_value}"\n')
 
-        logger.info(f"✅ Written {len(variables)} variables to {tfvars_path}")
+        logger.info(f"Written variables to {tfvars_path} (sensitive vars excluded)")
         return True
 
     except Exception as e:
-        logger.error(f"❌ Failed to write tfvars file: {e}")
+        logger.error(f"Failed to write tfvars file: {e}")
         return False
 
 
@@ -85,15 +84,35 @@ def sync_tfvars_from_ssm():
     root_content = config_manager.load_tfvars()
     if root_content:
         root_path.parent.mkdir(parents=True, exist_ok=True)
-        root_path.write_text(root_content, encoding='utf-8')
-        logger.info("Restored root terraform.tfvars from Parameter Store")
+        migrated = _migrate_sensitive_from_content(config_manager, root_content)
+        if migrated:
+            stripped_content = _strip_sensitive_lines(root_content)
+            root_path.write_text(stripped_content, encoding='utf-8')
+            if stripped_content != root_content:
+                config_manager.save_tfvars(stripped_content)
+                logger.info("Cleaned sensitive vars from SSM tfvars/root")
+            root_content = stripped_content
+        else:
+            logger.warning("Sensitive migration incomplete, keeping vars in tfvars for safety")
+            root_path.write_text(root_content, encoding='utf-8')
+        logger.info("Restored root terraform.tfvars from Parameter Store (sensitive vars excluded)")
     elif root_path.exists():
-        root_content = root_path.read_text(encoding='utf-8')
+        raw_local = root_path.read_text(encoding='utf-8')
+        migrated = _migrate_sensitive_from_content(config_manager, raw_local)
+        if migrated:
+            root_content = _strip_sensitive_lines(raw_local)
+            if root_content != raw_local:
+                root_path.write_text(root_content, encoding='utf-8')
+                logger.info("Cleaned sensitive vars from local root terraform.tfvars")
+        else:
+            logger.warning("Sensitive migration incomplete, keeping local vars for safety")
+            root_content = raw_local
         logger.info("Using existing local root terraform.tfvars")
     else:
         logger.debug("Root tfvars not available")
         return False
 
+    from app.config import is_sensitive_variable
     allowed = get_root_allowed_variable_names()
     filtered_lines = []
     for line in root_content.splitlines(keepends=True):
@@ -102,12 +121,25 @@ def sync_tfvars_from_ssm():
             filtered_lines.append(line)
             continue
         var = stripped.split('=', 1)[0].strip()
-        if var in allowed:
+        if var in allowed and not is_sensitive_variable(var):
             filtered_lines.append(line)
     common_content = ''.join(filtered_lines)
 
     overrides_raw = config_manager.load_instance_overrides() or ""
     overrides_map = TerraformParser.parse_overrides(overrides_raw)
+
+    cleaned_overrides = False
+    for inst_name in list(overrides_map.keys()):
+        inst_vars = overrides_map[inst_name]
+        for var_name in list(inst_vars.keys()):
+            if is_sensitive_variable(var_name):
+                del inst_vars[var_name]
+                cleaned_overrides = True
+        if not inst_vars:
+            del overrides_map[inst_name]
+    if cleaned_overrides:
+        config_manager.save_instance_overrides(TerraformParser.serialize_overrides(overrides_map))
+        logger.info("Cleaned sensitive vars from SSM instance overrides")
 
     restored = 0
     if instances_dir.exists():
@@ -229,6 +261,109 @@ def restore_key_from_parameter_store():
         return False
 
 
+def _strip_sensitive_lines(content: str) -> str:
+    import re as _re
+    from app.config import is_sensitive_variable
+    out = []
+    for line in content.splitlines(keepends=True):
+        stripped = line.strip()
+        if stripped and not stripped.startswith('#') and '=' in stripped:
+            var = stripped.split('=', 1)[0].strip()
+            if _re.match(r'^\w+$', var) and is_sensitive_variable(var):
+                continue
+        out.append(line)
+    return ''.join(out)
+
+
+def _extract_sensitive_from_content(content: str) -> dict:
+    import re as _re
+    from app.config import SENSITIVE_VARIABLES
+    result = {}
+    for line in content.splitlines():
+        m = _re.match(r'^(\w+)\s*=\s*"([^"]*)"', line.strip())
+        if m and m.group(1) in SENSITIVE_VARIABLES and m.group(2):
+            result[m.group(1)] = m.group(2)
+    return result
+
+
+def _migrate_sensitive_from_content(config_manager, content: str) -> bool:
+    from app.config import SENSITIVE_VARIABLES
+    extracted = _extract_sensitive_from_content(content)
+    if not extracted:
+        return True
+    existing = config_manager.load_all_sensitive_variables()
+    all_ok = True
+    for var_name, value in extracted.items():
+        if var_name in existing:
+            continue
+        if value and config_manager.save_sensitive_variable(var_name, value):
+            logger.info(f"Migrated sensitive variable to dedicated SSM: {var_name}")
+        else:
+            logger.warning(f"Failed to migrate sensitive variable: {var_name}")
+            all_ok = False
+    return all_ok
+
+
+def _migrate_sensitive_vars_to_ssm(config_manager):
+    from app.config import SENSITIVE_VARIABLES
+    from app.services.terraform_parser import TerraformParser
+
+    existing = config_manager.load_all_sensitive_variables()
+    missing = {v for v in SENSITIVE_VARIABLES if v not in existing}
+    if not missing:
+        logger.debug("All sensitive variables already in dedicated SSM parameters")
+        return
+
+    sources = {}
+
+    json_config = config_manager.load_config()
+    if json_config:
+        for var_name in missing:
+            val = json_config.get(var_name, "")
+            if val:
+                sources[var_name] = val
+
+    still_missing = missing - set(sources.keys())
+    if still_missing:
+        overrides_raw = config_manager.load_instance_overrides() or ""
+        overrides_map = TerraformParser.parse_overrides(overrides_raw)
+        for inst_overrides in overrides_map.values():
+            for var_name in list(still_missing):
+                val = inst_overrides.get(var_name, "")
+                if val:
+                    sources[var_name] = val
+                    still_missing.discard(var_name)
+
+    still_missing = missing - set(sources.keys())
+    if still_missing:
+        instances_dir = config_manager.terraform_dir / 'instances'
+        if instances_dir.exists():
+            for inst_dir in sorted(instances_dir.iterdir()):
+                if not inst_dir.is_dir():
+                    continue
+                inst_tfvars = inst_dir / 'terraform.tfvars'
+                if inst_tfvars.exists():
+                    extracted = _extract_sensitive_from_content(
+                        inst_tfvars.read_text(encoding='utf-8')
+                    )
+                    for var_name in list(still_missing):
+                        val = extracted.get(var_name, "")
+                        if val:
+                            sources[var_name] = val
+                            still_missing.discard(var_name)
+                if not still_missing:
+                    break
+
+    migrated = 0
+    for var_name, value in sources.items():
+        if config_manager.save_sensitive_variable(var_name, value):
+            migrated += 1
+            logger.info(f"Migrated sensitive variable to dedicated SSM: {var_name}")
+
+    if migrated:
+        logger.info(f"Migrated {migrated} sensitive variables to dedicated SSM parameters")
+
+
 def init_from_parameter_store():
     from app.services.config_manager import ConfigManager
 
@@ -241,12 +376,16 @@ def init_from_parameter_store():
 
     if ssm_synced:
         logger.info("Configuration restored from Parameter Store (tfvars)")
+        config_manager = ConfigManager(terraform_dir=terraform_dir)
+        _migrate_sensitive_vars_to_ssm(config_manager)
         regenerate_backend_files()
         restore_key_from_parameter_store()
         return True
 
     if tfvars_path.exists():
         logger.info("Using existing local terraform.tfvars")
+        config_manager = ConfigManager(terraform_dir=terraform_dir)
+        _migrate_sensitive_vars_to_ssm(config_manager)
         regenerate_backend_files()
         restore_key_from_parameter_store()
         return True
@@ -267,6 +406,15 @@ def init_from_parameter_store():
 
     if success:
         logger.info(f"Initialized config from Parameter Store ({len(variables)} variables)")
+
+        from app.config import SENSITIVE_VARIABLES
+        fresh_cm = ConfigManager(terraform_dir=terraform_dir)
+        for var_name in SENSITIVE_VARIABLES:
+            value = variables.get(var_name, "")
+            if value:
+                fresh_cm.save_sensitive_variable(var_name, value)
+                logger.debug(f"Saved sensitive var from JSON config: {var_name}")
+
         logger.info("Retrying tfvars sync with resolved namespace...")
         sync_tfvars_from_ssm()
         regenerate_backend_files()

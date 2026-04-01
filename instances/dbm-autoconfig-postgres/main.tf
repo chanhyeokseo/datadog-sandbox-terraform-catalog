@@ -71,7 +71,7 @@ module "dbm_autoconfig_ec2" {
   root_volume_size           = var.ec2_root_volume_size
   root_volume_type           = var.ec2_root_volume_type
   enable_detailed_monitoring = var.ec2_enable_detailed_monitoring
-  datadog_api_key       = var.datadog_api_key
+  datadog_api_key       = data.aws_ssm_parameter.datadog_api_key.value
   datadog_site          = var.datadog_site
   datadog_agent_version = var.datadog_agent_version
   creator               = var.creator
@@ -119,7 +119,7 @@ module "dbm_autoconfig_rds" {
   rds_type                = "postgres"
   db_name                 = "datadog"
   db_username             = var.rds_username
-  db_password             = var.rds_password
+  db_password             = data.aws_ssm_parameter.rds_password.value
   instance_class          = var.rds_instance_class
   allocated_storage       = 20
   parameter_group_name    = aws_db_parameter_group.postgres_dbm.name
@@ -149,16 +149,16 @@ resource "null_resource" "dbm_setup" {
     inline = [
       "sudo dnf install -y postgresql16 > /dev/null 2>&1",
 
-      "PGPASSWORD='${var.rds_password}' psql -h ${module.dbm_autoconfig_rds.db_endpoint} -p 5432 -U ${var.rds_username} -d datadog -c \"DO \\$\\$ BEGIN IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'datadog') THEN CREATE ROLE datadog WITH LOGIN PASSWORD '${var.dbm_postgres_datadog_password}'; END IF; END \\$\\$;\"",
-      "PGPASSWORD='${var.rds_password}' psql -h ${module.dbm_autoconfig_rds.db_endpoint} -p 5432 -U ${var.rds_username} -d datadog -c \"ALTER ROLE datadog INHERIT;\"",
-      "PGPASSWORD='${var.rds_password}' psql -h ${module.dbm_autoconfig_rds.db_endpoint} -p 5432 -U ${var.rds_username} -d datadog -c \"GRANT pg_monitor TO datadog;\"",
-      "PGPASSWORD='${var.rds_password}' psql -h ${module.dbm_autoconfig_rds.db_endpoint} -p 5432 -U ${var.rds_username} -d datadog -c \"CREATE SCHEMA IF NOT EXISTS datadog; GRANT USAGE ON SCHEMA datadog TO datadog; GRANT USAGE ON SCHEMA public TO datadog;\"",
-      "PGPASSWORD='${var.rds_password}' psql -h ${module.dbm_autoconfig_rds.db_endpoint} -p 5432 -U ${var.rds_username} -d datadog -c \"CREATE EXTENSION IF NOT EXISTS pg_stat_statements SCHEMA public;\"",
+      "PGPASSWORD='${data.aws_ssm_parameter.rds_password.value}' psql -h ${module.dbm_autoconfig_rds.db_endpoint} -p 5432 -U ${var.rds_username} -d datadog -c \"DO \\$\\$ BEGIN IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'datadog') THEN CREATE ROLE datadog WITH LOGIN PASSWORD '${data.aws_ssm_parameter.dbm_postgres_datadog_password.value}'; END IF; END \\$\\$;\"",
+      "PGPASSWORD='${data.aws_ssm_parameter.rds_password.value}' psql -h ${module.dbm_autoconfig_rds.db_endpoint} -p 5432 -U ${var.rds_username} -d datadog -c \"ALTER ROLE datadog INHERIT;\"",
+      "PGPASSWORD='${data.aws_ssm_parameter.rds_password.value}' psql -h ${module.dbm_autoconfig_rds.db_endpoint} -p 5432 -U ${var.rds_username} -d datadog -c \"GRANT pg_monitor TO datadog;\"",
+      "PGPASSWORD='${data.aws_ssm_parameter.rds_password.value}' psql -h ${module.dbm_autoconfig_rds.db_endpoint} -p 5432 -U ${var.rds_username} -d datadog -c \"CREATE SCHEMA IF NOT EXISTS datadog; GRANT USAGE ON SCHEMA datadog TO datadog; GRANT USAGE ON SCHEMA public TO datadog;\"",
+      "PGPASSWORD='${data.aws_ssm_parameter.rds_password.value}' psql -h ${module.dbm_autoconfig_rds.db_endpoint} -p 5432 -U ${var.rds_username} -d datadog -c \"CREATE EXTENSION IF NOT EXISTS pg_stat_statements SCHEMA public;\"",
 
-      "PGPASSWORD='${var.rds_password}' psql -h ${module.dbm_autoconfig_rds.db_endpoint} -p 5432 -U ${var.rds_username} -d datadog -c \"CREATE OR REPLACE FUNCTION datadog.pg_stat_activity() RETURNS SETOF pg_stat_activity AS 'SELECT * FROM pg_catalog.pg_stat_activity;' LANGUAGE sql SECURITY DEFINER;\"",
-      "PGPASSWORD='${var.rds_password}' psql -h ${module.dbm_autoconfig_rds.db_endpoint} -p 5432 -U ${var.rds_username} -d datadog -c \"CREATE OR REPLACE FUNCTION datadog.pg_stat_statements() RETURNS SETOF pg_stat_statements AS 'SELECT * FROM pg_stat_statements;' LANGUAGE sql SECURITY DEFINER;\"",
+      "PGPASSWORD='${data.aws_ssm_parameter.rds_password.value}' psql -h ${module.dbm_autoconfig_rds.db_endpoint} -p 5432 -U ${var.rds_username} -d datadog -c \"CREATE OR REPLACE FUNCTION datadog.pg_stat_activity() RETURNS SETOF pg_stat_activity AS 'SELECT * FROM pg_catalog.pg_stat_activity;' LANGUAGE sql SECURITY DEFINER;\"",
+      "PGPASSWORD='${data.aws_ssm_parameter.rds_password.value}' psql -h ${module.dbm_autoconfig_rds.db_endpoint} -p 5432 -U ${var.rds_username} -d datadog -c \"CREATE OR REPLACE FUNCTION datadog.pg_stat_statements() RETURNS SETOF pg_stat_statements AS 'SELECT * FROM pg_stat_statements;' LANGUAGE sql SECURITY DEFINER;\"",
 
-      "PGPASSWORD='${var.rds_password}' psql -h ${module.dbm_autoconfig_rds.db_endpoint} -p 5432 -U ${var.rds_username} -d datadog <<'EOSQL'",
+      "PGPASSWORD='${data.aws_ssm_parameter.rds_password.value}' psql -h ${module.dbm_autoconfig_rds.db_endpoint} -p 5432 -U ${var.rds_username} -d datadog <<'EOSQL'",
       "CREATE OR REPLACE FUNCTION datadog.explain_statement(",
       "   l_query TEXT, OUT explain JSON",
       ") RETURNS SETOF JSON AS $$",
@@ -182,7 +182,7 @@ resource "null_resource" "dbm_setup" {
       "echo '    host: ${module.dbm_autoconfig_rds.db_endpoint}' | sudo tee -a /etc/datadog-agent/conf.d/postgres.d/conf.yaml > /dev/null",
       "echo '    port: 5432' | sudo tee -a /etc/datadog-agent/conf.d/postgres.d/conf.yaml > /dev/null",
       "echo '    username: datadog' | sudo tee -a /etc/datadog-agent/conf.d/postgres.d/conf.yaml > /dev/null",
-      "echo '    password: \"${var.dbm_postgres_datadog_password}\"' | sudo tee -a /etc/datadog-agent/conf.d/postgres.d/conf.yaml > /dev/null",
+      "echo '    password: \"${data.aws_ssm_parameter.dbm_postgres_datadog_password.value}\"' | sudo tee -a /etc/datadog-agent/conf.d/postgres.d/conf.yaml > /dev/null",
       "echo '    dbname: datadog' | sudo tee -a /etc/datadog-agent/conf.d/postgres.d/conf.yaml > /dev/null",
       "echo '    aws:' | sudo tee -a /etc/datadog-agent/conf.d/postgres.d/conf.yaml > /dev/null",
       "echo '      instance_endpoint: ${module.dbm_autoconfig_rds.db_endpoint}' | sudo tee -a /etc/datadog-agent/conf.d/postgres.d/conf.yaml > /dev/null",

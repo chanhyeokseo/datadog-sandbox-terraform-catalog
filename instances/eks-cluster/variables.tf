@@ -26,10 +26,6 @@ variable "ec2_key_name" {
   type    = string
   default = ""
 }
-variable "datadog_api_key" {
-  type    = string
-  default = ""
-}
 variable "aws_access_key_id" {
   type    = string
   default = ""

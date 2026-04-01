@@ -19,8 +19,14 @@ class ResourceVariableConfig:
 
 COMMON_VARIABLES = {
     'vpc_id', 'public_subnet_id', 'public_subnet2_id', 'private_subnet_id',
-    'name_prefix', 'creator', 'team', 'datadog_api_key', 'region',
+    'name_prefix', 'creator', 'team', 'region',
     'ec2_key_name',
+}
+
+SENSITIVE_VARIABLES = {
+    'datadog_api_key',
+    'rds_password',
+    'dbm_postgres_datadog_password',
 }
 
 ONBOARDING_PHASES = [
@@ -169,7 +175,7 @@ def get_resource_only_variable_names() -> Set[str]:
 
 
 def get_root_allowed_variable_names() -> Set[str]:
-    return set(COMMON_VARIABLES)
+    return set(COMMON_VARIABLES) | SENSITIVE_VARIABLES
 
 
 def is_common_variable(var_name: str) -> bool:
@@ -178,3 +184,7 @@ def is_common_variable(var_name: str) -> bool:
 
 def is_excluded_variable(var_name: str) -> bool:
     return var_name in EXCLUDED_VARIABLES
+
+
+def is_sensitive_variable(var_name: str) -> bool:
+    return var_name in SENSITIVE_VARIABLES

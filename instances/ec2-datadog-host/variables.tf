@@ -19,10 +19,6 @@ variable "team" {
 variable "name_prefix" {
   type = string
 }
-variable "datadog_api_key" {
-  type    = string
-  default = ""
-}
 variable "ec2_instance_type" {
   type    = string
   default = "t3.micro"

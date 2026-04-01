@@ -87,7 +87,8 @@ async def _get_cluster_info_async(resource_id: str, resource_dir: Path) -> Dict:
 
 def _resolve_template_vars(command: str, extra_vars: Dict = None) -> str:
     root_tfvars = parser._read_tfvars_to_map(Path(TERRAFORM_DIR) / "terraform.tfvars")
-    merged = {**root_tfvars, **(extra_vars or {})}
+    sensitive_vars = parser.config_manager.load_all_sensitive_variables()
+    merged = {**root_tfvars, **sensitive_vars, **(extra_vars or {})}
 
     def _replacer(m):
         var_name = m.group(1)
@@ -131,6 +132,9 @@ async def _setup_ecs_env(resource_id: Optional[str],
     for key, val in root_tfvars.items():
         clean_val = val.strip('"').strip("'")
         extra_vars[key] = clean_val
+
+    sensitive_vars = parser.config_manager.load_all_sensitive_variables()
+    extra_vars.update(sensitive_vars)
 
     if resource_dir and resource_id:
         lines.append("Resolving ECS cluster info from Terraform outputs...\n")

@@ -61,7 +61,3 @@ variable "aws_session_token" {
   type    = string
   default = ""
 }
-variable "datadog_api_key" {
-  type    = string
-  default = ""
-}

@@ -68,7 +68,7 @@ module "dbm_postgres_ec2" {
   root_volume_size           = var.ec2_root_volume_size
   root_volume_type           = var.ec2_root_volume_type
   enable_detailed_monitoring = var.ec2_enable_detailed_monitoring
-  datadog_api_key       = var.datadog_api_key
+  datadog_api_key       = data.aws_ssm_parameter.datadog_api_key.value
   datadog_site          = var.datadog_site
   datadog_agent_version = var.datadog_agent_version
   creator               = var.creator
@@ -83,7 +83,7 @@ module "dbm_postgres_rds" {
   rds_type                = "postgres"
   db_name                 = "datadog"
   db_username             = var.rds_username
-  db_password             = var.rds_password
+  db_password             = data.aws_ssm_parameter.rds_password.value
   instance_class          = var.rds_instance_class
   allocated_storage       = 20
   subnet_ids              = [local.vpc.private_subnet_id, local.vpc.public_subnet_id]
