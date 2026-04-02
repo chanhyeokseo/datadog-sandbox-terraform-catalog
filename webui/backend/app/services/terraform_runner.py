@@ -15,7 +15,8 @@ _TF_WARMUP_CONFIG = (
     'terraform {\n'
     '  required_providers {\n'
     '    aws = {\n'
-    '      source = "hashicorp/aws"\n'
+    '      source  = "hashicorp/aws"\n'
+    '      version = "6.38.0"\n'
     '    }\n'
     '  }\n'
     '}\n'
@@ -37,7 +38,9 @@ class TerraformRunner:
         if not cache_dir.exists():
             return False
         aws_path = cache_dir / "registry.terraform.io" / "hashicorp" / "aws"
-        return aws_path.exists() and any(aws_path.iterdir())
+        if not aws_path.exists():
+            return False
+        return any(aws_path.rglob("terraform-provider-*"))
 
     def get_cache_status(self) -> dict:
         return {
@@ -172,6 +175,26 @@ class TerraformRunner:
             logger.error(f"Error running terraform command: {e}")
             return False, str(e)
     
+    async def _run_init(self, resource_dir: Path, env: Optional[dict], upgrade: bool = False) -> tuple[bool, str]:
+        cmd = ["terraform", "init", "-no-color", "-input=false"]
+        if upgrade:
+            cmd.append("-upgrade")
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            cwd=str(resource_dir),
+            env=env
+        )
+        lines = []
+        while True:
+            line = await process.stdout.readline()
+            if not line:
+                break
+            lines.append(line.decode())
+        await process.wait()
+        return process.returncode == 0, "".join(lines)
+
     async def ensure_terraform_init(self, resource_dir: Path, env_extra: Optional[Dict[str, str]] = None) -> tuple[bool, str]:
         tf_dir = resource_dir / ".terraform"
         if tf_dir.exists():
@@ -182,30 +205,23 @@ class TerraformRunner:
         env = self._build_env(env_extra)
         try:
             logger.debug(f"Running terraform init in {resource_dir}")
-            process = await asyncio.create_subprocess_exec(
-                "terraform", "init", "-no-color", "-input=false",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-                cwd=str(resource_dir),
-                env=env
-            )
-
-            lines = []
-            while True:
-                line = await process.stdout.readline()
-                if not line:
-                    break
-                lines.append(line.decode())
-
-            await process.wait()
-            output = "".join(lines)
-
-            if process.returncode == 0:
+            ok, output = await self._run_init(resource_dir, env)
+            if ok:
                 logger.info(f"Successfully initialized terraform in {resource_dir}")
                 return True, output
-            else:
-                logger.error(f"Failed to initialize terraform in {resource_dir}: {output}")
-                return False, output
+
+            logger.warning(f"terraform init failed, retrying with -upgrade: {resource_dir}")
+            lock_file = resource_dir / ".terraform.lock.hcl"
+            if lock_file.exists():
+                lock_file.unlink()
+            shutil.rmtree(resource_dir / ".terraform", ignore_errors=True)
+            ok, retry_output = await self._run_init(resource_dir, env, upgrade=True)
+            if ok:
+                logger.info(f"terraform init -upgrade succeeded: {resource_dir}")
+                return True, retry_output
+
+            logger.error(f"terraform init -upgrade also failed: {resource_dir}")
+            return False, output + "\n--- Retry with -upgrade ---\n" + retry_output
 
         except Exception as e:
             logger.error(f"Error running terraform init: {e}")
@@ -240,15 +256,39 @@ class TerraformRunner:
                 env=env
             )
 
+            collected = []
             while True:
                 line = await process.stdout.readline()
                 if not line:
                     break
-                yield line.decode()
+                decoded = line.decode()
+                collected.append(decoded)
+                yield decoded
 
             code = (await process.wait()) or 0
             if code != 0:
-                yield f"{EXIT_SENTINEL_PREFIX}1\n"
+                logger.warning(f"stream_init failed, retrying with -upgrade: {resource_dir}")
+                yield "\n--- Retrying with -upgrade ---\n"
+                lock_file = resource_dir / ".terraform.lock.hcl"
+                if lock_file.exists():
+                    lock_file.unlink()
+                shutil.rmtree(resource_dir / ".terraform", ignore_errors=True)
+
+                retry = await asyncio.create_subprocess_exec(
+                    "terraform", "init", "-upgrade", "-no-color", "-input=false",
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.STDOUT,
+                    cwd=str(resource_dir),
+                    env=env
+                )
+                while True:
+                    line = await retry.stdout.readline()
+                    if not line:
+                        break
+                    yield line.decode()
+                retry_code = (await retry.wait()) or 0
+                if retry_code != 0:
+                    yield f"{EXIT_SENTINEL_PREFIX}1\n"
         except Exception as e:
             logger.error(f"Error streaming terraform init: {e}")
             yield f"Error: {str(e)}\n"

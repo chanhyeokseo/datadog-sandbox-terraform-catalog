@@ -239,7 +239,21 @@ function App() {
           } catch {}
         }, 2000);
       } catch {
-        if (!cancelled) setProviderReady(true);
+        if (!cancelled) {
+          pollId = setInterval(async () => {
+            try {
+              const s = await api.getProviderCacheStatus();
+              if (cancelled) return;
+              setProviderProgress({ progress: s.progress, message: s.message });
+              if (s.ready) {
+                setProviderReady(true);
+                if (pollId) clearInterval(pollId);
+              } else {
+                setProviderReady(false);
+              }
+            } catch {}
+          }, 2000);
+        }
       }
     };
     check();
