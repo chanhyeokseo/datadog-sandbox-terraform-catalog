@@ -9,7 +9,7 @@ import logging
 if not os.environ.get("AWS_PROFILE", "").strip():
     os.environ.pop("AWS_PROFILE", None)
 
-from app.routes import terraform, ssh, backend, keys, danger_zone, eks_manage, ecs_manage
+from app.routes import terraform, ssh, backend, keys, danger_zone, eks_manage, ecs_manage, cluster_share
 from app.services.credential_manager import credential_manager
 
 log_level = os.environ.get('LOG_LEVEL', 'INFO').upper()
@@ -54,6 +54,7 @@ app.include_router(keys.router)
 app.include_router(danger_zone.router)
 app.include_router(eks_manage.router)
 app.include_router(ecs_manage.router)
+app.include_router(cluster_share.router)
 
 
 @app.get("/")

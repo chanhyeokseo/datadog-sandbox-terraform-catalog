@@ -2,7 +2,10 @@ import axios from 'axios';
 import {
   TerraformResource,
   TerraformVariable,
-  ApiResponse
+  ApiResponse,
+  EKSClusterInfo,
+  ClusterShareRequest,
+  SharedCluster,
 } from '../types';
 
 const API_BASE_URL = '/api/terraform';
@@ -870,13 +873,48 @@ export const eksManageApi = {
     return response.data;
   },
 
+  listSharedPresets: async (ownerPrefix: string): Promise<{ presets: EKSPreset[] }> => {
+    const response = await axios.get<{ presets: EKSPreset[] }>(
+      `${EKS_MANAGE_BASE}/shared-presets`, { params: { owner_prefix: ownerPrefix } }
+    );
+    return response.data;
+  },
+
+  getSharedPreset: async (name: string, ownerPrefix: string): Promise<EKSPreset> => {
+    const response = await axios.get<EKSPreset>(
+      `${EKS_MANAGE_BASE}/shared-presets/${name}`, { params: { owner_prefix: ownerPrefix } }
+    );
+    return response.data;
+  },
+
+  getSharedPresetFile: async (name: string, filename: string, ownerPrefix: string): Promise<EKSPresetFileResponse> => {
+    const response = await axios.get<EKSPresetFileResponse>(
+      `${EKS_MANAGE_BASE}/shared-presets/${name}/files/${encodeURIComponent(filename)}`,
+      { params: { owner_prefix: ownerPrefix } }
+    );
+    return response.data;
+  },
+
+  listSharedDeployments: async (ownerPrefix: string): Promise<Record<string, DeploymentInfo>> => {
+    const response = await axios.get<{ deployments: Record<string, DeploymentInfo> }>(
+      `${EKS_MANAGE_BASE}/shared-deployments`, { params: { owner_prefix: ownerPrefix } }
+    );
+    return response.data.deployments;
+  },
+
   streamDeploy: async (
     name: string,
     onData: (chunk: string) => void,
     onComplete: (success: boolean) => void,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    clusterName?: string,
+    ownerPrefix?: string
   ): Promise<void> => {
-    const response = await fetch(`${EKS_MANAGE_BASE}/presets/${name}/deploy`, {
+    const qp = new URLSearchParams();
+    if (clusterName) qp.set('cluster_name', clusterName);
+    if (ownerPrefix) qp.set('owner_prefix', ownerPrefix);
+    const qs = qp.toString() ? `?${qp.toString()}` : '';
+    const response = await fetch(`${EKS_MANAGE_BASE}/presets/${name}/deploy${qs}`, {
       method: 'POST',
       signal,
     });
@@ -906,9 +944,15 @@ export const eksManageApi = {
     name: string,
     onData: (chunk: string) => void,
     onComplete: (success: boolean) => void,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    clusterName?: string,
+    ownerPrefix?: string
   ): Promise<void> => {
-    const response = await fetch(`${EKS_MANAGE_BASE}/presets/${name}/update`, {
+    const qp = new URLSearchParams();
+    if (clusterName) qp.set('cluster_name', clusterName);
+    if (ownerPrefix) qp.set('owner_prefix', ownerPrefix);
+    const qs = qp.toString() ? `?${qp.toString()}` : '';
+    const response = await fetch(`${EKS_MANAGE_BASE}/presets/${name}/update${qs}`, {
       method: 'POST',
       signal,
     });
@@ -938,9 +982,15 @@ export const eksManageApi = {
     name: string,
     onData: (chunk: string) => void,
     onComplete: (success: boolean) => void,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    clusterName?: string,
+    ownerPrefix?: string
   ): Promise<void> => {
-    const response = await fetch(`${EKS_MANAGE_BASE}/presets/${name}/undeploy`, {
+    const qp = new URLSearchParams();
+    if (clusterName) qp.set('cluster_name', clusterName);
+    if (ownerPrefix) qp.set('owner_prefix', ownerPrefix);
+    const qs = qp.toString() ? `?${qp.toString()}` : '';
+    const response = await fetch(`${EKS_MANAGE_BASE}/presets/${name}/undeploy${qs}`, {
       method: 'POST',
       signal,
     });
@@ -970,12 +1020,15 @@ export const eksManageApi = {
     command: string,
     onData: (chunk: string) => void,
     onComplete: (success: boolean) => void,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    clusterName?: string
   ): Promise<void> => {
+    const body: Record<string, string> = { command };
+    if (clusterName) body.cluster_name = clusterName;
     const response = await fetch(`${EKS_MANAGE_BASE}/kubectl`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command }),
+      body: JSON.stringify(body),
       signal,
     });
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -1014,8 +1067,64 @@ export const eksManageApi = {
     await axios.put(`${EKS_MANAGE_BASE}/layout`, { layout });
   },
 
-  forceDelete: async (name: string): Promise<{ success: boolean }> => {
-    const response = await axios.post(`${EKS_MANAGE_BASE}/presets/${name}/force-delete`);
+  forceDelete: async (name: string, ownerPrefix?: string, clusterName?: string): Promise<{ success: boolean }> => {
+    const params: Record<string, string> = {};
+    if (ownerPrefix) params.owner_prefix = ownerPrefix;
+    if (clusterName) params.cluster_name = clusterName;
+    const response = await axios.post(`${EKS_MANAGE_BASE}/presets/${name}/force-delete`, null, { params });
     return response.data;
+  },
+};
+
+const CLUSTER_SHARE_BASE = '/api/cluster-share';
+
+export const clusterShareApi = {
+  listClusters: async (): Promise<{ clusters: EKSClusterInfo[]; my_prefix: string }> => {
+    const response = await axios.get<{ clusters: EKSClusterInfo[]; my_prefix: string }>(`${CLUSTER_SHARE_BASE}/clusters`);
+    return response.data;
+  },
+
+  createRequest: async (clusterName: string, clusterArn: string, ownerPrefix: string): Promise<ClusterShareRequest> => {
+    const response = await axios.post<ClusterShareRequest>(`${CLUSTER_SHARE_BASE}/requests`, {
+      cluster_name: clusterName,
+      cluster_arn: clusterArn,
+      owner_prefix: ownerPrefix,
+    });
+    return response.data;
+  },
+
+  getIncomingRequests: async (): Promise<ClusterShareRequest[]> => {
+    const response = await axios.get<{ requests: ClusterShareRequest[] }>(`${CLUSTER_SHARE_BASE}/requests/incoming`);
+    return response.data.requests;
+  },
+
+  getOutgoingRequests: async (): Promise<ClusterShareRequest[]> => {
+    const response = await axios.get<{ requests: ClusterShareRequest[] }>(`${CLUSTER_SHARE_BASE}/requests/outgoing`);
+    return response.data.requests;
+  },
+
+  approveRequest: async (requestId: string): Promise<ClusterShareRequest> => {
+    const response = await axios.post<ClusterShareRequest>(`${CLUSTER_SHARE_BASE}/requests/${requestId}/approve`);
+    return response.data;
+  },
+
+  denyRequest: async (requestId: string): Promise<ClusterShareRequest> => {
+    const response = await axios.post<ClusterShareRequest>(`${CLUSTER_SHARE_BASE}/requests/${requestId}/deny`);
+    return response.data;
+  },
+
+  getSharedClusters: async (): Promise<SharedCluster[]> => {
+    const response = await axios.get<{ clusters: SharedCluster[] }>(`${CLUSTER_SHARE_BASE}/shared`);
+    return response.data.clusters;
+  },
+
+  deleteRequest: async (requestId: string): Promise<{ success: boolean }> => {
+    const response = await axios.delete<{ success: boolean }>(`${CLUSTER_SHARE_BASE}/requests/${requestId}`);
+    return response.data;
+  },
+
+  getConnectedUsers: async (): Promise<string[]> => {
+    const response = await axios.get<{ users: string[] }>(`${CLUSTER_SHARE_BASE}/connected-users`);
+    return response.data.users;
   },
 };

@@ -86,6 +86,32 @@ class S3ConfigManager:
             logger.error(f"Failed to list S3 objects with prefix {prefix}: {e}")
             return []
 
+    def upload_text(self, s3_key: str, text: str) -> bool:
+        if not self.s3_client:
+            logger.warning("S3 client not available")
+            return False
+        try:
+            self.s3_client.put_object(
+                Bucket=self.bucket_name,
+                Key=s3_key,
+                Body=text.encode("utf-8")
+            )
+            logger.info(f"Uploaded text to s3://{self.bucket_name}/{s3_key}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to upload text to {s3_key}: {e}")
+            return False
+
+    def download_text(self, s3_key: str) -> str:
+        if not self.s3_client:
+            return ""
+        try:
+            response = self.s3_client.get_object(Bucket=self.bucket_name, Key=s3_key)
+            return response["Body"].read().decode("utf-8")
+        except Exception as e:
+            logger.debug(f"Failed to download text from {s3_key}: {e}")
+            return ""
+
     def file_exists(self, s3_key: str) -> bool:
         if not self.s3_client:
             return False

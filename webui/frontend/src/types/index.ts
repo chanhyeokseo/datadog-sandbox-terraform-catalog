@@ -25,6 +25,8 @@ export interface TerraformResource {
   line_end: number;
   status: ResourceStatus;
   description?: string;
+  is_shared?: boolean;
+  shared_from?: string;
 }
 
 export interface TerraformVariable {
@@ -51,4 +53,29 @@ export interface ApiResponse {
   error?: string;
   message?: string;
   command?: string;
+}
+
+export interface EKSClusterInfo {
+  name: string;
+  arn: string;
+  status: string;
+  owner_prefix?: string;
+}
+
+export interface ClusterShareRequest {
+  id: string;
+  requester_prefix: string;
+  cluster_name: string;
+  cluster_arn: string;
+  owner_prefix: string;
+  status: 'pending' | 'approved' | 'denied';
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SharedCluster {
+  cluster_name: string;
+  cluster_arn: string;
+  owner_prefix: string;
+  shared_at: string;
 }

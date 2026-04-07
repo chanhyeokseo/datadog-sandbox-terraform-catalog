@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { TerraformResource } from '../types';
-import { terraformApi } from '../services/api';
+import { TerraformResource, ResourceType, ResourceStatus, SharedCluster } from '../types';
+import { terraformApi, clusterShareApi } from '../services/api';
 
 interface ResourceSidebarProps {
   onResourceSelect: (resource: TerraformResource | null) => void;
@@ -8,10 +8,13 @@ interface ResourceSidebarProps {
   refreshTrigger?: number;
   runningResources?: Map<string, string>;
   onResourcesLoaded?: (resources: TerraformResource[]) => void;
+  onRequestClusterShare?: () => void;
+  sharedClusterRefreshTrigger?: number;
 }
 
-const ResourceSidebar = ({ onResourceSelect, selectedResourceId, refreshTrigger, runningResources, onResourcesLoaded }: ResourceSidebarProps) => {
+const ResourceSidebar = ({ onResourceSelect, selectedResourceId, refreshTrigger, runningResources, onResourcesLoaded, onRequestClusterShare, sharedClusterRefreshTrigger }: ResourceSidebarProps) => {
   const [resources, setResources] = useState<TerraformResource[]>([]);
+  const [sharedClusters, setSharedClusters] = useState<SharedCluster[]>([]);
   const [loading, setLoading] = useState(true);
   
   // Load expanded sections from localStorage or use defaults
@@ -59,8 +62,18 @@ const ResourceSidebar = ({ onResourceSelect, selectedResourceId, refreshTrigger,
     }
   };
 
+  const loadSharedClusters = async () => {
+    try {
+      const shared = await clusterShareApi.getSharedClusters();
+      setSharedClusters(shared);
+    } catch (err) {
+      console.error('Failed to load shared clusters:', err);
+    }
+  };
+
   useEffect(() => {
     loadResources(true);
+    loadSharedClusters();
   }, []);
 
   useEffect(() => {
@@ -68,6 +81,10 @@ const ResourceSidebar = ({ onResourceSelect, selectedResourceId, refreshTrigger,
       loadResources(false);
     }
   }, [refreshTrigger]);
+
+  useEffect(() => {
+    loadSharedClusters();
+  }, [sharedClusterRefreshTrigger]);
 
   const toggleSection = (type: string) => {
     const newExpanded = new Set(expandedSections);
@@ -179,6 +196,42 @@ const ResourceSidebar = ({ onResourceSelect, selectedResourceId, refreshTrigger,
                     </div>
                   </div>
                 ))}
+                {type === 'eks' && sharedClusters.map((sc) => {
+                  const sharedId = `shared-eks-${sc.cluster_arn}`;
+                  return (
+                    <div
+                      key={sharedId}
+                      className={`sidebar-item shared-item ${selectedResourceId === sharedId ? 'selected' : ''}`}
+                      onClick={() => onResourceSelect({
+                        id: sharedId,
+                        name: sc.cluster_name,
+                        type: ResourceType.EKS,
+                        file_path: `Shared from ${sc.owner_prefix}`,
+                        line_start: 0,
+                        line_end: 0,
+                        status: ResourceStatus.ENABLED,
+                        description: `Shared EKS Cluster: ${sc.owner_prefix}`,
+                        is_shared: true,
+                        shared_from: sc.owner_prefix,
+                      })}
+                    >
+                      <span className="item-status shared" />
+                      <div className="item-content">
+                        <div className="item-name">Shared EKS Cluster: {sc.owner_prefix}</div>
+                        <div className="item-file">{sc.cluster_name}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+                {type === 'eks' && (
+                  <div
+                    className="sidebar-action-item"
+                    onClick={() => onRequestClusterShare?.()}
+                  >
+                    <span className="action-icon">🔗</span>
+                    <span className="action-label">Request Cluster Share</span>
+                  </div>
+                )}
               </div>
             )}
           </div>
