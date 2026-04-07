@@ -581,6 +581,15 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
             <button className="btn-help" onClick={() => setShowHelpModal(true)} title="What do these buttons do?">?</button>
           </div>
           
+          {selectedResource?.is_shared && (
+            <div className="ip-update-hint">
+              <div className="hint-icon">🔗</div>
+              <div className="hint-text">
+                Shared cluster from <strong>{selectedResource.shared_from}</strong>. You can manage workloads but cannot modify infrastructure.
+              </div>
+            </div>
+          )}
+
           {selectedResource?.type === ResourceType.SECURITY_GROUP && selectedResource?.status === 'enabled' && !runningAction && (
             <div className="ip-update-hint">
               <div className="hint-icon">💡</div>
@@ -591,7 +600,15 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
           )}
           
           <div className="action-buttons-grid">
-            {runningAction ? (
+            {selectedResource?.is_shared ? (
+              <button
+                onClick={handleEKSConnect}
+                className="btn btn-manage"
+                title="Manage shared EKS cluster workloads and presets"
+              >
+                Manage
+              </button>
+            ) : runningAction ? (
               <button
                 disabled
                 className="btn btn-stop"
@@ -682,7 +699,7 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
               </>
             )}
 
-            {selectedResource && selectedResource.type === ResourceType.SECURITY_GROUP && (
+            {selectedResource && !selectedResource.is_shared && selectedResource.type === ResourceType.SECURITY_GROUP && (
               <button
                 onClick={() => setShowSGEditor(true)}
                 className="btn btn-configure"
@@ -692,7 +709,7 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
               </button>
             )}
 
-            {selectedResource && selectedResource.type === ResourceType.EKS && (
+            {selectedResource && !selectedResource.is_shared && selectedResource.type === ResourceType.EKS && (
               <button
                 onClick={() => setShowEKSEditor(true)}
                 className="btn btn-configure"
@@ -702,7 +719,7 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
               </button>
             )}
 
-            {selectedResource && selectedResource.type === ResourceType.ECS && (
+            {selectedResource && !selectedResource.is_shared && selectedResource.type === ResourceType.ECS && (
               <button
                 onClick={() => setShowECSEditor(true)}
                 className="btn btn-configure"
@@ -712,7 +729,7 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
               </button>
             )}
 
-            {selectedResource && selectedResource.type === ResourceType.EC2 && selectedResource.id === 'ec2_datadog_docker' && (
+            {selectedResource && !selectedResource.is_shared && selectedResource.type === ResourceType.EC2 && selectedResource.id === 'ec2_datadog_docker' && (
               <button
                 onClick={() => setShowDockerAgentEditor(true)}
                 className="btn btn-configure"
@@ -724,7 +741,7 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
           </div>
         </div>
 
-        {selectedResource?.type !== ResourceType.EKS && selectedResource?.type !== ResourceType.ECS && (
+        {!selectedResource?.is_shared && selectedResource?.type !== ResourceType.EKS && selectedResource?.type !== ResourceType.ECS && (
           <div className="action-section variables-section">
             <div className="section-header-flex">
               <h3>Resource Variables</h3>
@@ -956,6 +973,8 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
         <EKSManageModal
           onClose={() => { setShowEKSManageModal(false); setEksConnectInfo(null); }}
           connectInfo={eksConnectInfo}
+          sharedClusterName={selectedResource?.is_shared ? selectedResource.name : undefined}
+          sharedOwnerPrefix={selectedResource?.is_shared ? selectedResource.shared_from : undefined}
         />
       )}
       {showECSEditor && createPortal(

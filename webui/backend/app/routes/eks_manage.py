@@ -5,17 +5,18 @@ import logging
 import os
 import re
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import AsyncIterator, Dict, List, Optional
 
 import boto3
 from botocore.signers import RequestSigner
-from fastapi import APIRouter, HTTPException, Body
+from fastapi import APIRouter, HTTPException, Body, Query
 from fastapi.responses import StreamingResponse
 
 from app.models.schemas import ResourceType
 from app.services.credential_manager import credential_manager
-from app.services.eks_preset_manager import EKSPresetManager
+from app.services.eks_preset_manager import EKSPresetManager, S3_PRESET_PREFIX
 from app.services.terraform_parser import TerraformParser
 from app.services.terraform_runner import TerraformRunner
 from app.services.instance_discovery import get_resource_id_for_instance, get_resource_type_from_dir
@@ -185,14 +186,27 @@ def _configure_kubeconfig(cluster_name: str, region: str) -> tuple[bool, str]:
 
 
 async def _setup_kubeconfig(resource_id: Optional[str], resource_dir: Optional[Path],
-                            force: bool = False) -> tuple[bool, list[str]]:
+                            force: bool = False,
+                            explicit_cluster_name: Optional[str] = None) -> tuple[bool, list[str]]:
     lines = []
 
-    if not force and KUBECONFIG_PATH.exists() and KUBECONFIG_PATH.stat().st_size > 0:
+    if not force and not explicit_cluster_name and KUBECONFIG_PATH.exists() and KUBECONFIG_PATH.stat().st_size > 0:
         age = time.time() - KUBECONFIG_PATH.stat().st_mtime
         if age < TOKEN_EXPIRY_SECONDS:
             return True, lines
         logger.debug("Kubeconfig token expired (age=%.0fs), refreshing", age)
+
+    if explicit_cluster_name:
+        region = os.environ.get("AWS_REGION", "ap-northeast-2")
+        lines.append(f"Shared cluster: {explicit_cluster_name} (region: {region})\n")
+        lines.append("Configuring kubeconfig...\n")
+        success, output = _configure_kubeconfig(explicit_cluster_name, region)
+        lines.append(output + "\n")
+        if not success:
+            lines.append("Error: Failed to configure kubeconfig\n")
+            lines.append(f"{EXIT_SENTINEL_PREFIX}1\n")
+            return False, lines
+        return True, lines
 
     if resource_dir and resource_id:
         lines.append("Resolving EKS cluster info from Terraform outputs...\n")
@@ -296,6 +310,131 @@ async def list_presets():
     except Exception as e:
         logger.error(f"Failed to list presets: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def _discover_owner_bucket(owner_prefix: str) -> str:
+    from app.services.config_manager import ConfigManager
+    cm = ConfigManager()
+    safe_prefix = ''.join(c if c.isalnum() or c in '-_' else '-' for c in owner_prefix)[:64]
+    ssm_path = f"/dogstac-{safe_prefix}/"
+    try:
+        ssm = boto3.client("ssm", region_name=cm._get_region())
+        response = ssm.get_parameters_by_path(Path=ssm_path, Recursive=True, MaxResults=1)
+        for param in response.get("Parameters", []):
+            parts = param["Name"].split("/")
+            if len(parts) >= 3:
+                owner_hash = parts[2]
+                safe = owner_prefix.lower().replace('_', '-')
+                safe = ''.join(c if c.isalnum() or c == '-' else '-' for c in safe)[:32]
+                bucket = f"dogstac-{safe}-{owner_hash}"
+                logger.debug(f"Discovered owner bucket via SSM: {bucket} (prefix={owner_prefix})")
+                return bucket
+    except Exception as e:
+        logger.warning(f"SSM discovery failed for {owner_prefix}: {e}")
+    bucket = cm.generate_bucket_name(owner_prefix)
+    logger.debug(f"Falling back to local hash for owner bucket: {bucket}")
+    return bucket
+
+
+def _get_owner_s3(owner_prefix: str):
+    from app.services.s3_config_manager import S3ConfigManager
+    bucket_name = _discover_owner_bucket(owner_prefix)
+    return S3ConfigManager(bucket_name)
+
+
+@router.get("/shared-presets")
+async def list_shared_presets(owner_prefix: str = Query(...)):
+    try:
+        s3 = _get_owner_s3(owner_prefix)
+        presets = []
+        files = s3.list_files(S3_PRESET_PREFIX + "/")
+        manifest_keys = [f for f in files if f.endswith("/manifest.json")]
+        for key in manifest_keys:
+            content = s3.download_text(key)
+            if content:
+                try:
+                    manifest = json.loads(content)
+                    manifest["built_in"] = manifest.get("built_in", False)
+                    presets.append(manifest)
+                except Exception:
+                    pass
+        return {"presets": presets}
+    except Exception as e:
+        logger.warning(f"Failed to list shared presets for {owner_prefix}: {e}")
+        return {"presets": []}
+
+
+@router.get("/shared-presets/{name}")
+async def get_shared_preset(name: str, owner_prefix: str = Query(...)):
+    try:
+        s3 = _get_owner_s3(owner_prefix)
+        content = s3.download_text(f"{S3_PRESET_PREFIX}/{name}/manifest.json")
+        if not content:
+            raise HTTPException(status_code=404, detail=f"Shared preset not found: {name}")
+        manifest = json.loads(content)
+        manifest["built_in"] = manifest.get("built_in", False)
+        if "files" not in manifest or not manifest["files"]:
+            all_keys = s3.list_files(f"{S3_PRESET_PREFIX}/{name}/")
+            manifest["files"] = sorted(
+                k.rsplit("/", 1)[-1] for k in all_keys
+                if not k.endswith("/") and not k.endswith("/manifest.json")
+            )
+        return manifest
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning(f"Failed to get shared preset {name} for {owner_prefix}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/shared-presets/{name}/files/{filename:path}")
+async def get_shared_preset_file(name: str, filename: str, owner_prefix: str = Query(...)):
+    try:
+        s3 = _get_owner_s3(owner_prefix)
+        content = s3.download_text(f"{S3_PRESET_PREFIX}/{name}/{filename}")
+        if not content and content != "":
+            raise HTTPException(status_code=404, detail=f"File not found: {name}/{filename}")
+        return {"filename": filename, "content": content}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning(f"Failed to get shared preset file {name}/{filename}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/shared-deployments")
+async def list_shared_deployments(owner_prefix: str = Query(...)):
+    try:
+        s3 = _get_owner_s3(owner_prefix)
+        content = s3.download_text(S3_PRESET_PREFIX + "/_deployments.json")
+        if content:
+            return {"deployments": json.loads(content)}
+        return {"deployments": {}}
+    except Exception as e:
+        logger.warning(f"Failed to list shared deployments for {owner_prefix}: {e}")
+        return {"deployments": {}}
+
+
+S3_DEPLOYMENTS_KEY = S3_PRESET_PREFIX + "/_deployments.json"
+
+
+def _owner_mark_deployed(name: str, owner_prefix: str):
+    s3 = _get_owner_s3(owner_prefix)
+    content = s3.download_text(S3_DEPLOYMENTS_KEY)
+    deployments = json.loads(content) if content else {}
+    deployments[name] = {"deployed_at": datetime.now(timezone.utc).isoformat()}
+    s3.upload_text(S3_DEPLOYMENTS_KEY, json.dumps(deployments, indent=2) + "\n")
+    logger.debug(f"Marked preset as deployed in owner({owner_prefix}) S3: {name}")
+
+
+def _owner_mark_undeployed(name: str, owner_prefix: str):
+    s3 = _get_owner_s3(owner_prefix)
+    content = s3.download_text(S3_DEPLOYMENTS_KEY)
+    deployments = json.loads(content) if content else {}
+    if name in deployments:
+        del deployments[name]
+        s3.upload_text(S3_DEPLOYMENTS_KEY, json.dumps(deployments, indent=2) + "\n")
+        logger.debug(f"Marked preset as undeployed in owner({owner_prefix}) S3: {name}")
 
 
 @router.get("/presets/{name}")
@@ -413,9 +552,29 @@ async def delete_preset(name: str):
     return {"success": True}
 
 
+def _sync_shared_preset_to_local(name: str, owner_prefix: str) -> Optional[Path]:
+    s3 = _get_owner_s3(owner_prefix)
+    local_dir = Path(TERRAFORM_DIR) / "eks" / name
+    local_dir.mkdir(parents=True, exist_ok=True)
+    keys = s3.list_files(f"{S3_PRESET_PREFIX}/{name}/")
+    for key in keys:
+        filename = key.rsplit("/", 1)[-1]
+        if not filename:
+            continue
+        local_path = local_dir / filename
+        content = s3.download_text(key)
+        if content or content == "":
+            local_path.write_text(content)
+    if local_dir.exists() and any(local_dir.iterdir()):
+        return local_dir
+    return None
+
+
 async def _stream_action(action_label: str, name: str, commands: List[str],
                          resource_id: Optional[str], resource_dir: Optional[Path],
-                         on_success=None) -> AsyncIterator[str]:
+                         on_success=None,
+                         explicit_cluster_name: Optional[str] = None,
+                         owner_prefix: Optional[str] = None) -> AsyncIterator[str]:
     yield f"=== EKS Preset {action_label} ===\n"
     yield f"Preset: {name}\n\n"
 
@@ -431,13 +590,21 @@ async def _stream_action(action_label: str, name: str, commands: List[str],
         yield "Syncing preset cache from S3...\n"
         await asyncio.to_thread(preset_manager.initialize_local_cache)
 
-    ok, lines = await _setup_kubeconfig(resource_id, resource_dir)
+    ok, lines = await _setup_kubeconfig(resource_id, resource_dir,
+                                         explicit_cluster_name=explicit_cluster_name)
     for line in lines:
         yield line
     if not ok:
         return
 
-    preset_dir = preset_manager.sync_preset_to_local(name)
+    if owner_prefix:
+        yield f"Syncing shared preset from {owner_prefix}...\n"
+        preset_dir = _sync_shared_preset_to_local(name, owner_prefix)
+        if not preset_dir:
+            logger.debug(f"Shared sync failed for {name}, falling back to local (OOTB)")
+            preset_dir = preset_manager.sync_preset_to_local(name)
+    else:
+        preset_dir = preset_manager.sync_preset_to_local(name)
     if not preset_dir:
         yield "Error: Failed to sync preset files to local\n"
         yield f"{EXIT_SENTINEL_PREFIX}1\n"
@@ -467,9 +634,19 @@ async def get_deployments():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _resolve_preset(name: str, owner_prefix: Optional[str] = None) -> dict:
+    if owner_prefix:
+        s3 = _get_owner_s3(owner_prefix)
+        content = s3.download_text(f"{S3_PRESET_PREFIX}/{name}/manifest.json")
+        if content:
+            return json.loads(content)
+    return preset_manager.get_preset(name) or {}
+
+
 @router.post("/presets/{name}/deploy")
-async def deploy_preset(name: str):
-    preset = preset_manager.get_preset(name)
+async def deploy_preset(name: str, cluster_name: Optional[str] = Query(None),
+                        owner_prefix: Optional[str] = Query(None)):
+    preset = _resolve_preset(name, owner_prefix)
     if not preset:
         raise HTTPException(status_code=404, detail=f"Preset not found: {name}")
 
@@ -479,16 +656,24 @@ async def deploy_preset(name: str):
 
     resource_id, resource_dir = _get_eks_resource_info()
 
+    if owner_prefix and cluster_name:
+        on_success = lambda: _owner_mark_deployed(name, owner_prefix)
+    else:
+        on_success = lambda: preset_manager.mark_deployed(name)
+
     return StreamingResponse(
         _stream_action("Deploy", name, commands, resource_id, resource_dir,
-                        on_success=lambda: preset_manager.mark_deployed(name)),
+                        on_success=on_success,
+                        explicit_cluster_name=cluster_name,
+                        owner_prefix=owner_prefix),
         media_type="text/plain",
     )
 
 
 @router.post("/presets/{name}/update")
-async def update_preset_deploy(name: str):
-    preset = preset_manager.get_preset(name)
+async def update_preset_deploy(name: str, cluster_name: Optional[str] = Query(None),
+                               owner_prefix: Optional[str] = Query(None)):
+    preset = _resolve_preset(name, owner_prefix)
     if not preset:
         raise HTTPException(status_code=404, detail=f"Preset not found: {name}")
 
@@ -499,14 +684,17 @@ async def update_preset_deploy(name: str):
     resource_id, resource_dir = _get_eks_resource_info()
 
     return StreamingResponse(
-        _stream_action("Update", name, commands, resource_id, resource_dir),
+        _stream_action("Update", name, commands, resource_id, resource_dir,
+                        explicit_cluster_name=cluster_name,
+                        owner_prefix=owner_prefix),
         media_type="text/plain",
     )
 
 
 @router.post("/presets/{name}/undeploy")
-async def undeploy_preset(name: str):
-    preset = preset_manager.get_preset(name)
+async def undeploy_preset(name: str, cluster_name: Optional[str] = Query(None),
+                          owner_prefix: Optional[str] = Query(None)):
+    preset = _resolve_preset(name, owner_prefix)
     if not preset:
         raise HTTPException(status_code=404, detail=f"Preset not found: {name}")
 
@@ -516,22 +704,35 @@ async def undeploy_preset(name: str):
 
     resource_id, resource_dir = _get_eks_resource_info()
 
+    if owner_prefix and cluster_name:
+        on_success = lambda: _owner_mark_undeployed(name, owner_prefix)
+    else:
+        on_success = lambda: preset_manager.mark_undeployed(name)
+
     return StreamingResponse(
         _stream_action("Undeploy", name, commands, resource_id, resource_dir,
-                        on_success=lambda: preset_manager.mark_undeployed(name)),
+                        on_success=on_success,
+                        explicit_cluster_name=cluster_name,
+                        owner_prefix=owner_prefix),
         media_type="text/plain",
     )
 
 
 @router.post("/presets/{name}/force-delete")
-async def force_delete_preset(name: str):
-    preset_manager.mark_undeployed(name)
+async def force_delete_preset(name: str,
+                              cluster_name: Optional[str] = Query(None),
+                              owner_prefix: Optional[str] = Query(None)):
+    if owner_prefix and cluster_name:
+        _owner_mark_undeployed(name, owner_prefix)
+    else:
+        preset_manager.mark_undeployed(name)
     return {"success": True, "message": f"Preset '{name}' removed from deployed list"}
 
 
 @router.post("/kubectl")
 async def run_kubectl(body: dict = Body(...)):
     command = body.get("command", "").strip()
+    cluster_name = body.get("cluster_name")
     if not command:
         raise HTTPException(status_code=400, detail="command is required")
 
@@ -559,7 +760,8 @@ async def run_kubectl(body: dict = Body(...)):
     resource_id, resource_dir = _get_eks_resource_info()
 
     async def _stream():
-        ok, lines = await _setup_kubeconfig(resource_id, resource_dir)
+        ok, lines = await _setup_kubeconfig(resource_id, resource_dir,
+                                             explicit_cluster_name=cluster_name)
         for line in lines:
             yield line
         if not ok:

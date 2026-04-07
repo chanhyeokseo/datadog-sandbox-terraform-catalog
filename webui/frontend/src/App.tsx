@@ -8,6 +8,7 @@ import ConnectionsModal from './components/ConnectionsModal';
 import OnboardingModal from './components/OnboardingModal';
 import DangerZoneModal from './components/DangerZoneModal';
 import SSOLoginModal from './components/SSOLoginModal';
+import ClusterShareModal from './components/ClusterShareModal';
 import { TerraformResource, ResourceType } from './types';
 import { terraformApi as api, OnboardingStatus } from './services/api';
 
@@ -96,6 +97,8 @@ function App() {
   const [showConnectionsModal, setShowConnectionsModal] = useState(false);
   const [showOnboardingModal, setShowOnboardingModal] = useState(false);
   const [showDangerZone, setShowDangerZone] = useState(false);
+  const [showClusterShareModal, setShowClusterShareModal] = useState(false);
+  const [sharedClusterRefreshTrigger, setSharedClusterRefreshTrigger] = useState(0);
   const [onboardingStatus, setOnboardingStatus] = useState<OnboardingStatus | null>(null);
   const [resourceRefreshTrigger, setResourceRefreshTrigger] = useState(0);
   const [runningResources, setRunningResources] = useState<Map<string, string>>(new Map());
@@ -629,6 +632,8 @@ function App() {
             refreshTrigger={resourceRefreshTrigger}
             runningResources={runningResources}
             onResourcesLoaded={setResources}
+            onRequestClusterShare={() => setShowClusterShareModal(true)}
+            sharedClusterRefreshTrigger={sharedClusterRefreshTrigger}
           />
           <ActionPanel
             selectedResource={selectedResource}
@@ -670,6 +675,13 @@ function App() {
         <DangerZoneModal
           onClose={() => setShowDangerZone(false)}
           onResourcesNeedRefresh={handleResourcesNeedRefresh}
+        />
+      )}
+
+      {showClusterShareModal && (
+        <ClusterShareModal
+          onClose={() => setShowClusterShareModal(false)}
+          onSharedClustersChanged={() => setSharedClusterRefreshTrigger(prev => prev + 1)}
         />
       )}
 
