@@ -5,6 +5,7 @@
   z-index: 1000;
   width: 48px;
   height: 48px;
+  padding: 0;
   border-radius: 0;
   border: 1px solid rgba(239, 83, 80, 0.4);
   background: linear-gradient(135deg, rgba(239, 83, 80, 0.15) 0%, rgba(239, 83, 80, 0.08) 100%);
@@ -13,31 +14,63 @@
   box-shadow: 0 4px 20px rgba(239, 83, 80, 0.2),
               inset 0 1px 0 rgba(255, 255, 255, 0.05);
   color: #ef5350;
-  font-size: 20px;
+  font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
+  gap: 0;
+  overflow: hidden;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  transition: width 0.2s ease, gap 0.2s ease, padding 0.2s ease, background 0.2s ease, border-color 0.2s ease,
+    box-shadow 0.2s ease, color 0.2s ease;
 }
 
 .danger-zone-fab:hover {
+  width: auto;
   background: linear-gradient(135deg, rgba(239, 83, 80, 0.25) 0%, rgba(239, 83, 80, 0.15) 100%);
   border-color: rgba(239, 83, 80, 0.6);
   box-shadow: 0 6px 28px rgba(239, 83, 80, 0.35);
-  transform: translateY(-2px);
+  gap: 8px;
+  padding: 0 14px;
+  color: #ff8a80;
+}
+
+.danger-zone-fab-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.danger-zone-fab-label {
+  max-width: 0;
+  opacity: 0;
+  white-space: nowrap;
+  transition: max-width 0.2s ease, opacity 0.18s ease;
+}
+
+.danger-zone-fab:hover .danger-zone-fab-label {
+  max-width: 220px;
+  opacity: 1;
 }
 
 body.light-mode .danger-zone-fab {
   background: linear-gradient(135deg, rgba(239, 83, 80, 0.1) 0%, rgba(239, 83, 80, 0.05) 100%);
   border-color: rgba(239, 83, 80, 0.3);
   box-shadow: 0 4px 20px rgba(239, 83, 80, 0.1);
+  text-shadow: none;
+  color: #d32f2f;
 }
 
 body.light-mode .danger-zone-fab:hover {
   background: linear-gradient(135deg, rgba(239, 83, 80, 0.2) 0%, rgba(239, 83, 80, 0.1) 100%);
   border-color: rgba(239, 83, 80, 0.5);
   box-shadow: 0 6px 28px rgba(239, 83, 80, 0.2);
+  color: #c62828;
 }
 
 .danger-zone-modal {

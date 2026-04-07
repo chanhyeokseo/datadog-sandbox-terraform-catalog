@@ -556,11 +556,15 @@ function OnboardingPage() {
       )}
 
       <button
+        type="button"
         className="danger-zone-fab"
         onClick={() => setShowDangerZone(true)}
-        title="Danger Zone"
+        aria-label="Danger Zone"
       >
-        ⚠
+        <span className="danger-zone-fab-icon" aria-hidden>
+          ⚠
+        </span>
+        <span className="danger-zone-fab-label">Danger Zone</span>
       </button>
     </div>
   );

@@ -8,6 +8,7 @@ import ConnectionsModal from './components/ConnectionsModal';
 import OnboardingModal from './components/OnboardingModal';
 import DangerZoneModal from './components/DangerZoneModal';
 import SSOLoginModal from './components/SSOLoginModal';
+import FeedbackFab from './components/FeedbackFab';
 import ClusterShareModal from './components/ClusterShareModal';
 import { TerraformResource, ResourceType } from './types';
 import { terraformApi as api, OnboardingStatus } from './services/api';
@@ -110,6 +111,7 @@ function App() {
   const healthRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [providerReady, setProviderReady] = useState<boolean | null>(null);
   const [providerProgress, setProviderProgress] = useState({ progress: 0, message: '' });
+  const [feedbackFabPulse, setFeedbackFabPulse] = useState(false);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme');
@@ -364,6 +366,12 @@ function App() {
               });
             },
             (success) => {
+              if (!success && action === 'destroy') {
+                setFeedbackFabPulse(true);
+              }
+              if (success && action === 'destroy') {
+                setFeedbackFabPulse(false);
+              }
               setResults(prev => {
                 const updated = [...prev];
                 const idx = updated.findIndex(r => r.id === resultId);
@@ -460,6 +468,13 @@ function App() {
   };
 
   const handleActionComplete = (id: string, success: boolean, action: string, resourceId?: string) => {
+    const a = action.toLowerCase();
+    if (!success && (a === 'plan' || a === 'destroy')) {
+      setFeedbackFabPulse(true);
+    }
+    if (success && (a === 'plan' || a === 'destroy')) {
+      setFeedbackFabPulse(false);
+    }
     setResults(prev => {
       const updated = [...prev];
       const index = updated.findIndex(r => r.id === id);
@@ -694,12 +709,24 @@ function App() {
         />
       )}
 
+      <FeedbackFab
+        selectedResourceId={selectedResource?.id ?? null}
+        latestResultAction={results[0]?.action ?? null}
+        latestResultStatus={results[0]?.status ?? null}
+        emphasizePulse={feedbackFabPulse}
+        onOpenModal={() => setFeedbackFabPulse(false)}
+      />
+
       <button
+        type="button"
         className="danger-zone-fab"
         onClick={() => setShowDangerZone(true)}
-        title="Danger Zone"
+        aria-label="Danger Zone"
       >
-        ⚠
+        <span className="danger-zone-fab-icon" aria-hidden>
+          ⚠
+        </span>
+        <span className="danger-zone-fab-label">Danger Zone</span>
       </button>
     </div>
   );
