@@ -18,41 +18,51 @@ const SSOLoginModal = ({ ssoConfigured, ssoCommand, onSuccess, onRetry }: SSOLog
   const [userCode, setUserCode] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [copied, setCopied] = useState(false);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelledRef = useRef(false);
 
   useEffect(() => {
     return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
+      cancelledRef.current = true;
+      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
     };
   }, []);
 
   const handleStartSSO = async () => {
     setPhase('starting');
     setErrorMsg('');
+    cancelledRef.current = false;
+    if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+
     try {
       const result = await terraformApi.startSSOLogin();
       setVerificationUri(result.verification_uri);
       setUserCode(result.user_code);
       setPhase('waiting');
 
-      pollRef.current = setInterval(async () => {
+      const pollOnce = async () => {
+        if (cancelledRef.current) return;
         try {
           const status = await terraformApi.getSSOStatus(result.session_id);
+          if (cancelledRef.current) return;
           if (status.status === 'complete') {
-            if (pollRef.current) clearInterval(pollRef.current);
             setPhase('complete');
             setTimeout(() => onSuccess(), 1000);
+            return;
           } else if (status.status === 'expired' || status.status === 'error') {
-            if (pollRef.current) clearInterval(pollRef.current);
             setPhase('error');
             setErrorMsg(status.message || 'SSO login failed');
+            return;
           }
         } catch {
-          if (pollRef.current) clearInterval(pollRef.current);
+          if (cancelledRef.current) return;
           setPhase('error');
           setErrorMsg('Failed to check SSO status');
+          return;
         }
-      }, 3000);
+        pollTimerRef.current = setTimeout(pollOnce, 3000);
+      };
+      pollTimerRef.current = setTimeout(pollOnce, 3000);
     } catch (err: any) {
       setPhase('error');
       setErrorMsg(err?.response?.data?.detail || 'Failed to start SSO login');
