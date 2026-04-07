@@ -565,6 +565,42 @@ body.light-mode .section-header:hover {
   color: var(--text-secondary);
 }
 
+.sidebar-item.shared-item {
+  border-left-color: #3498db;
+}
+
+.item-status.shared {
+  background: #3498db;
+  box-shadow: 0 0 8px rgba(52, 152, 219, 0.6), 0 0 12px rgba(52, 152, 219, 0.4);
+}
+
+.sidebar-action-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  margin-top: 4px;
+  cursor: pointer;
+  font-size: 0.82rem;
+  color: var(--primary-color);
+  opacity: 0.85;
+  transition: all 0.2s;
+  border-radius: 6px;
+}
+
+.sidebar-action-item:hover {
+  opacity: 1;
+  background: rgba(139, 127, 199, 0.1);
+}
+
+.action-icon {
+  font-size: 0.85rem;
+}
+
+.action-label {
+  font-weight: 500;
+}
+
 /* Action Panel - Center */
 .action-panel {
   flex: 1;

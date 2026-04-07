@@ -60,3 +60,40 @@ class TerraformApplyResponse(BaseModel):
 class TerraformStateResponse(BaseModel):
     resources: List[TerraformResource]
     variables: List[TerraformVariable]
+
+
+class ClusterShareRequestCreate(BaseModel):
+    cluster_name: str
+    cluster_arn: str
+    owner_prefix: str
+
+
+class ClusterShareRequestStatus(str, Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    DENIED = "denied"
+
+
+class ClusterShareRequest(BaseModel):
+    id: str
+    requester_prefix: str
+    cluster_name: str
+    cluster_arn: str
+    owner_prefix: str
+    status: ClusterShareRequestStatus
+    created_at: str
+    updated_at: str
+
+
+class SharedCluster(BaseModel):
+    cluster_name: str
+    cluster_arn: str
+    owner_prefix: str
+    shared_at: str
+
+
+class EKSClusterInfo(BaseModel):
+    name: str
+    arn: str
+    status: str
+    owner_prefix: Optional[str] = None

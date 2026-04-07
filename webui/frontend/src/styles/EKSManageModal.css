@@ -154,7 +154,83 @@
 .eks-presets-toolbar {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
   margin-bottom: 16px;
+}
+
+.eks-preset-source-toggle {
+  display: flex;
+  gap: 2px;
+  margin-right: auto;
+  background: var(--bg-secondary);
+  border-radius: 6px;
+  padding: 2px;
+  border: 1px solid var(--border-color);
+}
+
+.eks-preset-source-toggle button {
+  padding: 5px 14px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.eks-preset-source-toggle button.active {
+  background: var(--primary-color);
+  color: white;
+}
+
+.eks-preset-source-toggle button:hover:not(.active) {
+  color: var(--text-primary);
+}
+
+.eks-connected-user-select {
+  padding: 5px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  margin-left: 8px;
+}
+
+.eks-shared-preset-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+}
+
+.eks-shared-preset-item {
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.eks-shared-preset-item:hover {
+  border-color: var(--primary-color);
+}
+
+.eks-shared-preset-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.eks-shared-preset-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
 }
 
 .eks-btn-create {
