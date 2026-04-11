@@ -11,6 +11,7 @@ if not os.environ.get("AWS_PROFILE", "").strip():
 
 from app.routes import terraform, ssh, backend, keys, danger_zone, eks_manage, ecs_manage, cluster_share
 from app.services.credential_manager import credential_manager
+from app.middleware.guardrails import GuardrailMiddleware
 
 log_level = os.environ.get('LOG_LEVEL', 'INFO').upper()
 logging.basicConfig(
@@ -39,6 +40,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_middleware(GuardrailMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
