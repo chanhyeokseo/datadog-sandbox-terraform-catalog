@@ -57,6 +57,12 @@ class DogSTACClient:
                 "output": "\n".join(output_lines),
             }
 
+    async def delete(self, path: str) -> dict:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.delete(self._url(path), headers=MCP_HEADERS)
+            resp.raise_for_status()
+            return resp.json()
+
     async def stream_get(self, path: str, **params) -> dict:
         return await self.consume_stream("GET", path, params=params)
 
