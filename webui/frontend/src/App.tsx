@@ -151,6 +151,10 @@ function App() {
       try {
         const configStatus = await api.getConfigOnboardingStatus();
         if (cancelled) return;
+        if (configStatus.credential_expired) {
+          setCredentialError({ type: 'expired', ssoConfigured: true });
+          return;
+        }
         const hasUnfilledStep = configStatus.steps?.some((s: { filled: boolean }) => !s.filled) ?? false;
         if (configStatus.config_onboarding_required && hasUnfilledStep) {
           navigate('/onboarding', { replace: true });

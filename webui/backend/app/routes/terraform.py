@@ -11,6 +11,7 @@ import re
 import time
 import boto3
 from botocore.exceptions import ClientError, ProfileNotFound
+from app.services.config_manager import CredentialExpiredError
 
 from app.models.schemas import (
     ResourceStatus,
@@ -567,6 +568,14 @@ def _get_config_onboarding_status():
 async def get_config_onboarding_status():
     try:
         return _get_config_onboarding_status()
+    except CredentialExpiredError:
+        logger.warning("SSO credentials expired during config-status check")
+        return {
+            "config_onboarding_required": False,
+            "credential_expired": True,
+            "phases": [],
+            "steps": [],
+        }
     except Exception as e:
         logger.exception("Error in get_config_onboarding_status: %s", e)
         return {"config_onboarding_required": True, "phases": [], "steps": []}

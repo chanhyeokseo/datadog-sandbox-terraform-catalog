@@ -79,6 +79,7 @@ export interface ConfigOnboardingPhase {
 
 export interface ConfigOnboardingStatus {
   config_onboarding_required: boolean;
+  credential_expired?: boolean;
   phases: ConfigOnboardingPhase[];
   steps: ConfigOnboardingStep[];
 }

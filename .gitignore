@@ -108,6 +108,7 @@ tmp/
 *.temp
 *.bak
 *.backup
+.cursor/
 
 # ============================================
 # Project Specific

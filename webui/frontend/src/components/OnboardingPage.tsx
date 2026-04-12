@@ -142,6 +142,11 @@ function OnboardingPage() {
     } catch (_) {}
     try {
       const data = await terraformApi.getConfigOnboardingStatus();
+      if (data.credential_expired) {
+        setCredentialError({ command: 'aws sso login', ssoConfigured: true });
+        setLoading(false);
+        return;
+      }
       if (!data.config_onboarding_required) {
         window.location.replace('/');
         return;
