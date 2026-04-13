@@ -20,7 +20,13 @@ mcp = FastMCP(
         "DogSTAC MCP server provides tools to manage AWS infrastructure "
         "(EC2, EKS, ECS) via Terraform, deploy Datadog agents, execute SSH commands, "
         "and manage security groups. All infrastructure operations go through the "
-        "DogSTAC backend API."
+        "DogSTAC backend API. "
+        "For EKS, prefer a declarative approach: define Kubernetes resources, including "
+        "Secrets and ConfigMaps, in manifest YAML stored in EKS presets rather than "
+        "imperative one-off commands such as kubectl create secret. Manage workloads "
+        "primarily through the preset lifecycle (create_eks_preset, update_eks_preset_file, "
+        "deploy_eks_preset, update_eks_preset deploy_commands) instead of ad-hoc cluster "
+        "mutations when avoidable."
     ),
 )
 client = DogSTACClient()

@@ -30,6 +30,9 @@ def register(mcp: FastMCP, client: DogSTACClient):
     async def deploy_eks_preset(preset_name: str) -> str:
         """Deploy an EKS preset to the cluster (e.g. agent-helm, nginx, redis).
 
+        Prefer this over imperative kubectl for applying changes: manifests live in the
+        preset and deploy_commands apply them declaratively.
+
         If the preset does not exist, create it first with create_eks_preset.
         """
         result = await client.stream_post(f"/api/terraform/eks/manage/presets/{preset_name}/deploy")
@@ -48,9 +51,10 @@ def register(mcp: FastMCP, client: DogSTACClient):
         Allowed binaries: kubectl, helm, istioctl, kustomize (alias: k -> kubectl).
         Shell operators (|, &&, ;, etc.) are forbidden.
 
-        IMPORTANT: Do NOT use this tool to deploy workloads (kubectl apply/create).
-        Instead, use create_eks_preset to create a reusable preset, then deploy_eks_preset.
-        This ensures all deployments are reproducible and manageable via the preset system.
+        IMPORTANT: Do NOT use this tool to deploy workloads (kubectl apply/create) or
+        to define cluster state imperatively (e.g. kubectl create secret). Put Secrets and
+        other resources in preset manifest files, then use create_eks_preset or
+        update_eks_preset_file and deploy_eks_preset.
 
         Use this tool for: get, describe, logs, exec, top, rollout status, etc.
 
@@ -91,6 +95,8 @@ def register(mcp: FastMCP, client: DogSTACClient):
 
         This is the recommended way to deploy any workload to EKS.
         Workflow: create_eks_preset -> deploy_eks_preset -> verify with run_kubectl.
+        Define Secrets, ConfigMaps, and workloads declaratively in files (e.g. secret.yaml)
+        instead of kubectl create secret or similar imperative commands.
 
         Args:
             preset_name: Unique name (alphanumeric, hyphens, underscores, dots).

@@ -451,13 +451,9 @@ class CredentialManager:
             if sso_config:
                 cache_path = self._get_sso_cache_path(sso_config)
                 if cache_path.exists():
-                    with open(cache_path, "r") as f:
-                        data = json.load(f)
-                    data["expiresAt"] = "2020-01-01T00:00:00Z"
-                    with open(cache_path, "w") as f:
-                        json.dump(data, f)
-                    result["actions"].append(f"sso_cache_expired: {cache_path}")
-                    logger.warning(f"[DEBUG] SSO cache token expired at {cache_path}")
+                    cache_path.unlink()
+                    result["actions"].append(f"sso_cache_deleted: {cache_path}")
+                    logger.warning(f"[DEBUG] SSO cache file deleted at {cache_path}")
                 else:
                     result["actions"].append("sso_cache_not_found")
             else:

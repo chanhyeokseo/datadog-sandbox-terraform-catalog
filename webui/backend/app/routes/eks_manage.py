@@ -38,6 +38,44 @@ _deploy_lock = asyncio.Lock()
 _TEMPLATE_RE = re.compile(r'\{\{(\w+)\}\}')
 
 
+def _credential_health_usable(health: Dict) -> bool:
+    return health.get("status") in ("valid", "expiring_soon")
+
+
+async def _eks_aws_credentials_error_message() -> Optional[str]:
+    health = await asyncio.to_thread(credential_manager.get_credential_health)
+    logger.debug("EKS credential check: status=%s", health.get("status"))
+
+    if _credential_health_usable(health):
+        return None
+
+    refreshed = await asyncio.to_thread(credential_manager.try_refresh_credentials)
+    if not refreshed:
+        logger.warning("EKS action blocked: credentials unusable and refresh failed (status=%s)", health.get("status"))
+        return _build_credential_error(health)
+
+    health = await asyncio.to_thread(credential_manager.get_credential_health)
+    if _credential_health_usable(health):
+        logger.info("EKS credentials refreshed successfully via SSO")
+        return None
+
+    logger.warning("EKS action blocked: credentials still unusable after refresh (status=%s)", health.get("status"))
+    return _build_credential_error(health)
+
+
+def _build_credential_error(health: Dict) -> str:
+    aws_profile = credential_manager.get_aws_profile()
+    sso_command = f"aws sso login --profile={aws_profile}" if aws_profile else "aws sso login"
+    logger.warning(
+        "EKS action blocked: AWS credentials unusable (status=%s)",
+        health.get("status"),
+    )
+    return (
+        f"Error: AWS credentials are missing or expired. Run '{sso_command}' and retry, "
+        "or complete SSO login in DogSTAC.\n"
+    )
+
+
 def _resolve_template_vars(command: str) -> str:
     root_tfvars = parser._read_tfvars_to_map(Path(TERRAFORM_DIR) / "terraform.tfvars")
     sensitive_vars = parser.config_manager.load_all_sensitive_variables()
@@ -223,11 +261,22 @@ async def _setup_kubeconfig(resource_id: Optional[str], resource_dir: Optional[P
                 lines.append("Error: Failed to configure kubeconfig\n")
                 lines.append(f"{EXIT_SENTINEL_PREFIX}1\n")
                 return False, lines
+            return True, lines
         else:
-            lines.append("Warning: Could not resolve cluster name from outputs. Using existing kubeconfig.\n")
+            lines.append(
+                "Error: Could not resolve EKS cluster name from Terraform outputs. "
+                "Ensure the eks_cluster instance applied successfully and outputs exist, then retry.\n"
+            )
+            lines.append(f"{EXIT_SENTINEL_PREFIX}1\n")
+            logger.warning("EKS kubeconfig setup aborted: missing cluster_name in terraform outputs")
+            return False, lines
     else:
-        lines.append("Warning: EKS resource not found. Using existing kubeconfig.\n")
-    return True, lines
+        lines.append(
+            "Error: No EKS Terraform instance directory found. Cannot configure kubectl for this workspace.\n"
+        )
+        lines.append(f"{EXIT_SENTINEL_PREFIX}1\n")
+        logger.warning("EKS kubeconfig setup aborted: no EKS resource directory")
+        return False, lines
 
 
 async def _stream_shell(cmd_str: str, cwd: str = None) -> AsyncIterator[str]:
@@ -575,6 +624,12 @@ async def _stream_action(action_label: str, name: str, commands: List[str],
                          on_success=None,
                          explicit_cluster_name: Optional[str] = None,
                          owner_prefix: Optional[str] = None) -> AsyncIterator[str]:
+    cred_err = await _eks_aws_credentials_error_message()
+    if cred_err:
+        yield cred_err
+        yield f"{EXIT_SENTINEL_PREFIX}1\n"
+        return
+
     yield f"=== EKS Preset {action_label} ===\n"
     yield f"Preset: {name}\n\n"
 
@@ -760,6 +815,12 @@ async def run_kubectl(body: dict = Body(...)):
     resource_id, resource_dir = _get_eks_resource_info()
 
     async def _stream():
+        cred_err = await _eks_aws_credentials_error_message()
+        if cred_err:
+            yield cred_err
+            yield f"{EXIT_SENTINEL_PREFIX}1\n"
+            return
+
         ok, lines = await _setup_kubeconfig(resource_id, resource_dir,
                                              explicit_cluster_name=cluster_name)
         for line in lines:

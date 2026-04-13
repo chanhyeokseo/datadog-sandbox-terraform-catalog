@@ -39,7 +39,8 @@ override.tf.json
 *.iws
 
 # VS Code
-.vscode/
+.vscode/*
+!.vscode/settings.json
 *.code-workspace
 
 # Vim

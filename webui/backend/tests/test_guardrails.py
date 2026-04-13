@@ -7,6 +7,7 @@ from app.middleware.guardrails import (
     GuardrailMiddleware,
     MCP_SOURCE_HEADER,
     MCP_SOURCE_VALUE,
+    MCP_READONLY_VARIABLES,
     ALLOWED_INSTANCE_TYPES,
     MAX_NODE_COUNT,
     NODE_COUNT_VARIABLES,
@@ -166,12 +167,41 @@ class TestNodeCountGuardrail:
         assert "Invalid integer" in resp.json()["detail"]
 
 
+class TestReadonlyVariableGuardrail:
+
+    @pytest.mark.parametrize("var_name", sorted(MCP_READONLY_VARIABLES))
+    def test_mcp_readonly_variable_blocked(self, client, var_name):
+        resp = client.put(
+            f"/api/terraform/variables/{var_name}",
+            json={"value": "anything"},
+            headers=MCP_HEADERS,
+        )
+        assert resp.status_code == 403
+        assert "read-only" in resp.json()["detail"]
+
+    @pytest.mark.parametrize("var_name", ["name_prefix", "vpc_id", "datadog_api_key"])
+    def test_webui_readonly_variable_allowed(self, client, var_name):
+        resp = client.put(
+            f"/api/terraform/variables/{var_name}",
+            json={"value": "anything"},
+        )
+        assert resp.status_code == 200
+
+    def test_mcp_readonly_resource_level_also_blocked(self, client):
+        resp = client.put(
+            "/api/terraform/resources/ec2_basic/variables/name_prefix",
+            json={"value": "new-prefix"},
+            headers=MCP_HEADERS,
+        )
+        assert resp.status_code == 403
+
+
 class TestUnrelatedVariablesPassThrough:
 
     def test_mcp_other_variable_allowed(self, client):
         resp = client.put(
-            "/api/terraform/variables/region",
-            json={"value": "us-east-1"},
+            "/api/terraform/variables/ec2_root_volume_size",
+            json={"value": "30"},
             headers=MCP_HEADERS,
         )
         assert resp.status_code == 200

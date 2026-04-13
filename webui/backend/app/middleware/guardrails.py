@@ -19,6 +19,21 @@ NODE_COUNT_VARIABLES = {
     "ec2_max_size",
 }
 
+MCP_READONLY_VARIABLES = {
+    "name_prefix",
+    "creator",
+    "team",
+    "region",
+    "vpc_id",
+    "public_subnet_id",
+    "public_subnet2_id",
+    "private_subnet_id",
+    "ec2_key_name",
+    "datadog_api_key",
+    "aws_access_key_id",
+    "aws_secret_access_key",
+}
+
 SG_RULES_PATH = "/api/terraform/security-group/rules"
 
 VARIABLE_PATH_RE = re.compile(
@@ -69,6 +84,13 @@ class GuardrailMiddleware(BaseHTTPMiddleware):
         value = data.get("value")
         if value is None:
             return None
+
+        if var_name in MCP_READONLY_VARIABLES:
+            return (
+                f"Variable '{var_name}' is read-only for MCP clients. "
+                "These variables are configured during onboarding and must not be "
+                "changed via MCP. Use the DogSTAC Web UI to modify them if needed."
+            )
 
         if var_name == "ec2_instance_type":
             if str(value) not in ALLOWED_INSTANCE_TYPES:

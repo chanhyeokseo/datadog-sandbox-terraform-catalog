@@ -48,6 +48,10 @@ def register(mcp: FastMCP, client: DogSTACClient):
         Guardrails enforced by the backend for MCP requests:
         - ec2_instance_type: only t3.micro or t3.medium allowed
         - node_desired_size, node_max_size, ec2_desired_capacity, ec2_max_size: max 3
+        - Read-only (cannot be changed via MCP): name_prefix, creator, team, region,
+          vpc_id, public_subnet_id, public_subnet2_id, private_subnet_id,
+          ec2_key_name, datadog_api_key, aws_access_key_id, aws_secret_access_key.
+          These are set during onboarding and must be changed via the DogSTAC Web UI.
         """
         body = {"value": value}
         if resource_id:
