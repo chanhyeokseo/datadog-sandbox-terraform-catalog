@@ -89,10 +89,6 @@ $RECYCLE.BIN/
 .env
 .env.local
 
-# AWS credentials
-*credentials*
-*secret*
-
 # ============================================
 # Logs and Temporary Files
 # ============================================
