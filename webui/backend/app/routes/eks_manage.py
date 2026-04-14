@@ -238,16 +238,33 @@ def _configure_kubeconfig(cluster_name: str, region: str) -> tuple[bool, str]:
         return False, str(e)
 
 
+def _read_kubeconfig_context() -> Optional[str]:
+    try:
+        if KUBECONFIG_PATH.exists() and KUBECONFIG_PATH.stat().st_size > 0:
+            data = json.loads(KUBECONFIG_PATH.read_text())
+            return data.get("current-context")
+    except Exception:
+        pass
+    return None
+
+
 async def _setup_kubeconfig(resource_id: Optional[str], resource_dir: Optional[Path],
                             force: bool = False,
                             explicit_cluster_name: Optional[str] = None) -> tuple[bool, list[str]]:
     lines = []
 
-    if not force and not explicit_cluster_name and KUBECONFIG_PATH.exists() and KUBECONFIG_PATH.stat().st_size > 0:
+    if not force and KUBECONFIG_PATH.exists() and KUBECONFIG_PATH.stat().st_size > 0:
         age = time.time() - KUBECONFIG_PATH.stat().st_mtime
         if age < TOKEN_EXPIRY_SECONDS:
-            return True, lines
-        logger.debug("Kubeconfig token expired (age=%.0fs), refreshing", age)
+            cached_context = _read_kubeconfig_context()
+            if explicit_cluster_name:
+                if cached_context == explicit_cluster_name:
+                    logger.debug("Reusing cached kubeconfig for shared cluster %s", explicit_cluster_name)
+                    return True, lines
+            elif cached_context:
+                return True, lines
+        else:
+            logger.debug("Kubeconfig token expired (age=%.0fs), refreshing", age)
 
     if explicit_cluster_name:
         region = os.environ.get("AWS_REGION", "ap-northeast-2")
