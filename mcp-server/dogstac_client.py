@@ -66,5 +66,5 @@ class DogSTACClient:
     async def stream_get(self, path: str, **params) -> dict:
         return await self.consume_stream("GET", path, params=params)
 
-    async def stream_post(self, path: str, json_body: dict | None = None) -> dict:
-        return await self.consume_stream("POST", path, json=json_body)
+    async def stream_post(self, path: str, json_body: dict | None = None, params: dict | None = None) -> dict:
+        return await self.consume_stream("POST", path, json=json_body, params=params)

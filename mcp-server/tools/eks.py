@@ -5,15 +5,59 @@ from dogstac_client import DogSTACClient
 DEPLOYMENT_ACTIONS = ("list", "deploy", "undeploy")
 
 
+def _shared_params(cluster_name: str | None, owner_prefix: str | None) -> dict | None:
+    params = {}
+    if cluster_name:
+        params["cluster_name"] = cluster_name
+    if owner_prefix:
+        params["owner_prefix"] = owner_prefix
+    return params or None
+
+
 def register(mcp: FastMCP, client: DogSTACClient):
     @mcp.tool()
-    async def get_eks_preset_info(preset_name: str = "", filename: str = "") -> str:
+    async def list_shared_clusters() -> str:
+        """List shared EKS clusters that have been approved for your use.
+
+        Returns clusters shared by other users, including cluster name, ARN, and owner prefix.
+        Use the returned owner_prefix and cluster_name with other EKS tools to operate on shared clusters.
+        """
+        data = await client.get("/api/cluster-share/shared")
+        return json.dumps(data, indent=2)
+
+    @mcp.tool()
+    async def get_eks_preset_info(preset_name: str = "", filename: str = "",
+                                  owner_prefix: str = "") -> str:
         """Get EKS preset information.
 
         - No args: List all available presets (Datadog Agent, nginx, redis, etc.).
         - preset_name only: Get preset details including deploy/undeploy commands and files.
         - preset_name + filename: Get the content of a specific file in the preset.
+        - owner_prefix: When provided, reads presets from the shared cluster owner's repository.
         """
+        if owner_prefix:
+            if not preset_name:
+                data = await client.get("/api/terraform/eks/manage/shared-presets",
+                                        owner_prefix=owner_prefix)
+                presets = data.get("presets", data) if isinstance(data, dict) else data
+                return json.dumps([
+                    {
+                        "name": p.get("name"),
+                        "description": p.get("description"),
+                        "type": p.get("type"),
+                        "built_in": p.get("built_in"),
+                    }
+                    for p in presets
+                ], indent=2)
+            if filename:
+                data = await client.get(
+                    f"/api/terraform/eks/manage/shared-presets/{preset_name}/files/{filename}",
+                    owner_prefix=owner_prefix)
+                return json.dumps(data, indent=2)
+            data = await client.get(f"/api/terraform/eks/manage/shared-presets/{preset_name}",
+                                    owner_prefix=owner_prefix)
+            return json.dumps(data, indent=2)
+
         if not preset_name:
             data = await client.get("/api/terraform/eks/manage/presets")
             presets = data.get("presets", data) if isinstance(data, dict) else data
@@ -35,7 +79,9 @@ def register(mcp: FastMCP, client: DogSTACClient):
         return json.dumps(data, indent=2)
 
     @mcp.tool()
-    async def manage_eks_deployment(action: str, preset_name: str = "") -> str:
+    async def manage_eks_deployment(action: str, preset_name: str = "",
+                                    cluster_name: str = "",
+                                    owner_prefix: str = "") -> str:
         """Manage EKS preset deployments.
 
         Args:
@@ -44,22 +90,31 @@ def register(mcp: FastMCP, client: DogSTACClient):
                 - deploy: Deploy a preset. Prefer this over imperative kubectl apply.
                 - undeploy: Remove a deployed preset from the cluster.
             preset_name: Required for deploy/undeploy.
+            cluster_name: Target shared cluster name. Use with owner_prefix for shared clusters.
+            owner_prefix: Owner of the shared cluster. Use with cluster_name for shared clusters.
         """
         if action not in DEPLOYMENT_ACTIONS:
             return json.dumps({"error": f"Invalid action '{action}'. Must be one of: {', '.join(DEPLOYMENT_ACTIONS)}"})
 
         if action == "list":
-            data = await client.get("/api/terraform/eks/manage/deployments")
+            if owner_prefix:
+                data = await client.get("/api/terraform/eks/manage/shared-deployments",
+                                        owner_prefix=owner_prefix)
+            else:
+                data = await client.get("/api/terraform/eks/manage/deployments")
             return json.dumps(data, indent=2)
 
         if not preset_name:
             return json.dumps({"error": f"preset_name is required for '{action}'"})
 
-        result = await client.stream_post(f"/api/terraform/eks/manage/presets/{preset_name}/{action}")
+        result = await client.stream_post(
+            f"/api/terraform/eks/manage/presets/{preset_name}/{action}",
+            params=_shared_params(cluster_name, owner_prefix),
+        )
         return json.dumps(result, indent=2)
 
     @mcp.tool()
-    async def run_kubectl(command: str) -> str:
+    async def run_kubectl(command: str, cluster_name: str = "") -> str:
         """Execute a kubectl or helm command on the EKS cluster (read/debug operations).
 
         Allowed binaries: kubectl, helm, istioctl, kustomize (alias: k -> kubectl).
@@ -72,11 +127,19 @@ def register(mcp: FastMCP, client: DogSTACClient):
 
         Use this tool for: get, describe, logs, exec, top, rollout status, etc.
 
+        Args:
+            command: The kubectl/helm command to execute.
+            cluster_name: Target shared cluster name. When provided, runs against the shared cluster
+                instead of the user's own cluster.
+
         Examples: "kubectl get pods -A", "helm list -A", "kubectl logs deploy/nginx"
         """
+        body = {"command": command}
+        if cluster_name:
+            body["cluster_name"] = cluster_name
         result = await client.stream_post(
             "/api/terraform/eks/manage/kubectl",
-            {"command": command},
+            body,
         )
         return result.get("output", json.dumps(result, indent=2))
 

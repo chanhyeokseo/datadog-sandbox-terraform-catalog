@@ -111,6 +111,8 @@ const EKSManageModal = ({ onClose, connectInfo, sharedClusterName, sharedOwnerPr
   const [cmdSaving, setCmdSaving] = useState(false);
 
   const [deployPreset, setDeployPreset] = useState<string>('');
+  const deployPresetRef = useRef(deployPreset);
+  deployPresetRef.current = deployPreset;
   const [deployLog, setDeployLog] = useState<string>('');
   const [deploying, setDeploying] = useState(false);
   const [deployStatus, setDeployStatus] = useState<'idle' | 'running' | 'success' | 'error'>('idle');
@@ -172,7 +174,7 @@ const EKSManageModal = ({ onClose, connectInfo, sharedClusterName, sharedOwnerPr
       presetsMap.current = Object.fromEntries(list.map(p => [p.name, p]));
       const saved = localStorage.getItem(STORAGE_KEY);
       const fallback = saved && list.some(p => p.name === saved) ? saved : list[0]?.name || '';
-      if (!deployPreset) setDeployPreset(fallback);
+      if (!deployPresetRef.current) setDeployPreset(fallback);
       try {
         const layout = await eksManageApi.getLayout();
         setTreeLayout(layout);
@@ -183,7 +185,7 @@ const EKSManageModal = ({ onClose, connectInfo, sharedClusterName, sharedOwnerPr
     } finally {
       setLoadingPresets(false);
     }
-  }, [deployPreset, loadDeployments]);
+  }, [loadDeployments]);
 
   useEffect(() => {
     loadPresets();
