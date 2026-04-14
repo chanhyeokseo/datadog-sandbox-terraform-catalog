@@ -2,53 +2,64 @@ import json
 from mcp.server.fastmcp import FastMCP
 from dogstac_client import DogSTACClient
 
+PRESET_ACTIONS = ("list", "deploy", "undeploy")
+STATUS_TYPES = ("cluster", "workloads", "instances")
+STATUS_ENDPOINTS = {
+    "cluster": "/api/terraform/ecs/manage/cluster-status",
+    "workloads": "/api/terraform/ecs/manage/has-active-workloads",
+    "instances": "/api/terraform/ecs/manage/container-instances",
+}
+
 
 def register(mcp: FastMCP, client: DogSTACClient):
     @mcp.tool()
-    async def list_ecs_presets() -> str:
-        """List available ECS presets (Datadog Agent, nginx, redis, etc.)."""
-        data = await client.get("/api/terraform/ecs/manage/presets")
-        presets = data.get("presets", data) if isinstance(data, dict) else data
-        summary = [
-            {
-                "name": p.get("name"),
-                "description": p.get("description"),
-                "type": p.get("type"),
-                "built_in": p.get("built_in"),
-            }
-            for p in presets
-        ]
-        return json.dumps(summary, indent=2)
+    async def get_ecs_status(info_type: str = "cluster") -> str:
+        """Get ECS cluster information.
+
+        Args:
+            info_type: One of "cluster", "workloads", "instances".
+                - cluster: Cluster status (name, ARN, region).
+                - workloads: Active services, running tasks, and deployed presets.
+                - instances: EC2 container instances (IDs, IPs, state, type).
+        """
+        if info_type not in STATUS_TYPES:
+            return json.dumps({"error": f"Invalid info_type '{info_type}'. Must be one of: {', '.join(STATUS_TYPES)}"})
+
+        data = await client.get(STATUS_ENDPOINTS[info_type])
+        return json.dumps(data, indent=2)
 
     @mcp.tool()
-    async def deploy_ecs_preset(preset_name: str) -> str:
-        """Deploy an ECS preset to the cluster (uses boto3 to register task definitions and create services)."""
-        result = await client.stream_post(f"/api/terraform/ecs/manage/presets/{preset_name}/deploy")
+    async def manage_ecs_preset(action: str, preset_name: str = "") -> str:
+        """Manage ECS presets.
+
+        Args:
+            action: One of "list", "deploy", "undeploy".
+                - list: List available presets (Datadog Agent, nginx, redis, etc.).
+                - deploy: Deploy a preset (registers task definitions and creates services).
+                - undeploy: Undeploy a preset (scales down, deletes service, deregisters tasks).
+            preset_name: Required for deploy/undeploy.
+        """
+        if action not in PRESET_ACTIONS:
+            return json.dumps({"error": f"Invalid action '{action}'. Must be one of: {', '.join(PRESET_ACTIONS)}"})
+
+        if action == "list":
+            data = await client.get("/api/terraform/ecs/manage/presets")
+            presets = data.get("presets", data) if isinstance(data, dict) else data
+            return json.dumps([
+                {
+                    "name": p.get("name"),
+                    "description": p.get("description"),
+                    "type": p.get("type"),
+                    "built_in": p.get("built_in"),
+                }
+                for p in presets
+            ], indent=2)
+
+        if not preset_name:
+            return json.dumps({"error": f"preset_name is required for '{action}'"})
+
+        result = await client.stream_post(f"/api/terraform/ecs/manage/presets/{preset_name}/{action}")
         return json.dumps(result, indent=2)
-
-    @mcp.tool()
-    async def undeploy_ecs_preset(preset_name: str) -> str:
-        """Undeploy an ECS preset from the cluster (scales down, deletes service, deregisters task definitions)."""
-        result = await client.stream_post(f"/api/terraform/ecs/manage/presets/{preset_name}/undeploy")
-        return json.dumps(result, indent=2)
-
-    @mcp.tool()
-    async def get_ecs_cluster_status() -> str:
-        """Get ECS cluster status (name, ARN, region)."""
-        data = await client.get("/api/terraform/ecs/manage/cluster-status")
-        return json.dumps(data, indent=2)
-
-    @mcp.tool()
-    async def get_ecs_active_workloads() -> str:
-        """Get active ECS workloads including services, running tasks, and deployed presets."""
-        data = await client.get("/api/terraform/ecs/manage/has-active-workloads")
-        return json.dumps(data, indent=2)
-
-    @mcp.tool()
-    async def get_ecs_container_instances() -> str:
-        """Get EC2 container instances in the ECS cluster (instance IDs, IPs, state, type)."""
-        data = await client.get("/api/terraform/ecs/manage/container-instances")
-        return json.dumps(data, indent=2)
 
     @mcp.tool()
     async def run_ecs_command(command: str) -> str:

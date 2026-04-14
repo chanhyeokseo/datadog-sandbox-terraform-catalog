@@ -2,46 +2,60 @@ import json
 from mcp.server.fastmcp import FastMCP
 from dogstac_client import DogSTACClient
 
+DEPLOYMENT_ACTIONS = ("list", "deploy", "undeploy")
+
 
 def register(mcp: FastMCP, client: DogSTACClient):
     @mcp.tool()
-    async def list_eks_presets() -> str:
-        """List available EKS presets (Datadog Agent, nginx, redis, etc.)."""
-        data = await client.get("/api/terraform/eks/manage/presets")
-        presets = data.get("presets", data) if isinstance(data, dict) else data
-        summary = [
-            {
-                "name": p.get("name"),
-                "description": p.get("description"),
-                "type": p.get("type"),
-                "built_in": p.get("built_in"),
-            }
-            for p in presets
-        ]
-        return json.dumps(summary, indent=2)
+    async def get_eks_preset_info(preset_name: str = "", filename: str = "") -> str:
+        """Get EKS preset information.
 
-    @mcp.tool()
-    async def get_eks_preset_details(preset_name: str) -> str:
-        """Get detailed info about an EKS preset including deploy/undeploy commands and files."""
+        - No args: List all available presets (Datadog Agent, nginx, redis, etc.).
+        - preset_name only: Get preset details including deploy/undeploy commands and files.
+        - preset_name + filename: Get the content of a specific file in the preset.
+        """
+        if not preset_name:
+            data = await client.get("/api/terraform/eks/manage/presets")
+            presets = data.get("presets", data) if isinstance(data, dict) else data
+            return json.dumps([
+                {
+                    "name": p.get("name"),
+                    "description": p.get("description"),
+                    "type": p.get("type"),
+                    "built_in": p.get("built_in"),
+                }
+                for p in presets
+            ], indent=2)
+
+        if filename:
+            data = await client.get(f"/api/terraform/eks/manage/presets/{preset_name}/files/{filename}")
+            return json.dumps(data, indent=2)
+
         data = await client.get(f"/api/terraform/eks/manage/presets/{preset_name}")
         return json.dumps(data, indent=2)
 
     @mcp.tool()
-    async def deploy_eks_preset(preset_name: str) -> str:
-        """Deploy an EKS preset to the cluster (e.g. agent-helm, nginx, redis).
+    async def manage_eks_deployment(action: str, preset_name: str = "") -> str:
+        """Manage EKS preset deployments.
 
-        Prefer this over imperative kubectl for applying changes: manifests live in the
-        preset and deploy_commands apply them declaratively.
-
-        If the preset does not exist, create it first with create_eks_preset.
+        Args:
+            action: One of "list", "deploy", "undeploy".
+                - list: Get currently deployed presets (preset_name not required).
+                - deploy: Deploy a preset. Prefer this over imperative kubectl apply.
+                - undeploy: Remove a deployed preset from the cluster.
+            preset_name: Required for deploy/undeploy.
         """
-        result = await client.stream_post(f"/api/terraform/eks/manage/presets/{preset_name}/deploy")
-        return json.dumps(result, indent=2)
+        if action not in DEPLOYMENT_ACTIONS:
+            return json.dumps({"error": f"Invalid action '{action}'. Must be one of: {', '.join(DEPLOYMENT_ACTIONS)}"})
 
-    @mcp.tool()
-    async def undeploy_eks_preset(preset_name: str) -> str:
-        """Undeploy an EKS preset from the cluster."""
-        result = await client.stream_post(f"/api/terraform/eks/manage/presets/{preset_name}/undeploy")
+        if action == "list":
+            data = await client.get("/api/terraform/eks/manage/deployments")
+            return json.dumps(data, indent=2)
+
+        if not preset_name:
+            return json.dumps({"error": f"preset_name is required for '{action}'"})
+
+        result = await client.stream_post(f"/api/terraform/eks/manage/presets/{preset_name}/{action}")
         return json.dumps(result, indent=2)
 
     @mcp.tool()
@@ -54,7 +68,7 @@ def register(mcp: FastMCP, client: DogSTACClient):
         IMPORTANT: Do NOT use this tool to deploy workloads (kubectl apply/create) or
         to define cluster state imperatively (e.g. kubectl create secret). Put Secrets and
         other resources in preset manifest files, then use create_eks_preset or
-        update_eks_preset_file and deploy_eks_preset.
+        update_eks_preset and manage_eks_deployment.
 
         Use this tool for: get, describe, logs, exec, top, rollout status, etc.
 
@@ -65,21 +79,6 @@ def register(mcp: FastMCP, client: DogSTACClient):
             {"command": command},
         )
         return result.get("output", json.dumps(result, indent=2))
-
-    @mcp.tool()
-    async def get_eks_deployments() -> str:
-        """Get list of currently deployed EKS presets."""
-        data = await client.get("/api/terraform/eks/manage/deployments")
-        return json.dumps(data, indent=2)
-
-    @mcp.tool()
-    async def get_eks_preset_file(preset_name: str, filename: str) -> str:
-        """Get the content of a specific file in an EKS preset.
-
-        Examples: get_eks_preset_file("redis", "deployment.yaml")
-        """
-        data = await client.get(f"/api/terraform/eks/manage/presets/{preset_name}/files/{filename}")
-        return json.dumps(data, indent=2)
 
     @mcp.tool()
     async def create_eks_preset(
@@ -94,7 +93,7 @@ def register(mcp: FastMCP, client: DogSTACClient):
         """Create a new EKS preset with manifest and files.
 
         This is the recommended way to deploy any workload to EKS.
-        Workflow: create_eks_preset -> deploy_eks_preset -> verify with run_kubectl.
+        Workflow: create_eks_preset -> manage_eks_deployment(deploy) -> verify with run_kubectl.
         Define Secrets, ConfigMaps, and workloads declaratively in files (e.g. secret.yaml)
         instead of kubectl create secret or similar imperative commands.
 
@@ -136,16 +135,37 @@ def register(mcp: FastMCP, client: DogSTACClient):
     @mcp.tool()
     async def update_eks_preset(
         preset_name: str,
+        filename: str = "",
+        content: str = "",
         description: str | None = None,
         preset_type: str | None = None,
         deploy_commands: list[str] | None = None,
         update_commands: list[str] | None = None,
         undeploy_commands: list[str] | None = None,
     ) -> str:
-        """Update an EKS preset manifest (non built-in only).
+        """Update an EKS preset manifest or file (non built-in only).
 
-        Only provided fields are updated; omitted fields remain unchanged.
+        Two modes:
+        - File mode (filename + content): Create or update a specific file in the preset.
+        - Manifest mode (no filename): Update preset metadata. Only provided fields are changed.
+
+        Args:
+            preset_name: The preset to update.
+            filename: File to create/update (e.g. "deployment.yaml"). Triggers file mode.
+            content: Full file content. Required when filename is provided.
+            description: New description (manifest mode only).
+            preset_type: New type (manifest mode only).
+            deploy_commands: New deploy commands (manifest mode only).
+            update_commands: New update commands (manifest mode only).
+            undeploy_commands: New undeploy commands (manifest mode only).
         """
+        if filename:
+            data = await client.put(
+                f"/api/terraform/eks/manage/presets/{preset_name}/files/{filename}",
+                {"content": content},
+            )
+            return json.dumps(data, indent=2)
+
         body = {}
         if description is not None:
             body["description"] = description
@@ -158,21 +178,6 @@ def register(mcp: FastMCP, client: DogSTACClient):
         if undeploy_commands is not None:
             body["undeploy_commands"] = undeploy_commands
         data = await client.put(f"/api/terraform/eks/manage/presets/{preset_name}", body)
-        return json.dumps(data, indent=2)
-
-    @mcp.tool()
-    async def update_eks_preset_file(preset_name: str, filename: str, content: str) -> str:
-        """Create or update a file in an EKS preset (non built-in only).
-
-        Args:
-            preset_name: The preset to update.
-            filename: File name (e.g. "deployment.yaml", "values.yaml").
-            content: Full file content.
-        """
-        data = await client.put(
-            f"/api/terraform/eks/manage/presets/{preset_name}/files/{filename}",
-            {"content": content},
-        )
         return json.dumps(data, indent=2)
 
     @mcp.tool()

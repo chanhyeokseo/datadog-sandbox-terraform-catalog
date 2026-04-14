@@ -42,25 +42,40 @@ def _credential_health_usable(health: Dict) -> bool:
     return health.get("status") in ("valid", "expiring_soon")
 
 
+def _sso_cache_file_exists() -> bool:
+    sso_config = credential_manager.get_sso_config()
+    if not sso_config:
+        return True
+    return credential_manager._get_sso_cache_path(sso_config).exists()
+
+
 async def _eks_aws_credentials_error_message() -> Optional[str]:
     health = await asyncio.to_thread(credential_manager.get_credential_health)
     logger.debug("EKS credential check: status=%s", health.get("status"))
 
-    if _credential_health_usable(health):
-        return None
-
-    refreshed = await asyncio.to_thread(credential_manager.try_refresh_credentials)
-    if not refreshed:
-        logger.warning("EKS action blocked: credentials unusable and refresh failed (status=%s)", health.get("status"))
-        return _build_credential_error(health)
-
-    health = await asyncio.to_thread(credential_manager.get_credential_health)
-    if _credential_health_usable(health):
+    if not _credential_health_usable(health):
+        refreshed = await asyncio.to_thread(credential_manager.try_refresh_credentials)
+        if not refreshed:
+            logger.warning("EKS action blocked: credentials unusable and refresh failed (status=%s)", health.get("status"))
+            return _build_credential_error(health)
+        health = await asyncio.to_thread(credential_manager.get_credential_health)
+        if not _credential_health_usable(health):
+            logger.warning("EKS action blocked: credentials still unusable after refresh (status=%s)", health.get("status"))
+            return _build_credential_error(health)
         logger.info("EKS credentials refreshed successfully via SSO")
-        return None
 
-    logger.warning("EKS action blocked: credentials still unusable after refresh (status=%s)", health.get("status"))
-    return _build_credential_error(health)
+    if health.get("sso_configured"):
+        cache_exists = await asyncio.to_thread(_sso_cache_file_exists)
+        if not cache_exists:
+            logger.warning("EKS action blocked: SSO cache file missing (logged out)")
+            aws_profile = credential_manager.get_aws_profile()
+            sso_cmd = f"aws sso login --profile={aws_profile}" if aws_profile else "aws sso login"
+            return (
+                "Error: SSO session has been logged out. "
+                f"Run '{sso_cmd}' or complete SSO login in DogSTAC before running EKS operations.\n"
+            )
+
+    return None
 
 
 def _build_credential_error(health: Dict) -> str:

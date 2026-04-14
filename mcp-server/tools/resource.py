@@ -5,24 +5,27 @@ from dogstac_client import DogSTACClient
 
 def register(mcp: FastMCP, client: DogSTACClient):
     @mcp.tool()
-    async def list_resources() -> str:
-        """List all available Terraform resources with their deployment status (enabled/disabled)."""
-        data = await client.get("/api/terraform/resources")
-        resources = data if isinstance(data, list) else data.get("resources", data)
-        summary = []
-        for r in resources:
-            summary.append({
-                "id": r.get("id"),
-                "name": r.get("name"),
-                "type": r.get("type"),
-                "status": r.get("status"),
-                "description": r.get("description"),
-            })
-        return json.dumps(summary, indent=2)
+    async def get_resource_info(resource_id: str = "") -> str:
+        """Get Terraform resource information.
 
-    @mcp.tool()
-    async def get_resource_details(resource_id: str) -> str:
-        """Get detailed info about a resource including its configurable variables and current values."""
+        - No resource_id: List all resources with deployment status.
+        - With resource_id: Get detailed info including configurable variables and current values.
+        """
+        if not resource_id:
+            data = await client.get("/api/terraform/resources")
+            resources = data if isinstance(data, list) else data.get("resources", data)
+            summary = [
+                {
+                    "id": r.get("id"),
+                    "name": r.get("name"),
+                    "type": r.get("type"),
+                    "status": r.get("status"),
+                    "description": r.get("description"),
+                }
+                for r in resources
+            ]
+            return json.dumps(summary, indent=2)
+
         variables = await client.get(f"/api/terraform/resources/{resource_id}/variables")
         try:
             desc_data = await client.get(f"/api/terraform/resources/{resource_id}/description")
