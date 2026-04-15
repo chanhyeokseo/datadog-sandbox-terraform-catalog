@@ -213,13 +213,19 @@ def _build_sts_client():
     return boto3.client("sts", region_name=region)
 
 
+_post_sso_init_complete = True
+
+
 @router.get("/credentials/check")
 async def check_credentials():
+    if not _post_sso_init_complete:
+        return {"valid": True, "initialized": False, "account": "", "arn": ""}
     try:
         sts = _build_sts_client()
         identity = await asyncio.to_thread(sts.get_caller_identity)
         return {
             "valid": True,
+            "initialized": True,
             "account": identity.get("Account", ""),
             "arn": identity.get("Arn", ""),
         }
@@ -243,6 +249,7 @@ async def check_credentials():
                 identity = await asyncio.to_thread(sts.get_caller_identity)
                 return {
                     "valid": True,
+                    "initialized": _post_sso_init_complete,
                     "account": identity.get("Account", ""),
                     "arn": identity.get("Arn", ""),
                 }
@@ -283,12 +290,20 @@ async def sso_login():
 async def sso_status(session_id: str):
     result = await asyncio.to_thread(credential_manager.poll_sso_token, session_id)
     if result.get("status") == "complete":
-        asyncio.create_task(_post_sso_init())
+        await _post_sso_init()
     return result
 
 
 async def _post_sso_init():
-    logger.info("SSO login complete, starting background initialization")
+    global _post_sso_init_complete
+    _post_sso_init_complete = False
+    logger.info("SSO login complete, running post-login initialization")
+    try:
+        from app.init_config import init_from_parameter_store
+        await asyncio.to_thread(init_from_parameter_store)
+        logger.info("Config restored from Parameter Store")
+    except Exception as e:
+        logger.warning("Post-SSO config restore failed: %s", e)
     try:
         await asyncio.to_thread(parser.invalidate_s3_status)
         logger.info("S3 status cache rebuilt")
@@ -306,7 +321,8 @@ async def _post_sso_init():
         logger.info("ECS presets refreshed from S3")
     except Exception as e:
         logger.warning("Post-SSO ECS preset refresh failed: %s", e)
-    logger.info("Post-SSO background initialization complete")
+    _post_sso_init_complete = True
+    logger.info("Post-SSO initialization complete")
 
 
 @router.get("/credentials/health")

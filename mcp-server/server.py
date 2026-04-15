@@ -14,8 +14,14 @@ logging.basicConfig(
     stream=sys.stderr,
 )
 
+MCP_TRANSPORT = os.environ.get("MCP_TRANSPORT", "stdio")
+MCP_HOST = os.environ.get("MCP_HOST", "0.0.0.0")
+MCP_PORT = int(os.environ.get("MCP_PORT", "8080"))
+
 mcp = FastMCP(
     "DogSTAC",
+    host=MCP_HOST,
+    port=MCP_PORT,
     instructions=(
         "DogSTAC MCP server provides tools to manage AWS infrastructure "
         "(EC2, EKS, ECS) via Terraform, deploy Datadog agents, execute SSH commands, "
@@ -40,4 +46,4 @@ eks.register(mcp, client)
 ecs.register(mcp, client)
 
 if __name__ == "__main__":
-    mcp.run(transport="stdio")
+    mcp.run(transport=MCP_TRANSPORT)

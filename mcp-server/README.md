@@ -2,12 +2,56 @@
 
 MCP (Model Context Protocol) server that exposes DogSTAC infrastructure management capabilities to AI clients such as Claude Desktop, Cursor, and other MCP-compatible tools.
 
-## Prerequisites
+## Quick Start (Docker)
+
+The MCP server is bundled inside the `dogstac/tfrunner` container. When you run `docker-compose up`, it automatically starts on port **8080** alongside the backend.
+
+### Connecting to Cursor (Docker — recommended)
+
+```json
+{
+  "mcpServers": {
+    "dogstac": {
+      "url": "http://localhost:8080/sse"
+    }
+  }
+}
+```
+
+To use a custom port, set `MCP_PORT` in your `.env` or shell before `docker-compose up`:
+
+```bash
+MCP_PORT=9090 docker-compose up -d
+```
+
+Then update the Cursor config accordingly: `"url": "http://localhost:9090/sse"`
+
+To disable the MCP server inside the container: `ENABLE_MCP=false docker-compose up -d`
+
+### Connecting to Claude Desktop (Docker)
+
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+
+```json
+{
+  "mcpServers": {
+    "dogstac": {
+      "url": "http://localhost:8080/sse"
+    }
+  }
+}
+```
+
+## Local Development Setup
+
+If you prefer running the MCP server locally (e.g., for development):
+
+### Prerequisites
 
 - Python 3.11+
 - DogSTAC backend running on `http://localhost:8000` (via `docker-compose up`)
 
-## Setup
+### Setup
 
 ```bash
 cd mcp-server
@@ -16,9 +60,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Connecting to Cursor
-
-Add the following to your Cursor MCP settings (`.cursor/mcp.json` in your project root or global settings):
+### Connecting to Cursor (local stdio)
 
 ```json
 {
@@ -36,7 +78,7 @@ Add the following to your Cursor MCP settings (`.cursor/mcp.json` in your projec
 
 Replace `/path/to/Catalog` with the actual path to the repository.
 
-## Connecting to Claude Desktop
+### Connecting to Claude Desktop (local stdio)
 
 Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
 
@@ -59,6 +101,10 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `DOGSTAC_API_URL` | `http://localhost:8000` | DogSTAC backend API URL |
+| `MCP_TRANSPORT` | `stdio` | Transport mode: `stdio` or `sse` |
+| `MCP_HOST` | `0.0.0.0` | SSE server bind address |
+| `MCP_PORT` | `8080` | SSE server port |
+| `ENABLE_MCP` | `true` | Enable/disable MCP server in Docker |
 
 ## Available Tools (26)
 
@@ -148,7 +194,7 @@ python -m pytest tests/ -v
 ```
 AI Client (Cursor / Claude Desktop)
     │
-    │  MCP (stdio)
+    │  MCP (stdio or SSE)
     ▼
 server.py ── dogstac_client.py ──HTTP──▶ DogSTAC Backend (:8000)
     │                                         │
@@ -159,6 +205,22 @@ server.py ── dogstac_client.py ──HTTP──▶ DogSTAC Backend (:8000)
     ├── tools/ec2_ssh.py                      └── Guardrail Middleware
     ├── tools/eks.py
     └── tools/ecs.py
+```
+
+When running in Docker, both the backend and MCP server live in the same container:
+
+```
+┌─── dogstac-backend container ───────────────────┐
+│                                                  │
+│  uvicorn (FastAPI)          MCP server (SSE)     │
+│  :8000                      :8080                │
+│       ▲                        │                 │
+│       └── HTTP (localhost) ────┘                 │
+│                                                  │
+└──────────────────────────────────────────────────┘
+         ▲                        ▲
+         │ :8000                  │ :8080/sse
+      WebUI frontend         AI Client (Cursor)
 ```
 
 All HTTP requests from the MCP server include the `X-DogSTAC-Source: mcp` header, which activates the guardrail middleware on the backend.

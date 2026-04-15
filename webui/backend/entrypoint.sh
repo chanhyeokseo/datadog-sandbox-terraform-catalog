@@ -51,5 +51,11 @@ fi
 echo "Loading configuration from Parameter Store..."
 python3 -m app.init_config || echo "Config initialization skipped (first run or AWS credentials not available)"
 
+if [ "${ENABLE_MCP:-true}" = "true" ]; then
+    echo "Starting MCP server (SSE on port ${MCP_PORT:-8080})..."
+    MCP_TRANSPORT=sse DOGSTAC_API_URL=http://localhost:8000 \
+        python3 /app/mcp-server/server.py &
+fi
+
 echo "Starting FastAPI server..."
 exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app/app

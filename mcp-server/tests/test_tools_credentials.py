@@ -1,8 +1,8 @@
 import json
 import pytest
-from unittest.mock import AsyncMock
 from mcp.server.fastmcp import FastMCP
 
+from dogstac_client import CredentialsExpiredError
 from tools.credentials import register
 
 
@@ -25,7 +25,7 @@ class TestCheckCredentials:
 
     async def test_expired_credentials(self, mcp_with_tools):
         mcp, client = mcp_with_tools
-        client.get.side_effect = Exception("401 Unauthorized")
+        client.get.side_effect = CredentialsExpiredError("expired")
         tool = mcp._tool_manager._tools["check_credentials"]
         result = json.loads(await tool.run({}))
         assert result["valid"] is False
@@ -52,38 +52,71 @@ class TestSSOLogin:
 
 class TestPollSSOStatus:
 
-    async def test_immediate_complete(self, mcp_with_tools):
+    async def test_complete_and_initialized(self, mcp_with_tools):
         mcp, client = mcp_with_tools
-        client.get.return_value = {"status": "complete"}
-        tool = mcp._tool_manager._tools["poll_sso_status"]
-        result = json.loads(await tool.run({"session_id": "sess-123"}))
-        assert result["status"] == "complete"
-        assert "successful" in result["message"].lower()
 
-    async def test_pending_then_complete(self, mcp_with_tools, monkeypatch):
-        mcp, client = mcp_with_tools
-        import tools.credentials as cred_mod
-        monkeypatch.setattr(cred_mod.asyncio, "sleep", AsyncMock())
-
-        call_count = 0
         async def mock_get(path, **kwargs):
-            nonlocal call_count
-            call_count += 1
-            if call_count < 3:
-                return {"status": "pending"}
-            return {"status": "complete"}
+            if "sso-status" in path:
+                return {"status": "complete"}
+            return {"valid": True, "initialized": True}
 
         client.get = mock_get
         tool = mcp._tool_manager._tools["poll_sso_status"]
         result = json.loads(await tool.run({"session_id": "sess-123"}))
         assert result["status"] == "complete"
-        assert call_count == 3
+        assert "successful" in result["message"].lower()
 
-    async def test_unexpected_status(self, mcp_with_tools, monkeypatch):
+    async def test_complete_but_not_initialized(self, mcp_with_tools):
         mcp, client = mcp_with_tools
-        import tools.credentials as cred_mod
-        monkeypatch.setattr(cred_mod.asyncio, "sleep", AsyncMock())
-        client.get.return_value = {"status": "expired"}
+
+        async def mock_get(path, **kwargs):
+            if "sso-status" in path:
+                return {"status": "complete"}
+            return {"valid": True, "initialized": False}
+
+        client.get = mock_get
+        tool = mcp._tool_manager._tools["poll_sso_status"]
+        result = json.loads(await tool.run({"session_id": "sess-123"}))
+        assert result["status"] == "initializing"
+        assert "initializing" in result["message"].lower()
+
+    async def test_pending_returns_immediately(self, mcp_with_tools):
+        mcp, client = mcp_with_tools
+        client.get.return_value = {"status": "pending"}
+        tool = mcp._tool_manager._tools["poll_sso_status"]
+        result = json.loads(await tool.run({"session_id": "sess-123"}))
+        assert result["status"] == "pending"
+        assert "pending" in result["message"].lower()
+
+    async def test_session_consumed_but_still_initializing(self, mcp_with_tools):
+        mcp, client = mcp_with_tools
+
+        async def mock_get(path, **kwargs):
+            if "sso-status" in path:
+                return {"status": "expired", "message": "Session not found"}
+            return {"valid": True, "initialized": False}
+
+        client.get = mock_get
+        tool = mcp._tool_manager._tools["poll_sso_status"]
+        result = json.loads(await tool.run({"session_id": "sess-123"}))
+        assert result["status"] == "initializing"
+
+    async def test_session_consumed_and_ready(self, mcp_with_tools):
+        mcp, client = mcp_with_tools
+
+        async def mock_get(path, **kwargs):
+            if "sso-status" in path:
+                return {"status": "expired", "message": "Session not found"}
+            return {"valid": True, "initialized": True}
+
+        client.get = mock_get
+        tool = mcp._tool_manager._tools["poll_sso_status"]
+        result = json.loads(await tool.run({"session_id": "sess-123"}))
+        assert result["status"] == "complete"
+
+    async def test_truly_expired_status(self, mcp_with_tools):
+        mcp, client = mcp_with_tools
+        client.get.return_value = {"status": "expired", "message": "Token expired"}
         tool = mcp._tool_manager._tools["poll_sso_status"]
         result = json.loads(await tool.run({"session_id": "sess-123"}))
         assert result["status"] == "expired"
