@@ -1694,6 +1694,62 @@ async def get_security_group_rules():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/security-group/add-ssh-my-ip")
+async def add_ssh_my_ip():
+    import json as _json
+
+    try:
+        current = await get_security_group_rules()
+        ingress = current.get("ingress_rules", [])
+        egress = current.get("egress_rules", [])
+
+        ssh_exists = any(
+            r.get("from_port") == 22 and r.get("to_port") == 22 for r in ingress
+        )
+        if not ssh_exists:
+            ingress.append({
+                "description": "Allow SSH from my IP",
+                "from_port": 22,
+                "to_port": 22,
+                "protocol": "tcp",
+                "cidr_blocks": [],
+                "use_my_ip": True,
+                "readonly": True,
+            })
+        for rule in ingress:
+            if rule.get("from_port") == 22 and rule.get("to_port") == 22:
+                rule["use_my_ip"] = True
+
+        save_result = await update_security_group_rules(
+            {"ingress_rules": ingress, "egress_rules": egress}
+        )
+        if not save_result.get("success"):
+            return {"success": False, "message": "Failed to save rules"}
+
+        apply_resp = await terraform_apply_stream_resource("security_group", auto_approve=True)
+        output_lines = []
+        exit_code = -1
+        async for chunk in apply_resp.body_iterator:
+            line = chunk if isinstance(chunk, str) else chunk.decode()
+            if line.startswith("__TF_EXIT__:"):
+                try:
+                    exit_code = int(line.split(":")[1])
+                except (IndexError, ValueError):
+                    exit_code = 1
+            else:
+                output_lines.append(line)
+
+        return {
+            "success": exit_code == 0,
+            "exit_code": exit_code,
+            "message": "SSH rule for current IP applied" if exit_code == 0 else "Failed to apply security group",
+            "output": "".join(output_lines),
+        }
+    except Exception as e:
+        logger.error("Error in add-ssh-my-ip: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/security-group/rules")
 async def update_security_group_rules(rules_data: dict):
     import json

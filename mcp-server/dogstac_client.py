@@ -44,6 +44,17 @@ class DogSTACClient:
         if resp.status_code == 401:
             self._cred_valid_until = 0.0
             raise CredentialsExpiredError(_CRED_EXPIRED_MSG)
+        if resp.status_code == 403:
+            detail = ""
+            try:
+                detail = resp.json().get("detail", "")
+            except Exception:
+                pass
+            raise httpx.HTTPStatusError(
+                f"403 Forbidden (guardrail): {detail}" if detail else "403 Forbidden",
+                request=resp.request,
+                response=resp,
+            )
         resp.raise_for_status()
 
     async def _ensure_credentials(self, path: str) -> None:

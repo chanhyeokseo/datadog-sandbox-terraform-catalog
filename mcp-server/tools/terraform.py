@@ -2,7 +2,7 @@ import json
 from mcp.server.fastmcp import FastMCP
 from dogstac_client import DogSTACClient
 
-VALID_ACTIONS = ("plan", "apply", "destroy", "output")
+VALID_ACTIONS = ("init", "plan", "apply", "destroy", "output")
 
 
 def register(mcp: FastMCP, client: DogSTACClient):
@@ -11,7 +11,8 @@ def register(mcp: FastMCP, client: DogSTACClient):
         """Run a Terraform action on a resource.
 
         Args:
-            action: One of "plan", "apply", "destroy", "output".
+            action: One of "init", "plan", "apply", "destroy", "output".
+                - init: Initialize Terraform backend and providers. Required before first plan/apply.
                 - plan: Preview planned changes.
                 - apply: Apply changes (auto-approve). May take 20+ min for EKS.
                 - destroy: Destroy the resource (auto-approve).
@@ -20,6 +21,10 @@ def register(mcp: FastMCP, client: DogSTACClient):
         """
         if action not in VALID_ACTIONS:
             return json.dumps({"error": f"Invalid action '{action}'. Must be one of: {', '.join(VALID_ACTIONS)}"})
+
+        if action == "init":
+            result = await client.stream_get(f"/api/terraform/init/stream/{resource_id}")
+            return json.dumps(result, indent=2)
 
         if action == "output":
             data = await client.get("/api/terraform/output", resource_id=resource_id)
