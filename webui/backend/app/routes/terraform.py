@@ -283,18 +283,45 @@ async def sso_login():
 async def sso_status(session_id: str):
     result = await asyncio.to_thread(credential_manager.poll_sso_token, session_id)
     if result.get("status") == "complete":
-        logger.info("SSO login complete, rebuilding S3 status cache")
-        parser.invalidate_s3_status()
-        from app.routes.eks_manage import preset_manager as eks_preset_mgr
-        eks_preset_mgr.refresh_from_s3()
-        from app.routes.ecs_manage import preset_manager as ecs_preset_mgr
-        ecs_preset_mgr.refresh_from_s3()
+        asyncio.create_task(_post_sso_init())
     return result
+
+
+async def _post_sso_init():
+    logger.info("SSO login complete, starting background initialization")
+    try:
+        await asyncio.to_thread(parser.invalidate_s3_status)
+        logger.info("S3 status cache rebuilt")
+    except Exception as e:
+        logger.warning("Post-SSO S3 status cache rebuild failed: %s", e)
+    try:
+        from app.routes.eks_manage import preset_manager as eks_preset_mgr
+        await asyncio.to_thread(eks_preset_mgr.refresh_from_s3)
+        logger.info("EKS presets refreshed from S3")
+    except Exception as e:
+        logger.warning("Post-SSO EKS preset refresh failed: %s", e)
+    try:
+        from app.routes.ecs_manage import preset_manager as ecs_preset_mgr
+        await asyncio.to_thread(ecs_preset_mgr.refresh_from_s3)
+        logger.info("ECS presets refreshed from S3")
+    except Exception as e:
+        logger.warning("Post-SSO ECS preset refresh failed: %s", e)
+    logger.info("Post-SSO background initialization complete")
 
 
 @router.get("/credentials/health")
 async def credential_health():
-    return await asyncio.to_thread(credential_manager.get_credential_health)
+    health = await asyncio.to_thread(credential_manager.get_credential_health)
+    health["sso_cache"] = credential_manager.get_sso_cache_diagnostics()
+    return health
+
+
+@router.get("/credentials/diagnostics")
+async def credential_diagnostics():
+    return {
+        "health": await asyncio.to_thread(credential_manager.get_credential_health),
+        "sso_cache": credential_manager.get_sso_cache_diagnostics(),
+    }
 
 
 @router.post("/credentials/debug-expire")

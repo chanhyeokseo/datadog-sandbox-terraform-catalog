@@ -1,7 +1,11 @@
 import json
 import asyncio
+import logging
+import webbrowser
 from mcp.server.fastmcp import FastMCP
 from dogstac_client import DogSTACClient
+
+logger = logging.getLogger(__name__)
 
 
 def register(mcp: FastMCP, client: DogSTACClient):
@@ -21,45 +25,53 @@ def register(mcp: FastMCP, client: DogSTACClient):
             return json.dumps({"valid": False, "error": error_text}, indent=2)
 
     @mcp.tool()
-    async def sso_login(session_id: str = "") -> str:
-        """Start AWS SSO login flow or poll for completion.
+    async def sso_login() -> str:
+        """Start AWS SSO login. Opens the verification URL in the user's browser
+        automatically and waits for approval (up to 5 minutes)."""
+        data = await client.post("/api/terraform/credentials/sso-login")
+        session_id = data.get("session_id")
+        verification_uri = data.get("verification_uri", "")
 
-        Two modes:
-        - No session_id: Start a new SSO login. Returns verification URL, user code, and session_id.
-          Present the URL and code to the user, then call again with the session_id.
-        - With session_id: Poll for login completion (up to 5 minutes).
-        """
-        if not session_id:
-            data = await client.post("/api/terraform/credentials/sso-login")
-            return json.dumps({
-                "session_id": data.get("session_id"),
-                "verification_uri": data.get("verification_uri"),
-                "user_code": data.get("user_code"),
-                "expires_in": data.get("expires_in"),
-                "instruction": (
-                    "Present the verification URL and user code to the user. "
-                    "They must open the URL in a browser and enter the code to authenticate. "
-                    "Then call sso_login again with the session_id to wait for completion."
-                ),
-            }, indent=2)
+        if verification_uri:
+            try:
+                webbrowser.open(verification_uri)
+                logger.info("Opened SSO verification URL in browser: %s", verification_uri)
+            except Exception as e:
+                logger.warning("Failed to open browser: %s", e)
 
         for _ in range(60):
-            data = await client.get(f"/api/terraform/credentials/sso-status/{session_id}")
-            status = data.get("status", "")
+            poll = await client.get(f"/api/terraform/credentials/sso-status/{session_id}")
+            status = poll.get("status", "")
             if status == "complete":
-                return json.dumps({
-                    "status": "complete",
-                    "message": "SSO login successful. AWS credentials are now active.",
-                }, indent=2)
+                return await _wait_backend_ready(client)
             if status not in ("pending", "authorization_pending"):
                 return json.dumps({
                     "status": status,
                     "message": f"SSO login ended with status: {status}",
-                    "details": data,
+                    "details": poll,
                 }, indent=2)
             await asyncio.sleep(5)
 
         return json.dumps({
             "status": "timeout",
-            "message": "SSO login timed out after 5 minutes. Ask the user to try again.",
+            "message": "SSO login timed out after 5 minutes.",
         }, indent=2)
+
+
+async def _wait_backend_ready(client: DogSTACClient, retries: int = 12, interval: float = 5) -> str:
+    for attempt in range(retries):
+        try:
+            data = await client.get("/api/terraform/credentials/check")
+            if data.get("valid"):
+                logger.info("Backend ready after SSO login (attempt %d)", attempt + 1)
+                return json.dumps({
+                    "status": "complete",
+                    "message": "SSO login successful. AWS credentials are now active.",
+                }, indent=2)
+        except Exception as e:
+            logger.debug("Backend not ready yet (attempt %d): %s", attempt + 1, e)
+        await asyncio.sleep(interval)
+    return json.dumps({
+        "status": "complete",
+        "message": "SSO login successful but backend initialization may still be in progress.",
+    }, indent=2)

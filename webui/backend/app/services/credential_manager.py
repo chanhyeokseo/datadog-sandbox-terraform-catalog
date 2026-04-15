@@ -19,6 +19,7 @@ AWS_SSO_CACHE_DIR = Path(os.path.expanduser("~/.aws/sso/cache"))
 
 CREDENTIAL_HEALTH_INTERVAL = 300
 CREDENTIAL_EXPIRY_BUFFER = 600
+STS_CREDENTIAL_LIFETIME = 3600
 
 
 class SSOSession:
@@ -55,6 +56,7 @@ class CredentialManager:
     def __init__(self):
         self._sso_sessions: Dict[str, SSOSession] = {}
         self._original_profile: str = os.environ.get("AWS_PROFILE", "")
+        self._sts_credentials_obtained_at: float = 0.0
 
     def get_aws_profile(self) -> str:
         return self._original_profile or os.environ.get("AWS_PROFILE", "")
@@ -182,13 +184,18 @@ class CredentialManager:
     def _try_refresh_sso_token(self, sso_config: "SSOConfig") -> bool:
         raw = self._read_sso_cache_raw(sso_config)
         if not raw:
+            logger.info("SSO token refresh skipped: no cache file found")
             return False
 
         refresh_token = raw.get("refreshToken", "")
         client_id = raw.get("clientId", "")
         client_secret = raw.get("clientSecret", "")
         if not all([refresh_token, client_id, client_secret]):
-            logger.debug("SSO cache missing refresh token or client credentials, cannot refresh SSO token")
+            logger.warning(
+                "SSO token refresh impossible: cache missing "
+                "refreshToken=%s, clientId=%s, clientSecret=%s",
+                bool(refresh_token), bool(client_id), bool(client_secret),
+            )
             return False
 
         try:
@@ -221,14 +228,14 @@ class CredentialManager:
     def try_refresh_credentials(self) -> bool:
         sso_config = self.get_sso_config()
         if not sso_config:
-            logger.debug("No SSO config available, cannot refresh")
+            logger.info("Credential refresh skipped: no SSO config available")
             return False
 
         cached = self._read_sso_cache(sso_config)
         if not cached:
-            logger.debug("No valid SSO cache token, attempting refresh via refresh token")
+            logger.info("SSO access token expired or missing, attempting refresh via refresh token")
             if not self._try_refresh_sso_token(sso_config):
-                logger.debug("SSO token refresh failed, cannot refresh credentials")
+                logger.warning("All SSO token refresh methods exhausted, user re-authentication required")
                 return False
             cached = self._read_sso_cache(sso_config)
             if not cached:
@@ -236,7 +243,7 @@ class CredentialManager:
 
         access_token = cached.get("accessToken")
         if not access_token:
-            logger.debug("SSO cache missing accessToken")
+            logger.warning("SSO cache present but accessToken field is missing")
             return False
 
         try:
@@ -252,6 +259,7 @@ class CredentialManager:
             if role_creds.get("sessionToken"):
                 os.environ["AWS_SESSION_TOKEN"] = role_creds["sessionToken"]
             self._unset_aws_profile()
+            self._sts_credentials_obtained_at = time.time()
             logger.info("AWS credentials refreshed via SSO token")
             return True
         except ClientError as e:
@@ -337,6 +345,17 @@ class CredentialManager:
             expires_in = token_response.get("expiresIn", 28800)
             refresh_token = token_response.get("refreshToken", "")
 
+            logger.info(
+                "SSO token obtained: expires_in=%ds, refreshToken=%s",
+                expires_in, "present" if refresh_token else "ABSENT",
+            )
+            if not refresh_token:
+                logger.warning(
+                    "AWS did not return a refresh token. "
+                    "Auto-refresh will NOT work after the access token expires in %ds. "
+                    "Check IAM Identity Center session settings.", expires_in,
+                )
+
             sso_config = self.get_sso_config()
             if sso_config:
                 self._write_sso_cache(
@@ -359,6 +378,7 @@ class CredentialManager:
                 if role_creds.get("sessionToken"):
                     os.environ["AWS_SESSION_TOKEN"] = role_creds["sessionToken"]
                 self._unset_aws_profile()
+                self._sts_credentials_obtained_at = time.time()
                 logger.info("SSO login complete, credentials updated")
             except Exception as e:
                 logger.warning(f"SSO token obtained but failed to get role credentials: {e}")
@@ -379,10 +399,79 @@ class CredentialManager:
             logger.error(f"SSO token poll error: {e}")
             return {"status": "error", "message": str(e)}
 
+    def _get_sts_age(self) -> Optional[float]:
+        if self._sts_credentials_obtained_at <= 0:
+            return None
+        return time.time() - self._sts_credentials_obtained_at
+
+    def _is_sts_expiring_soon(self) -> bool:
+        age = self._get_sts_age()
+        if age is None:
+            return False
+        return age > (STS_CREDENTIAL_LIFETIME - CREDENTIAL_EXPIRY_BUFFER)
+
+    def get_sso_cache_diagnostics(self) -> dict:
+        sso_config = self.get_sso_config()
+        if not sso_config:
+            return {"available": False, "reason": "no_sso_config"}
+
+        cache_path = self._get_sso_cache_path(sso_config)
+        if not cache_path.exists():
+            return {"available": False, "reason": "cache_file_missing", "path": str(cache_path)}
+
+        raw = self._read_sso_cache_raw(sso_config)
+        if not raw:
+            return {"available": False, "reason": "cache_read_error", "path": str(cache_path)}
+
+        has_refresh = bool(raw.get("refreshToken"))
+        has_client_id = bool(raw.get("clientId"))
+        has_client_secret = bool(raw.get("clientSecret"))
+        expires_at = raw.get("expiresAt", "")
+
+        result = {
+            "available": True,
+            "has_refresh_token": has_refresh,
+            "has_client_id": has_client_id,
+            "has_client_secret": has_client_secret,
+            "expires_at": expires_at,
+            "refresh_capable": all([has_refresh, has_client_id, has_client_secret]),
+        }
+
+        if expires_at:
+            try:
+                from datetime import datetime, timezone
+                normalized = expires_at.replace("UTC", "+00:00").replace("Z", "+00:00")
+                expiry = datetime.fromisoformat(normalized)
+                remaining = expiry.timestamp() - time.time()
+                result["sso_token_remaining_seconds"] = int(remaining)
+                result["sso_token_expired"] = remaining <= 0
+            except Exception:
+                pass
+
+        sts_age = self._get_sts_age()
+        if sts_age is not None:
+            result["sts_age_seconds"] = int(sts_age)
+            result["sts_remaining_seconds"] = max(0, int(STS_CREDENTIAL_LIFETIME - sts_age))
+
+        return result
+
     def get_credential_health(self) -> dict:
         aws_profile = self.get_aws_profile()
         sso_config = self.get_sso_config()
         sso_configured = sso_config is not None
+
+        if sso_configured and self._is_sts_expiring_soon():
+            sts_age = self._get_sts_age()
+            logger.info(
+                "STS credentials approaching expiry (age=%ds, lifetime=%ds), triggering proactive refresh",
+                int(sts_age or 0), STS_CREDENTIAL_LIFETIME,
+            )
+            return {
+                "status": "expiring_soon",
+                "sso_configured": sso_configured,
+                "sso_profile": aws_profile,
+                "sts_age": int(sts_age or 0),
+            }
 
         try:
             region = os.environ.get("AWS_REGION", "ap-northeast-2")
@@ -420,10 +509,14 @@ class CredentialManager:
                     if remaining < CREDENTIAL_EXPIRY_BUFFER:
                         result["status"] = "expiring_soon"
 
+            sts_age = self._get_sts_age()
+            if sts_age is not None:
+                result["sts_age"] = int(sts_age)
+
             return result
 
         except Exception as e:
-            logger.debug(f"Credential health check failed: {e}")
+            logger.info(f"Credential health check failed: {e}")
             status = "expired"
             if sso_configured and sso_config:
                 raw = self._read_sso_cache_raw(sso_config)
@@ -468,12 +561,20 @@ class CredentialManager:
             try:
                 health = await asyncio.to_thread(self.get_credential_health)
                 if health["status"] in ("expired", "expiring_soon", "refreshable"):
-                    logger.info(f"Credential status: {health['status']}, attempting auto-refresh")
+                    logger.info(
+                        "Credential status: %s (sts_age=%s), attempting auto-refresh",
+                        health["status"], health.get("sts_age", "unknown"),
+                    )
                     refreshed = await asyncio.to_thread(self.try_refresh_credentials)
                     if refreshed:
                         logger.info("Background credential refresh succeeded")
                     else:
-                        logger.warning("Background credential refresh failed, user action required")
+                        diag = self.get_sso_cache_diagnostics()
+                        logger.warning(
+                            "Background credential refresh failed, user action required. "
+                            "diagnostics: refresh_capable=%s, sso_token_expired=%s",
+                            diag.get("refresh_capable"), diag.get("sso_token_expired"),
+                        )
                 else:
                     logger.debug(f"Credential health OK: {health['status']}")
             except Exception as e:
