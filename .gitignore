@@ -39,7 +39,8 @@ override.tf.json
 *.iws
 
 # VS Code
-.vscode/
+.vscode/*
+!.vscode/settings.json
 *.code-workspace
 
 # Vim
@@ -88,10 +89,6 @@ $RECYCLE.BIN/
 .env
 .env.local
 
-# AWS credentials
-*credentials*
-*secret*
-
 # ============================================
 # Logs and Temporary Files
 # ============================================
@@ -108,6 +105,7 @@ tmp/
 *.temp
 *.bak
 *.backup
+.cursor/
 
 # ============================================
 # Project Specific

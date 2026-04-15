@@ -27,9 +27,11 @@ RUN wget -q https://get.helm.sh/helm-v${HELM_VERSION}-linux-${TARGETARCH}.tar.gz
 WORKDIR /app
 
 COPY webui/backend/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY mcp-server/requirements.txt ./mcp-requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt -r mcp-requirements.txt
 
 COPY webui/backend/app/ ./app/
+COPY mcp-server/ ./mcp-server/
 
 COPY instances/ /app/terraform-source/instances/
 COPY modules/ /app/terraform-source/modules/

@@ -11,6 +11,7 @@ import re
 import time
 import boto3
 from botocore.exceptions import ClientError, ProfileNotFound
+from app.services.config_manager import CredentialExpiredError
 
 from app.models.schemas import (
     ResourceStatus,
@@ -212,13 +213,19 @@ def _build_sts_client():
     return boto3.client("sts", region_name=region)
 
 
+_post_sso_init_complete = True
+
+
 @router.get("/credentials/check")
 async def check_credentials():
+    if not _post_sso_init_complete:
+        return {"valid": True, "initialized": False, "account": "", "arn": ""}
     try:
         sts = _build_sts_client()
         identity = await asyncio.to_thread(sts.get_caller_identity)
         return {
             "valid": True,
+            "initialized": True,
             "account": identity.get("Account", ""),
             "arn": identity.get("Arn", ""),
         }
@@ -242,6 +249,7 @@ async def check_credentials():
                 identity = await asyncio.to_thread(sts.get_caller_identity)
                 return {
                     "valid": True,
+                    "initialized": _post_sso_init_complete,
                     "account": identity.get("Account", ""),
                     "arn": identity.get("Arn", ""),
                 }
@@ -282,18 +290,54 @@ async def sso_login():
 async def sso_status(session_id: str):
     result = await asyncio.to_thread(credential_manager.poll_sso_token, session_id)
     if result.get("status") == "complete":
-        logger.info("SSO login complete, rebuilding S3 status cache")
-        parser.invalidate_s3_status()
-        from app.routes.eks_manage import preset_manager as eks_preset_mgr
-        eks_preset_mgr.refresh_from_s3()
-        from app.routes.ecs_manage import preset_manager as ecs_preset_mgr
-        ecs_preset_mgr.refresh_from_s3()
+        await _post_sso_init()
     return result
+
+
+async def _post_sso_init():
+    global _post_sso_init_complete
+    _post_sso_init_complete = False
+    logger.info("SSO login complete, running post-login initialization")
+    try:
+        from app.init_config import init_from_parameter_store
+        await asyncio.to_thread(init_from_parameter_store)
+        logger.info("Config restored from Parameter Store")
+    except Exception as e:
+        logger.warning("Post-SSO config restore failed: %s", e)
+    try:
+        await asyncio.to_thread(parser.invalidate_s3_status)
+        logger.info("S3 status cache rebuilt")
+    except Exception as e:
+        logger.warning("Post-SSO S3 status cache rebuild failed: %s", e)
+    try:
+        from app.routes.eks_manage import preset_manager as eks_preset_mgr
+        await asyncio.to_thread(eks_preset_mgr.refresh_from_s3)
+        logger.info("EKS presets refreshed from S3")
+    except Exception as e:
+        logger.warning("Post-SSO EKS preset refresh failed: %s", e)
+    try:
+        from app.routes.ecs_manage import preset_manager as ecs_preset_mgr
+        await asyncio.to_thread(ecs_preset_mgr.refresh_from_s3)
+        logger.info("ECS presets refreshed from S3")
+    except Exception as e:
+        logger.warning("Post-SSO ECS preset refresh failed: %s", e)
+    _post_sso_init_complete = True
+    logger.info("Post-SSO initialization complete")
 
 
 @router.get("/credentials/health")
 async def credential_health():
-    return await asyncio.to_thread(credential_manager.get_credential_health)
+    health = await asyncio.to_thread(credential_manager.get_credential_health)
+    health["sso_cache"] = credential_manager.get_sso_cache_diagnostics()
+    return health
+
+
+@router.get("/credentials/diagnostics")
+async def credential_diagnostics():
+    return {
+        "health": await asyncio.to_thread(credential_manager.get_credential_health),
+        "sso_cache": credential_manager.get_sso_cache_diagnostics(),
+    }
 
 
 @router.post("/credentials/debug-expire")
@@ -567,6 +611,14 @@ def _get_config_onboarding_status():
 async def get_config_onboarding_status():
     try:
         return _get_config_onboarding_status()
+    except CredentialExpiredError:
+        logger.warning("SSO credentials expired during config-status check")
+        return {
+            "config_onboarding_required": False,
+            "credential_expired": True,
+            "phases": [],
+            "steps": [],
+        }
     except Exception as e:
         logger.exception("Error in get_config_onboarding_status: %s", e)
         return {"config_onboarding_required": True, "phases": [], "steps": []}
@@ -1639,6 +1691,62 @@ async def get_security_group_rules():
 
     except Exception as e:
         logger.error(f"Error getting security group rules: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/security-group/add-ssh-my-ip")
+async def add_ssh_my_ip():
+    import json as _json
+
+    try:
+        current = await get_security_group_rules()
+        ingress = current.get("ingress_rules", [])
+        egress = current.get("egress_rules", [])
+
+        ssh_exists = any(
+            r.get("from_port") == 22 and r.get("to_port") == 22 for r in ingress
+        )
+        if not ssh_exists:
+            ingress.append({
+                "description": "Allow SSH from my IP",
+                "from_port": 22,
+                "to_port": 22,
+                "protocol": "tcp",
+                "cidr_blocks": [],
+                "use_my_ip": True,
+                "readonly": True,
+            })
+        for rule in ingress:
+            if rule.get("from_port") == 22 and rule.get("to_port") == 22:
+                rule["use_my_ip"] = True
+
+        save_result = await update_security_group_rules(
+            {"ingress_rules": ingress, "egress_rules": egress}
+        )
+        if not save_result.get("success"):
+            return {"success": False, "message": "Failed to save rules"}
+
+        apply_resp = await terraform_apply_stream_resource("security_group", auto_approve=True)
+        output_lines = []
+        exit_code = -1
+        async for chunk in apply_resp.body_iterator:
+            line = chunk if isinstance(chunk, str) else chunk.decode()
+            if line.startswith("__TF_EXIT__:"):
+                try:
+                    exit_code = int(line.split(":")[1])
+                except (IndexError, ValueError):
+                    exit_code = 1
+            else:
+                output_lines.append(line)
+
+        return {
+            "success": exit_code == 0,
+            "exit_code": exit_code,
+            "message": "SSH rule for current IP applied" if exit_code == 0 else "Failed to apply security group",
+            "output": "".join(output_lines),
+        }
+    except Exception as e:
+        logger.error("Error in add-ssh-my-ip: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 

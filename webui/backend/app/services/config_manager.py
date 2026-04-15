@@ -9,6 +9,10 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
+class CredentialExpiredError(Exception):
+    pass
+
+
 class ConfigManager:
 
     _identity_hash_cache: Optional[str] = None
@@ -271,6 +275,12 @@ class ConfigManager:
             logger.warning(f"Failed to delete from Parameter Store ({name}): {e}")
             return False
 
+    CREDENTIAL_ERROR_KEYWORDS = ("expired", "token", "refresh failed", "not authorized", "accessdenied")
+
+    def _is_credential_error(self, error: Exception) -> bool:
+        msg = str(error).lower()
+        return any(kw in msg for kw in self.CREDENTIAL_ERROR_KEYWORDS)
+
     def _get_secure_param(self, name: str) -> Optional[str]:
         if not self.ssm_client:
             return None
@@ -280,6 +290,8 @@ class ConfigManager:
         except Exception as e:
             if "ParameterNotFound" not in str(type(e).__name__):
                 logger.debug(f"Failed to load from Parameter Store ({name}): {e}")
+                if self._is_credential_error(e):
+                    raise CredentialExpiredError(str(e)) from e
             return None
 
     def save_tfvars(self, content: str) -> bool:

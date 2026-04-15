@@ -8,6 +8,7 @@
 !eks/
 !ecs/
 !webui/
+!mcp-server/
 
 # Exclude unnecessary files from webui
 webui/node_modules

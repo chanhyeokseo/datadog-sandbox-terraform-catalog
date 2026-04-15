@@ -1,4 +1,5 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
+from pydantic import BaseModel
 from typing import Dict, List, Optional
 import asyncio
 import paramiko
@@ -127,6 +128,58 @@ def _load_pkey(key_path: str) -> Optional[paramiko.PKey]:
         return _load_pkey_from_content(pem_content)
 
     return None
+
+
+class SSHExecuteRequest(BaseModel):
+    hostname: str
+    command: str
+    username: str = "ec2-user"
+    timeout: int = 300
+
+
+@router.post("/execute")
+async def ssh_execute(req: SSHExecuteRequest):
+    key_path = _find_key_file(_resolve_key_path(None))
+    pkey = _load_pkey(key_path)
+    if pkey is None:
+        raise HTTPException(status_code=400, detail="SSH key not found in Parameter Store or local files.")
+
+    ssh = paramiko.SSHClient()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    loop = asyncio.get_event_loop()
+    try:
+        await loop.run_in_executor(
+            None,
+            lambda: ssh.connect(
+                hostname=req.hostname,
+                port=22,
+                username=req.username,
+                pkey=pkey,
+                timeout=10,
+            ),
+        )
+    except paramiko.AuthenticationException:
+        raise HTTPException(status_code=401, detail="SSH authentication failed.")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"SSH connection error: {e}")
+
+    try:
+        stdin, stdout, stderr = ssh.exec_command(req.command, timeout=req.timeout)
+        exit_code = stdout.channel.recv_exit_status()
+        out = stdout.read().decode("utf-8", errors="replace")
+        err = stderr.read().decode("utf-8", errors="replace")
+    except Exception as e:
+        ssh.close()
+        raise HTTPException(status_code=500, detail=f"Command execution error: {e}")
+    finally:
+        ssh.close()
+
+    return {
+        "stdout": out,
+        "stderr": err,
+        "exit_code": exit_code,
+        "hostname": req.hostname,
+    }
 
 
 @router.websocket("/connect/{connection_id}")

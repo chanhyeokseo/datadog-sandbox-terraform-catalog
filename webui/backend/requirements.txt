@@ -1,8 +1,8 @@
 fastapi==0.109.0
 uvicorn[standard]==0.27.0
-pydantic==2.5.3
-pydantic-settings==2.1.0
-python-multipart==0.0.6
+pydantic==2.13.0
+pydantic-settings==2.13.1
+python-multipart==0.0.26
 python-hcl2==4.3.2
 paramiko==3.4.0
 cryptography
