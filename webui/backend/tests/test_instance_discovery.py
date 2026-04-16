@@ -21,7 +21,7 @@ class TestGetResourceTypeFromDir:
         ("ecr-apps", ResourceType.ECR),
         ("deploy-spring-boot", ResourceType.ECR),
         ("lambda-python-example", ResourceType.LAMBDA),
-        ("dbm-autoconfig-postgres", ResourceType.DBM),
+        ("rds-database", ResourceType.RDS),
         ("security-group", ResourceType.SECURITY_GROUP),
         ("test-file-1", ResourceType.TEST),
         ("test-file-abc", ResourceType.TEST),

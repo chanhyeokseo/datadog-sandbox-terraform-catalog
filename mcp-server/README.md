@@ -4,7 +4,7 @@ MCP (Model Context Protocol) server that exposes DogSTAC infrastructure manageme
 
 ## Quick Start (Docker)
 
-The MCP server is bundled inside the `dogstac/tfrunner` container. When you run `docker-compose up`, it automatically starts on port **8080** alongside the backend.
+The MCP server is bundled inside the `dogstac/dogstac` container. When you run `docker-compose up`, it automatically starts on port **7622** alongside the backend.
 
 ### Connecting to Cursor (Docker — recommended)
 
@@ -12,7 +12,7 @@ The MCP server is bundled inside the `dogstac/tfrunner` container. When you run 
 {
   "mcpServers": {
     "dogstac": {
-      "url": "http://localhost:8080/sse"
+      "url": "http://localhost:7622/sse"
     }
   }
 }
@@ -36,7 +36,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
 {
   "mcpServers": {
     "dogstac": {
-      "url": "http://localhost:8080/sse"
+      "url": "http://localhost:7622/sse"
     }
   }
 }
@@ -49,7 +49,7 @@ If you prefer running the MCP server locally (e.g., for development):
 ### Prerequisites
 
 - Python 3.11+
-- DogSTAC backend running on `http://localhost:8000` (via `docker-compose up`)
+- DogSTAC backend running on `http://localhost:7621` (via `docker-compose up`)
 
 ### Setup
 
@@ -69,7 +69,7 @@ pip install -r requirements.txt
       "command": "/path/to/Catalog/mcp-server/.venv/bin/python",
       "args": ["/path/to/Catalog/mcp-server/server.py"],
       "env": {
-        "DOGSTAC_API_URL": "http://localhost:8000"
+        "DOGSTAC_API_URL": "http://localhost:7621"
       }
     }
   }
@@ -89,7 +89,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
       "command": "/path/to/Catalog/mcp-server/.venv/bin/python",
       "args": ["/path/to/Catalog/mcp-server/server.py"],
       "env": {
-        "DOGSTAC_API_URL": "http://localhost:8000"
+        "DOGSTAC_API_URL": "http://localhost:7621"
       }
     }
   }
@@ -100,10 +100,10 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DOGSTAC_API_URL` | `http://localhost:8000` | DogSTAC backend API URL |
+| `DOGSTAC_API_URL` | `http://localhost:7621` | DogSTAC backend API URL |
 | `MCP_TRANSPORT` | `stdio` | Transport mode: `stdio` or `sse` |
 | `MCP_HOST` | `0.0.0.0` | SSE server bind address |
-| `MCP_PORT` | `8080` | SSE server port |
+| `MCP_PORT` | `7622` | SSE server port |
 | `ENABLE_MCP` | `true` | Enable/disable MCP server in Docker |
 
 ## Available Tools (26)
@@ -196,7 +196,7 @@ AI Client (Cursor / Claude Desktop)
     │
     │  MCP (stdio or SSE)
     ▼
-server.py ── dogstac_client.py ──HTTP──▶ DogSTAC Backend (:8000)
+server.py ── dogstac_client.py ──HTTP──▶ DogSTAC Backend (:7621)
     │                                         │
     ├── tools/credentials.py                  ├── Terraform Runner
     ├── tools/resource.py                     ├── SSH Service
@@ -210,17 +210,17 @@ server.py ── dogstac_client.py ──HTTP──▶ DogSTAC Backend (:8000)
 When running in Docker, both the backend and MCP server live in the same container:
 
 ```
-┌─── dogstac-backend container ───────────────────┐
-│                                                  │
-│  uvicorn (FastAPI)          MCP server (SSE)     │
-│  :8000                      :8080                │
-│       ▲                        │                 │
-│       └── HTTP (localhost) ────┘                 │
-│                                                  │
-└──────────────────────────────────────────────────┘
-         ▲                        ▲
-         │ :8000                  │ :8080/sse
-      WebUI frontend         AI Client (Cursor)
+┌─── dogstac container ──────────────────────────────────┐
+│                                                        │
+│  uvicorn (FastAPI + static)       MCP server (SSE)     │
+│  :7621                            :7622                │
+│       ▲                              │                 │
+│       └──── HTTP (localhost) ────────┘                 │
+│                                                        │
+└────────────────────────────────────────────────────────┘
+         ▲                              ▲
+         │ :7621                        │ :7622/sse
+      Browser (UI + API)          AI Client (Cursor)
 ```
 
 All HTTP requests from the MCP server include the `X-DogSTAC-Source: mcp` header, which activates the guardrail middleware on the backend.

@@ -81,7 +81,7 @@ All instances under `instances/` use these **standard output names** (no module-
 |------|----------------|
 | EC2 / SSH | `instance_id`, `public_ip`, `ssh_command` |
 | EC2 Windows | `instance_id`, `public_ip`, `rdp_info` |
-| DBM | `instance_id`, `public_ip`, `ssh_command`, `rds_endpoint`, `rds_port` |
+| RDS | `rds_endpoint`, `rds_port`, `db_type`, `db_instance_id`, `security_group_id` |
 | ECS | `cluster_name`, `cluster_arn` (ec2 also: `autoscaling_group_name`) |
 | EKS | `cluster_name`, `cluster_endpoint`, `kubeconfig_command`, `windows_node_group_name` |
 | Lambda | `function_name`, `function_url` |
@@ -90,16 +90,13 @@ All instances under `instances/` use these **standard output names** (no module-
 
 Instance-specific outputs use short names (e.g. `forwardog_url` for ec2-forwardog). Only SSH-related outputs are required for the Web UI Connect button; other names keep the UI and scripts consistent.
 
-## DBM resources (EC2 + RDS bundle)
+## RDS resources
 
-Each DBM instance is one resource that creates both EC2 and RDS:
+| Instance directory   | Web UI resource ID/name | Contents                                      |
+|----------------------|-------------------------|-----------------------------------------------|
+| `instances/rds-database` | `rds_database`       | RDS (multi-engine: postgres, mysql, oracle, sqlserver, docdb) |
 
-| Instance directory   | Web UI resource ID/name   | Contents                    |
-|----------------------|---------------------------|-----------------------------|
-| `instances/dbm-autoconfig-postgres` | `dbm_autoconfig_postgres` | EC2 (Datadog host) + RDS (Postgres) |
-| `instances/dbm-postgres-postgres`   | `dbm_postgres_postgres`   | EC2 (Datadog host) + RDS (Postgres) |
-
-The UI shows one entry per instance (e.g. `dbm_autoconfig_postgres`), not per module. Plan/Apply/Destroy run for the whole instance and thus manage both EC2 and RDS together.
+Set `rds_type` variable to choose the database engine before deploying.
 
 ## Instance Variables
 

@@ -97,19 +97,3 @@ variable "team" {
   description = "Team name (e.g., technical-support-engineering)"
   type        = string
 }
-
-# ============================================
-# DBM Auto-Config
-# ============================================
-variable "dbm_postgres_datadog_password" {
-  description = "Password for the datadog PostgreSQL user (for DBM monitoring)"
-  type        = string
-  sensitive   = true
-  default     = ""
-}
-
-variable "ssh_private_key_path" {
-  description = "Path to SSH private key for EC2 provisioner connection"
-  type        = string
-  default     = "./chanhyeok.pem"
-}

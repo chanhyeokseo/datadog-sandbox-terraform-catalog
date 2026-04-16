@@ -6,11 +6,11 @@ export default defineConfig({
   plugins: [react()],
   server: {
     host: '0.0.0.0',
-    port: 3000,
+    port: parseInt(process.env.VITE_DEV_PORT || '5173', 10),
     hmr: false,
     proxy: {
       '/api': {
-        target: process.env.VITE_API_TARGET || 'http://localhost:8000',
+        target: process.env.VITE_API_TARGET || `http://localhost:${process.env.VITE_TFRUNNER_PORT || '7621'}`,
         changeOrigin: true,
         ws: true,
       }

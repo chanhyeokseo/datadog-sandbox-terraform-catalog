@@ -5,7 +5,7 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-DOGSTAC_API_URL = os.environ.get("DOGSTAC_API_URL", "http://localhost:8000")
+DOGSTAC_API_URL = os.environ.get("DOGSTAC_API_URL", "http://localhost:7621")
 MCP_HEADERS = {"X-DogSTAC-Source": "mcp"}
 STREAM_TIMEOUT = 1800.0
 _CRED_CACHE_TTL = 300

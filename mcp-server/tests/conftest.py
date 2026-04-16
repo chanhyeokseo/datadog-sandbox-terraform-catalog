@@ -7,7 +7,7 @@ from dogstac_client import DogSTACClient
 
 class MockDogSTACClient(DogSTACClient):
     def __init__(self):
-        super().__init__(base_url="http://mock:8000")
+        super().__init__(base_url="http://mock:7621")
         self.get = AsyncMock()
         self.put = AsyncMock()
         self.post = AsyncMock()

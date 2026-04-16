@@ -1,7 +1,6 @@
 import asyncio
 import json
 import logging
-import webbrowser
 from mcp.server.fastmcp import FastMCP
 from dogstac_client import DogSTACClient, CredentialsExpiredError
 
@@ -26,30 +25,20 @@ def register(mcp: FastMCP, client: DogSTACClient):
     @mcp.tool()
     async def sso_login(session_id: str = "") -> str:
         """AWS SSO login. Two modes:
-        - No session_id: Start SSO login, auto-opens browser, returns URL and session_id.
-          Present the URL to the user as fallback, then call again with session_id.
+        - No session_id: Start SSO login, returns verification URL, user code, and session_id.
+          Present the URL and code to the user, then call again with session_id.
         - With session_id: Poll for completion (up to 5 min). Returns only after
           authentication AND backend initialization are complete."""
         if not session_id:
             data = await client.post("/api/terraform/credentials/sso-login")
-            verification_uri = data.get("verification_uri", "")
-            browser_opened = False
-            if verification_uri:
-                try:
-                    webbrowser.open(verification_uri)
-                    browser_opened = True
-                    logger.info("Opened SSO verification URL in browser: %s", verification_uri)
-                except Exception as e:
-                    logger.warning("Failed to open browser: %s", e)
             return json.dumps({
                 "session_id": data.get("session_id"),
-                "verification_uri": verification_uri,
+                "verification_uri": data.get("verification_uri", ""),
                 "user_code": data.get("user_code"),
-                "browser_opened": browser_opened,
                 "instruction": (
-                    "The verification URL has been opened in the user's browser. "
-                    "Present the URL and user code as fallback in case the browser did not open. "
-                    "Ask the user to approve, then call sso_login again with the session_id."
+                    "Present the verification URL and user code to the user. "
+                    "Ask the user to open the URL, enter the code, and approve. "
+                    "Then call sso_login again with the session_id."
                 ),
             }, indent=2)
 

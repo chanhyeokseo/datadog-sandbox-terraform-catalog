@@ -1,10 +1,10 @@
 services:
   backend:
-    image: dogstac/tfrunner:latest
-    container_name: dogstac-backend
+    image: dogstac/dogstac:latest
+    container_name: dogstac
     ports:
-      - "8000:8000"
-      - "${MCP_PORT:-8080}:${MCP_PORT:-8080}"
+      - "${TFRUNNER_PORT:-7621}:${TFRUNNER_PORT:-7621}"
+      - "${MCP_PORT:-7622}:${MCP_PORT:-7622}"
     environment:
       - TERRAFORM_DIR=/app/terraform
       - USE_PARAMETER_STORE=true
@@ -16,21 +16,11 @@ services:
       - FORCE_REINIT=${FORCE_REINIT:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - ENABLE_MCP=${ENABLE_MCP:-true}
-      - MCP_PORT=${MCP_PORT:-8080}
+      - TFRUNNER_PORT=${TFRUNNER_PORT:-7621}
+      - MCP_PORT=${MCP_PORT:-7622}
     volumes:
       - ${TERRAFORM_DATA_PATH:-./terraform-data}:/app/terraform
       - ~/.aws:/root/.aws
-    restart: unless-stopped
-    networks:
-      - dogstac-network
-
-  frontend:
-    image: dogstac/webui:latest
-    container_name: dogstac-frontend
-    ports:
-      - "3000:3000"
-    depends_on:
-      - backend
     restart: unless-stopped
     networks:
       - dogstac-network

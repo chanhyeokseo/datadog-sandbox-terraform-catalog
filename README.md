@@ -78,7 +78,7 @@ docker compose up -d
 ### 4. Open the UI
 
 ```
-http://localhost:3000
+http://localhost:7621
 ```
 
 ## Environment Variables
@@ -98,6 +98,6 @@ http://localhost:3000
 
 ---
 
-Backend API docs available at `http://localhost:8000/docs`
+Backend API docs available at `http://localhost:7621/docs`
 
 </div>

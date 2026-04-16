@@ -16,7 +16,7 @@ logging.basicConfig(
 
 MCP_TRANSPORT = os.environ.get("MCP_TRANSPORT", "stdio")
 MCP_HOST = os.environ.get("MCP_HOST", "0.0.0.0")
-MCP_PORT = int(os.environ.get("MCP_PORT", "8080"))
+MCP_PORT = int(os.environ.get("MCP_PORT", "7622"))
 
 mcp = FastMCP(
     "DogSTAC",

@@ -112,7 +112,6 @@ const ResourceSidebar = ({ onResourceSelect, selectedResourceId, refreshTrigger,
     'ec2',
     'eks',
     'ecs',
-    'dbm',
     'lambda',
     'ecr',
     'rds',
@@ -145,7 +144,6 @@ const ResourceSidebar = ({ onResourceSelect, selectedResourceId, refreshTrigger,
       ecs: '🐳',
       ecr: '📦',
       lambda: '⚡',
-      dbm: '📊',
     };
     return icons[type] || '📄';
   };

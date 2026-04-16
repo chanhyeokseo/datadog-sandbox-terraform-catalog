@@ -646,7 +646,7 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
                 >
                   {checkingWorkloads ? 'Checking...' : 'Destroy'}
                 </button>
-                {selectedResource && selectedResource.status === 'enabled' && (selectedResource.type === ResourceType.EC2 || selectedResource.type === ResourceType.DBM) && (
+                {selectedResource && selectedResource.status === 'enabled' && selectedResource.type === ResourceType.EC2 && (
                   <button
                     onClick={handleConnect}
                     className="btn btn-connect"

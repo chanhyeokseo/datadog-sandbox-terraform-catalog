@@ -31,8 +31,8 @@ def get_resource_type_from_dir(dir_name: str) -> ResourceType:
         return ResourceType.ECS
     if dir_name.startswith("lambda-"):
         return ResourceType.LAMBDA
-    if dir_name.startswith("dbm-"):
-        return ResourceType.DBM
+    if dir_name.startswith("rds-"):
+        return ResourceType.RDS
     if dir_name.startswith("ecr-") or dir_name == "deploy-spring-boot":
         return ResourceType.ECR
     if dir_name.startswith("test-file"):
