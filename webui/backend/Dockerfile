@@ -44,7 +44,7 @@ RUN mkdir -p /app/terraform
 COPY webui/backend/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-EXPOSE 8000
+EXPOSE ${TFRUNNER_PORT:-7621}
 
 ENV TERRAFORM_DIR=/app/terraform
 ENV USE_PARAMETER_STORE=true

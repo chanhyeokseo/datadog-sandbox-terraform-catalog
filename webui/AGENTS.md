@@ -389,8 +389,8 @@ Mirrors backend models in `src/types/index.ts` with matching enums and interface
 
 ### `docker-compose.yml` (end-user)
 
-- **backend**: Pre-built image `terraform-webui-backend:latest`, port 8000
-- **frontend**: Built from `./frontend/Dockerfile`, port 3000
+- **backend**: Pre-built image `terraform-webui-backend:latest`, port 7621
+- **frontend**: Built from `./frontend/Dockerfile`, port 7620
 - **Volume**: `${TERRAFORM_DATA_PATH:-./terraform-data}` → `/app/terraform`
 - **Network**: `terraform-network` bridge
 
@@ -428,10 +428,10 @@ Mirrors backend models in `src/types/index.ts` with matching enums and interface
 cd backend
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn app.main:app --reload --host 0.0.0.0 --port 7621
 ```
 
-API docs: http://localhost:8000/docs
+API docs: http://localhost:7621/docs
 
 ### Frontend
 
@@ -441,7 +441,7 @@ npm install
 npm run dev
 ```
 
-Dev server: http://localhost:3000 (proxies `/api` to backend via vite.config.ts)
+Dev server: http://localhost:7620 (proxies `/api` to backend via vite.config.ts)
 
 ### Docker Compose
 
@@ -451,7 +451,7 @@ docker-compose -f docker-compose.build.yml up -d   # developer build
 docker-compose up -d                                 # end-user (pre-built image)
 ```
 
-Web UI: http://localhost:3000
+Web UI: http://localhost:7620
 
 ## Resource Type System
 

@@ -21,8 +21,8 @@ cp .env.example .env        # configure AWS_PROFILE and DOGSTAC_SALT
 docker compose -f docker-compose.build.yml up --build
 ```
 
-- UI: http://localhost:3000
-- API docs: http://localhost:8000/docs
+- UI: http://localhost:7620
+- API docs: http://localhost:7621/docs
 
 ### Backend Only
 
@@ -30,7 +30,7 @@ docker compose -f docker-compose.build.yml up --build
 cd webui/backend
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn app.main:app --reload --host 0.0.0.0 --port 7621
 ```
 
 ### Frontend Only
@@ -41,7 +41,7 @@ npm install
 npm run dev
 ```
 
-Dev server runs on port 3000 and proxies `/api` to `localhost:8000`.
+Dev server runs on port 7620 and proxies `/api` to `localhost:7621`.
 
 ## Project Structure
 
