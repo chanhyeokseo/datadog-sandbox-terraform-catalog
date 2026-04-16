@@ -21,6 +21,15 @@ webui/frontend/dist
 webui/frontend/build
 webui/frontend/node_modules
 
+# Exclude dev/test artifacts from mcp-server
+mcp-server/.venv
+mcp-server/__pycache__
+mcp-server/.pytest_cache
+mcp-server/tests
+
+# Exclude test files from webui backend
+webui/backend/tests
+
 # Exclude legacy and other large directories
 legacy/
 .git/
