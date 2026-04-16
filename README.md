@@ -78,7 +78,7 @@ docker compose up -d
 ### 4. Open the UI
 
 ```
-http://localhost:7620
+http://localhost:7621
 ```
 
 ## Environment Variables

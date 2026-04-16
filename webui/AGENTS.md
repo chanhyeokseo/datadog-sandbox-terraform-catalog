@@ -8,7 +8,7 @@ DogSTAC is a web-based Terraform infrastructure management tool. It provides a v
 
 - **Backend**: Python 3.11, FastAPI, Uvicorn, Pydantic, boto3, paramiko, python-hcl2
 - **Frontend**: React 18, TypeScript, Vite 5, React Router 6, Axios, xterm.js
-- **Infrastructure**: Docker Compose, Terraform 1.7.0, nginx:alpine
+- **Infrastructure**: Docker Compose, Terraform 1.7.0
 - **AWS Services**: S3 (state + config), DynamoDB (state lock), Parameter Store (config), EC2 API (VPC/subnet/key discovery)
 
 ## Project Structure
@@ -66,8 +66,6 @@ webui/
 │           └── eks_preset_manager.py  # EKS preset discovery, file I/O, local cache, deployment tracking
 │
 ├── frontend/
-│   ├── Dockerfile                     # Multi-stage: node:18-alpine → nginx:alpine
-│   ├── nginx.conf                     # SPA fallback + /api proxy to backend
 │   ├── package.json
 │   ├── vite.config.ts
 │   ├── tsconfig.json
@@ -389,15 +387,13 @@ Mirrors backend models in `src/types/index.ts` with matching enums and interface
 
 ### `docker-compose.yml` (end-user)
 
-- **backend**: Pre-built image `terraform-webui-backend:latest`, port 7621
-- **frontend**: Built from `./frontend/Dockerfile`, port 7620
+- Single container `dogstac/dogstac:latest`, serves API (port 7621), frontend static files, and MCP server (port 7622)
 - **Volume**: `${TERRAFORM_DATA_PATH:-./terraform-data}` → `/app/terraform`
-- **Network**: `terraform-network` bridge
+- **Network**: `dogstac-network` bridge
 
 ### `docker-compose.build.yml` (developer)
 
-- Same as above but builds backend image locally from `./backend/Dockerfile`
-- Default branch: `webui-dev`
+- Same as above but builds the image locally from `./backend/Dockerfile` (includes frontend build stage)
 
 ### Environment Variables (`.env`)
 
@@ -441,7 +437,7 @@ npm install
 npm run dev
 ```
 
-Dev server: http://localhost:7620 (proxies `/api` to backend via vite.config.ts)
+Dev server proxies `/api` to backend via vite.config.ts
 
 ### Docker Compose
 
@@ -451,7 +447,7 @@ docker-compose -f docker-compose.build.yml up -d   # developer build
 docker-compose up -d                                 # end-user (pre-built image)
 ```
 
-Web UI: http://localhost:7620
+Web UI: http://localhost:7621
 
 ## Resource Type System
 

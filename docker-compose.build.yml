@@ -3,8 +3,8 @@ services:
     build:
       context: .
       dockerfile: webui/backend/Dockerfile
-    image: dogstac/tfrunner:latest
-    container_name: dogstac-backend
+    image: dogstac/dogstac:latest
+    container_name: dogstac
     ports:
       - "${TFRUNNER_PORT:-7621}:${TFRUNNER_PORT:-7621}"
       - "${MCP_PORT:-7622}:${MCP_PORT:-7622}"
@@ -25,23 +25,6 @@ services:
       - ${TERRAFORM_DATA_PATH:-./terraform-data}:/app/terraform
       - ./modules:/app/terraform-source/modules
       - ~/.aws:/root/.aws
-    restart: unless-stopped
-    networks:
-      - dogstac-network
-
-  frontend:
-    build:
-      context: ./webui/frontend
-      dockerfile: Dockerfile
-    image: dogstac/webui:latest
-    container_name: dogstac-frontend
-    ports:
-      - "${WEBUI_PORT:-7620}:${WEBUI_PORT:-7620}"
-    environment:
-      - WEBUI_PORT=${WEBUI_PORT:-7620}
-      - TFRUNNER_PORT=${TFRUNNER_PORT:-7621}
-    depends_on:
-      - backend
     restart: unless-stopped
     networks:
       - dogstac-network

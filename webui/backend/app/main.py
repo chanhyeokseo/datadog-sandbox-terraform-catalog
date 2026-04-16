@@ -1,9 +1,12 @@
 import asyncio
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 import logging
 
 if not os.environ.get("AWS_PROFILE", "").strip():
@@ -59,18 +62,31 @@ app.include_router(ecs_manage.router)
 app.include_router(cluster_share.router)
 
 
-@app.get("/")
-async def root():
-    return {
-        "message": "Terraform Web UI API",
-        "version": "1.0.0",
-        "docs": "/docs"
-    }
-
-
 @app.get("/health")
 async def health():
     return {"status": "healthy"}
+
+STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+logger = logging.getLogger(__name__)
+
+if STATIC_DIR.is_dir():
+    logger.info("Serving frontend from %s", STATIC_DIR)
+    assets_dir = STATIC_DIR / "assets"
+    if assets_dir.is_dir():
+        app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def spa_fallback(full_path: str):
+        file_path = STATIC_DIR / full_path
+        if file_path.is_file():
+            return FileResponse(str(file_path))
+        return FileResponse(str(STATIC_DIR / "index.html"))
+else:
+    logger.info("No static directory found at %s, running API-only mode", STATIC_DIR)
+
+    @app.get("/")
+    async def root():
+        return {"message": "Terraform Web UI API", "version": "1.0.0", "docs": "/docs"}
 
 
 if __name__ == "__main__":

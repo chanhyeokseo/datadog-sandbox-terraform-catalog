@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     host: '0.0.0.0',
-    port: parseInt(process.env.VITE_WEBUI_PORT || '7620', 10),
+    port: parseInt(process.env.VITE_DEV_PORT || '5173', 10),
     hmr: false,
     proxy: {
       '/api': {

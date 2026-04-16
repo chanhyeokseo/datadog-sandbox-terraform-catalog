@@ -4,7 +4,7 @@ MCP (Model Context Protocol) server that exposes DogSTAC infrastructure manageme
 
 ## Quick Start (Docker)
 
-The MCP server is bundled inside the `dogstac/tfrunner` container. When you run `docker-compose up`, it automatically starts on port **7622** alongside the backend.
+The MCP server is bundled inside the `dogstac/dogstac` container. When you run `docker-compose up`, it automatically starts on port **7622** alongside the backend.
 
 ### Connecting to Cursor (Docker — recommended)
 
@@ -210,17 +210,17 @@ server.py ── dogstac_client.py ──HTTP──▶ DogSTAC Backend (:7621)
 When running in Docker, both the backend and MCP server live in the same container:
 
 ```
-┌─── dogstac-backend container ───────────────────┐
-│                                                  │
-│  uvicorn (FastAPI)          MCP server (SSE)     │
-│  :7621                      :7622                │
-│       ▲                        │                 │
-│       └── HTTP (localhost) ────┘                 │
-│                                                  │
-└──────────────────────────────────────────────────┘
-         ▲                        ▲
-         │ :7621                  │ :7622/sse
-      WebUI frontend         AI Client (Cursor)
+┌─── dogstac container ──────────────────────────────────┐
+│                                                        │
+│  uvicorn (FastAPI + static)       MCP server (SSE)     │
+│  :7621                            :7622                │
+│       ▲                              │                 │
+│       └──── HTTP (localhost) ────────┘                 │
+│                                                        │
+└────────────────────────────────────────────────────────┘
+         ▲                              ▲
+         │ :7621                        │ :7622/sse
+      Browser (UI + API)          AI Client (Cursor)
 ```
 
 All HTTP requests from the MCP server include the `X-DogSTAC-Source: mcp` header, which activates the guardrail middleware on the backend.

@@ -53,9 +53,9 @@ jobs:
       - name: Build and push tfrunner
         run: |
           set -eu
-          tags=( -t "dogstac/tfrunner:${VERSION}" )
+          tags=( -t "dogstac/dogstac:${VERSION}" )
           if [ "${PUSH_LATEST}" = "true" ]; then
-            tags+=( -t "dogstac/tfrunner:latest" )
+            tags+=( -t "dogstac/dogstac:latest" )
           fi
           docker buildx build \
             --platform linux/amd64,linux/arm64 \
@@ -64,15 +64,3 @@ jobs:
             --push \
             .
 
-      - name: Build and push webui
-        run: |
-          set -eu
-          tags=( -t "dogstac/webui:${VERSION}" )
-          if [ "${PUSH_LATEST}" = "true" ]; then
-            tags+=( -t "dogstac/webui:latest" )
-          fi
-          docker buildx build \
-            --platform linux/amd64,linux/arm64 \
-            "${tags[@]}" \
-            --push \
-            ./webui/frontend

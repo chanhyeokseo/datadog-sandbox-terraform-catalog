@@ -1,3 +1,10 @@
+FROM node:18-alpine AS frontend-build
+WORKDIR /app
+COPY webui/frontend/package*.json ./
+RUN npm install
+COPY webui/frontend/ .
+RUN npm run build
+
 FROM python:3.11-slim
 
 RUN apt-get update && apt-get install -y \
@@ -32,6 +39,7 @@ RUN pip install --no-cache-dir -r requirements.txt -r mcp-requirements.txt
 
 COPY webui/backend/app/ ./app/
 COPY mcp-server/ ./mcp-server/
+COPY --from=frontend-build /app/dist ./static/
 
 COPY instances/ /app/terraform-source/instances/
 COPY modules/ /app/terraform-source/modules/

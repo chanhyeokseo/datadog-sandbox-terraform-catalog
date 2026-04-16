@@ -21,8 +21,7 @@ cp .env.example .env        # configure AWS_PROFILE and DOGSTAC_SALT
 docker compose -f docker-compose.build.yml up --build
 ```
 
-- UI: http://localhost:7620
-- API docs: http://localhost:7621/docs
+- UI + API docs: http://localhost:7621 (API docs at `/docs`)
 
 ### Backend Only
 
@@ -41,7 +40,7 @@ npm install
 npm run dev
 ```
 
-Dev server runs on port 7620 and proxies `/api` to `localhost:7621`.
+Dev server proxies `/api` to `localhost:7621` (backend).
 
 ## Project Structure
 
@@ -177,4 +176,4 @@ git tag v1.2.3
 git push origin v1.2.3
 ```
 
-This triggers the [docker-publish](.github/workflows/docker-publish.yml) workflow, building multi-platform images (`linux/amd64` + `linux/arm64`) and pushing to Docker Hub as `dogstac/tfrunner` and `dogstac/webui`.
+This triggers the [docker-publish](.github/workflows/docker-publish.yml) workflow, building multi-platform images (`linux/amd64` + `linux/arm64`) and pushing to Docker Hub as `dogstac/dogstac`.
