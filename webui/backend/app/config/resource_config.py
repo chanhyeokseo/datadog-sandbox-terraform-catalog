@@ -26,7 +26,6 @@ COMMON_VARIABLES = {
 SENSITIVE_VARIABLES = {
     'datadog_api_key',
     'rds_password',
-    'dbm_postgres_datadog_password',
 }
 
 ONBOARDING_PHASES = [
@@ -122,6 +121,7 @@ RESOURCE_VARIABLE_CONFIGS: Dict[str, List[ResourceVariableConfig]] = {
     ],
     
     "rds": [
+        ResourceVariableConfig("rds_type", VariableType.STRING, "postgres", "Database engine type (postgres, mysql, oracle, sqlserver, docdb)"),
         ResourceVariableConfig("rds_instance_class", VariableType.STRING, "db.t3.micro", "RDS instance class"),
         ResourceVariableConfig("rds_username", VariableType.STRING, "dbadmin", "Master username for RDS instance"),
         ResourceVariableConfig("rds_password", VariableType.STRING, "", "Master password for RDS instance"),
@@ -134,12 +134,6 @@ RESOURCE_VARIABLE_CONFIGS: Dict[str, List[ResourceVariableConfig]] = {
         ResourceVariableConfig("lambda_timeout", VariableType.NUMBER, 30, "Lambda function timeout in seconds"),
     ],
     
-    "dbm": [
-        ResourceVariableConfig("rds_username", VariableType.STRING, "datadog", "Master username for RDS instance"),
-        ResourceVariableConfig("rds_password", VariableType.STRING, None, "Master password for RDS instance"),
-        ResourceVariableConfig("rds_instance_class", VariableType.STRING, "db.t3.micro", "RDS instance class"),
-        ResourceVariableConfig("dbm_postgres_datadog_password", VariableType.STRING, None, "Datadog password for DBM Postgres monitoring"),
-    ] + DATADOG_HOST_AGENT_CONFIGS,
 }
 
 

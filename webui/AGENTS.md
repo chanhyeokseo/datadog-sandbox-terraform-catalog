@@ -125,8 +125,7 @@ webui/
     │   ├── deploy-spring-boot/
     │   ├── lambda-python-example/
     │   ├── lambda-python-tracing-example/
-    │   ├── dbm-autoconfig-postgres/
-    │   ├── dbm-postgres-postgres/
+    │   ├── rds-database/
     │   ├── security-group/
     │   └── test-file-*/
     └── apps/                          # Application source for deployments
@@ -367,7 +366,7 @@ App
 
 ### Backend (Pydantic)
 
-- `ResourceType` - EC2, RDS, EKS, ECS, ECR, LAMBDA, DBM, TEST, SECURITY_GROUP
+- `ResourceType` - EC2, RDS, EKS, ECS, ECR, LAMBDA, TEST, SECURITY_GROUP
 - `ResourceStatus` - ENABLED, DISABLED, UNKNOWN
 - `TerraformResource` - id, name, type, file_path, line_start, line_end, status, description
 - `TerraformVariable` - name, value, description, sensitive, is_common
@@ -460,8 +459,7 @@ Web UI: http://localhost:7621
 | ECS | `ecs-*` | ecs-ec2, ecs-fargate |
 | ECR | `ecr-*`, `deploy-*` | ecr-apps, deploy-spring-boot |
 | Lambda | `lambda-*` | lambda-python-example |
-| DBM | `dbm-*` | dbm-autoconfig-postgres |
-| RDS | `rds-*` | (prefix-based) |
+| RDS | `rds-*` | rds-database |
 | Security Group | `security-group` | security-group |
 | Test | `test-*` | test-file-1 |
 

@@ -10,7 +10,6 @@ class ResourceType(str, Enum):
     ECS = "ecs"
     ECR = "ecr"
     LAMBDA = "lambda"
-    DBM = "dbm"
     TEST = "test"
     SECURITY_GROUP = "security_group"
 

@@ -303,7 +303,7 @@ class TerraformParser:
         except Exception:
             return ResourceStatus.DISABLED
     
-    _UPPER_WORDS = {"ec2", "ecs", "ecr", "rds", "eks", "dbm", "ssh", "aws", "vpc", "iam", "alb", "nlb", "api", "ip", "rds"}
+    _UPPER_WORDS = {"ec2", "ecs", "ecr", "rds", "eks", "ssh", "aws", "vpc", "iam", "alb", "nlb", "api", "ip"}
 
     def _smart_title(self, name: str) -> str:
         words = name.replace("-", " ").replace("_", " ").split()

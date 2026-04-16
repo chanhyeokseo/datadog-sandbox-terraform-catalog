@@ -28,7 +28,3 @@ datadog_api_key = "your-datadog-api-key-here"
 # rds_username       = "admin"
 # rds_password       = "YourRDSPassword123"
 # rds_instance_class = "db.t3.micro"
-
-# DBM Auto-Config (uncomment when using dbm-autoconfig.tf)
-# dbm_postgres_datadog_password = "YourDatadogDBMPassword123"
-# ssh_private_key_path          = "./your-key.pem"
