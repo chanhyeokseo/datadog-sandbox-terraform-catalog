@@ -199,6 +199,19 @@ def _delete_ssh_keys(config_manager: ConfigManager) -> dict:
     return result
 
 
+def _ssm_delete_by_prefix(ssm, prefix: str) -> int:
+    paginator = ssm.get_paginator("describe_parameters")
+    names = []
+    for page in paginator.paginate(
+        ParameterFilters=[{"Key": "Name", "Option": "BeginsWith", "Values": [prefix]}]
+    ):
+        for param in page.get("Parameters", []):
+            names.append(param["Name"])
+    for i in range(0, len(names), 10):
+        ssm.delete_parameters(Names=names[i : i + 10])
+    return len(names)
+
+
 def _delete_parameter_store(config_manager: ConfigManager) -> dict:
     result = {"success": True, "actions": []}
     try:
@@ -207,29 +220,41 @@ def _delete_parameter_store(config_manager: ConfigManager) -> dict:
             result["actions"].append("SSM client not available")
             return result
 
-        prefix = config_manager._namespace_prefix
-        try:
-            paginator = ssm.get_paginator("describe_parameters")
-            names_to_delete = []
-            for page in paginator.paginate(
-                ParameterFilters=[{"Key": "Name", "Option": "BeginsWith", "Values": [prefix]}]
-            ):
-                for param in page.get("Parameters", []):
-                    names_to_delete.append(param["Name"])
+        prefixes = [
+            config_manager._namespace_prefix,
+            config_manager._sensitive_param_prefix,
+        ]
 
-            if names_to_delete:
-                for batch_start in range(0, len(names_to_delete), 10):
-                    batch = names_to_delete[batch_start : batch_start + 10]
-                    ssm.delete_parameters(Names=batch)
-                result["actions"].append(f"Deleted {len(names_to_delete)} parameter(s) under {prefix}")
-                logger.info(f"Deleted {len(names_to_delete)} parameters under {prefix}")
+        total = 0
+        for prefix in prefixes:
+            try:
+                count = _ssm_delete_by_prefix(ssm, prefix)
+                total += count
+                if count:
+                    result["actions"].append(f"Deleted {count} parameter(s) under {prefix}")
+                    logger.info(f"Deleted {count} parameters under {prefix}")
+                else:
+                    result["actions"].append(f"No parameters found under {prefix}")
+            except Exception as e:
+                msg = f"Failed to delete parameters under {prefix}: {e}"
+                result["actions"].append(msg)
+                result["success"] = False
+                logger.warning(msg)
+
+        try:
+            count = _ssm_delete_by_prefix(ssm, "/ec2/keypairs")
+            total += count
+            if count:
+                result["actions"].append(f"Deleted {count} key parameter(s) under /ec2/keypairs")
+                logger.info(f"Deleted {count} key parameters under /ec2/keypairs")
             else:
-                result["actions"].append(f"No parameters found under {prefix}")
+                result["actions"].append("No key parameters found under /ec2/keypairs")
         except Exception as e:
-            msg = f"Failed to delete parameters under {prefix}: {e}"
+            msg = f"Failed to delete key parameters under /ec2/keypairs: {e}"
             result["actions"].append(msg)
             result["success"] = False
             logger.warning(msg)
+
     except Exception as e:
         result["success"] = False
         result["error"] = str(e)
@@ -293,7 +318,7 @@ def _delete_dynamodb_table(config_manager: ConfigManager) -> dict:
     return result
 
 
-BIND_MOUNT_DIRS = {"modules", "apps"}
+KEEP_NAMES = {".plugin-cache"}
 
 
 def _clean_local_terraform_data() -> dict:
@@ -305,8 +330,12 @@ def _clean_local_terraform_data() -> dict:
             return result
 
         cleaned = 0
+        failed = 0
         for entry in td.iterdir():
-            if entry.name in BIND_MOUNT_DIRS:
+            if entry.name in KEEP_NAMES:
+                continue
+            if entry.is_dir() and os.path.ismount(str(entry)):
+                result["actions"].append(f"Skipped mount point: {entry.name}")
                 continue
             try:
                 if entry.is_dir():
@@ -315,10 +344,14 @@ def _clean_local_terraform_data() -> dict:
                     entry.unlink()
                 cleaned += 1
             except Exception as e:
+                failed += 1
+                result["actions"].append(f"Failed to remove {entry.name}: {e}")
                 logger.warning(f"Failed to remove {entry}: {e}")
 
-        result["actions"].append(f"Removed {cleaned} item(s) from {td} (kept bind mounts: {', '.join(BIND_MOUNT_DIRS)})")
-        logger.info(f"Cleaned {cleaned} items from {td}")
+        if failed:
+            result["success"] = False
+        result["actions"].append(f"Removed {cleaned} item(s) from {td}, {failed} failed")
+        logger.info(f"Cleaned {cleaned} items from {td}, {failed} failed")
     except Exception as e:
         result["success"] = False
         result["error"] = str(e)

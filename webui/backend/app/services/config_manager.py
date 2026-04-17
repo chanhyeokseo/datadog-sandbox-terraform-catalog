@@ -8,6 +8,8 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+SSM_GLOBAL_REGION = "us-east-1"
+
 
 class CredentialExpiredError(Exception):
     pass
@@ -85,8 +87,7 @@ class ConfigManager:
         if self._boto3_client is None:
             try:
                 import boto3
-                region = self._get_region()
-                self._boto3_client = boto3.client('ssm', region_name=region)
+                self._boto3_client = boto3.client('ssm', region_name=SSM_GLOBAL_REGION)
             except Exception as e:
                 logger.warning(f"Failed to create SSM client: {e}")
                 return None

@@ -10,10 +10,13 @@ from botocore.exceptions import ClientError, ProfileNotFound
 logger = logging.getLogger(__name__)
 
 
+SSM_GLOBAL_REGION = "us-east-1"
+
+
 class ParameterStoreKeyManager:
     """Manages SSH keys in AWS Parameter Store"""
 
-    def __init__(self, region: str = "ap-northeast-2"):
+    def __init__(self, region: str = SSM_GLOBAL_REGION):
         self.region = region
         self.key_prefix = "/ec2/keypairs"
         try:

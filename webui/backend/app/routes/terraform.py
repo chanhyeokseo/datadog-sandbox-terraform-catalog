@@ -683,6 +683,146 @@ async def get_aws_subnets(region: str = Query(...), vpc_id: str = Query(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+SHARED_VPC_NAME = "dogstac-shared-vpc"
+SHARED_VPC_CIDR = "10.0.0.0/16"
+SHARED_SUBNETS = [
+    {"name": "dogstac-public-1", "cidr": "10.0.1.0/24", "az_suffix": "a", "public": True},
+    {"name": "dogstac-public-2", "cidr": "10.0.2.0/24", "az_suffix": "b", "public": True},
+    {"name": "dogstac-private-1", "cidr": "10.0.10.0/24", "az_suffix": "a", "public": False},
+]
+
+
+def _tag(ec2, resource_id: str, name: str):
+    ec2.create_tags(Resources=[resource_id], Tags=[
+        {"Key": "Name", "Value": name},
+        {"Key": "ManagedBy", "Value": "dogstac"},
+    ])
+
+
+def _find_shared_vpc(ec2):
+    resp = ec2.describe_vpcs(Filters=[
+        {"Name": "tag:Name", "Values": [SHARED_VPC_NAME]},
+        {"Name": "state", "Values": ["available"]},
+    ])
+    vpcs = resp.get("Vpcs", [])
+    return vpcs[0] if vpcs else None
+
+
+def _get_shared_subnets(ec2, vpc_id: str):
+    resp = ec2.describe_subnets(Filters=[
+        {"Name": "vpc-id", "Values": [vpc_id]},
+        {"Name": "tag:ManagedBy", "Values": ["dogstac"]},
+    ])
+    result = {"public1": None, "public2": None, "private1": None}
+    for s in resp.get("Subnets", []):
+        name = _get_tag_name(s.get("Tags"))
+        item = {
+            "id": s["SubnetId"],
+            "cidr": s.get("CidrBlock", ""),
+            "az": s.get("AvailabilityZone", ""),
+            "name": name or s["SubnetId"],
+        }
+        if name == "dogstac-public-1":
+            result["public1"] = item
+        elif name == "dogstac-public-2":
+            result["public2"] = item
+        elif name == "dogstac-private-1":
+            result["private1"] = item
+    return result
+
+
+@router.post("/aws/shared-vpc")
+async def create_shared_vpc(region: str = Query(..., description="AWS region")):
+    try:
+        ec2 = _get_ec2_client(region)
+
+        existing = await asyncio.to_thread(_find_shared_vpc, ec2)
+        if existing:
+            vpc_id = existing["VpcId"]
+            subs = await asyncio.to_thread(_get_shared_subnets, ec2, vpc_id)
+            return {
+                "existed": True,
+                "vpc": {"id": vpc_id, "cidr": existing.get("CidrBlock", ""), "name": SHARED_VPC_NAME},
+                "subnets": subs,
+            }
+
+        vpc_resp = await asyncio.to_thread(ec2.create_vpc, CidrBlock=SHARED_VPC_CIDR)
+        vpc_id = vpc_resp["Vpc"]["VpcId"]
+        logger.debug("Created VPC %s", vpc_id)
+
+        waiter = ec2.get_waiter("vpc_available")
+        await asyncio.to_thread(waiter.wait, VpcIds=[vpc_id])
+        await asyncio.to_thread(_tag, ec2, vpc_id, SHARED_VPC_NAME)
+
+        await asyncio.to_thread(ec2.modify_vpc_attribute, VpcId=vpc_id, EnableDnsSupport={"Value": True})
+        await asyncio.to_thread(ec2.modify_vpc_attribute, VpcId=vpc_id, EnableDnsHostnames={"Value": True})
+
+        igw_resp = await asyncio.to_thread(ec2.create_internet_gateway)
+        igw_id = igw_resp["InternetGateway"]["InternetGatewayId"]
+        await asyncio.to_thread(ec2.attach_internet_gateway, InternetGatewayId=igw_id, VpcId=vpc_id)
+        await asyncio.to_thread(_tag, ec2, igw_id, "dogstac-igw")
+        logger.debug("Created IGW %s", igw_id)
+
+        pub_rt_resp = await asyncio.to_thread(ec2.create_route_table, VpcId=vpc_id)
+        pub_rt_id = pub_rt_resp["RouteTable"]["RouteTableId"]
+        await asyncio.to_thread(_tag, ec2, pub_rt_id, "dogstac-public-rt")
+        await asyncio.to_thread(
+            ec2.create_route,
+            RouteTableId=pub_rt_id, DestinationCidrBlock="0.0.0.0/0", GatewayId=igw_id,
+        )
+        logger.debug("Created public route table %s", pub_rt_id)
+
+        priv_rt_resp = await asyncio.to_thread(ec2.create_route_table, VpcId=vpc_id)
+        priv_rt_id = priv_rt_resp["RouteTable"]["RouteTableId"]
+        await asyncio.to_thread(_tag, ec2, priv_rt_id, "dogstac-private-rt")
+        logger.debug("Created private route table %s", priv_rt_id)
+
+        subnet_result = {"public1": None, "public2": None, "private1": None}
+        key_map = {"dogstac-public-1": "public1", "dogstac-public-2": "public2", "dogstac-private-1": "private1"}
+
+        for spec in SHARED_SUBNETS:
+            az = f"{region}{spec['az_suffix']}"
+            sub_resp = await asyncio.to_thread(
+                ec2.create_subnet, VpcId=vpc_id, CidrBlock=spec["cidr"], AvailabilityZone=az,
+            )
+            sub_id = sub_resp["Subnet"]["SubnetId"]
+            await asyncio.to_thread(_tag, ec2, sub_id, spec["name"])
+            logger.debug("Created subnet %s (%s)", sub_id, spec["name"])
+
+            if spec["public"]:
+                await asyncio.to_thread(
+                    ec2.associate_route_table, RouteTableId=pub_rt_id, SubnetId=sub_id,
+                )
+                await asyncio.to_thread(
+                    ec2.modify_subnet_attribute, SubnetId=sub_id, MapPublicIpOnLaunch={"Value": True},
+                )
+            else:
+                await asyncio.to_thread(
+                    ec2.associate_route_table, RouteTableId=priv_rt_id, SubnetId=sub_id,
+                )
+
+            subnet_result[key_map[spec["name"]]] = {
+                "id": sub_id, "cidr": spec["cidr"], "az": az, "name": spec["name"],
+            }
+
+        return {
+            "existed": False,
+            "vpc": {"id": vpc_id, "cidr": SHARED_VPC_CIDR, "name": SHARED_VPC_NAME},
+            "subnets": subnet_result,
+        }
+
+    except ClientError as ce:
+        code = ce.response.get("Error", {}).get("Code", "")
+        msg = ce.response.get("Error", {}).get("Message", str(ce))
+        logger.debug("create_shared_vpc ClientError [%s]: %s", code, msg)
+        if "limit" in code.lower() or "limit" in msg.lower() or "quota" in msg.lower():
+            raise HTTPException(status_code=409, detail=f"AWS resource quota exceeded: {msg}")
+        raise HTTPException(status_code=500, detail=msg)
+    except Exception as e:
+        logger.exception("create_shared_vpc error: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 def _convert_rsa_pem_to_openssh(pem_content: str) -> str:
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.backends import default_backend
@@ -755,6 +895,71 @@ async def create_aws_key_pair():
         raise
     except Exception as e:
         logger.exception("create_aws_key_pair error")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/aws/key-pair")
+async def delete_aws_key_pair():
+    actions = []
+    try:
+        aws_env = parser.get_aws_env()
+        region = (aws_env.get("AWS_REGION") or "").strip() or "ap-northeast-2"
+        variables = parser.parse_variables()
+        var_map = {v.name: v.value for v in variables}
+        name_prefix = (var_map.get("name_prefix") or "").strip() or "dogstac"
+        safe_fn = lambda s: "".join(c if c.isalnum() or c in "-_" else "-" for c in s)[:64]
+        key_name = f"{safe_fn(name_prefix)}-key-pair"
+        logger.info(f"delete_aws_key_pair: key_name={key_name}, region={region}")
+
+        ec2 = _get_ec2_client(region)
+        try:
+            await asyncio.to_thread(ec2.delete_key_pair, KeyName=key_name)
+            actions.append(f"Deleted EC2 key pair: {key_name}")
+        except ClientError as ce:
+            actions.append(f"EC2 key pair skip: {ce}")
+            logger.warning(f"EC2 key pair deletion failed: {ce}")
+
+        ssm = parser.config_manager.ssm_client
+        if ssm:
+            param_name = parser.config_manager.key_parameter_name
+            logger.info(f"delete_aws_key_pair: deleting SSM param {param_name}")
+            try:
+                ssm.delete_parameter(Name=param_name)
+                actions.append(f"Deleted SSM key: {param_name}")
+            except Exception as e:
+                if "ParameterNotFound" in str(e):
+                    actions.append(f"SSM key not found: {param_name}")
+                else:
+                    actions.append(f"SSM key delete failed: {e}")
+                    logger.warning(f"SSM key deletion failed: {e}")
+
+            from app.services.key_manager import ParameterStoreKeyManager
+            km = ParameterStoreKeyManager()
+            try:
+                km.delete_key(key_name)
+                actions.append(f"Deleted key store entry: /ec2/keypairs/{key_name}")
+            except Exception as e:
+                if "ParameterNotFound" in str(e):
+                    actions.append(f"Key store entry not found: {key_name}")
+                else:
+                    actions.append(f"Key store delete failed: {e}")
+                    logger.warning(f"Key manager cleanup failed: {e}")
+
+        pem_path = parser.terraform_dir / "keys" / f"{key_name}.pem"
+        if pem_path.exists():
+            pem_path.unlink()
+            actions.append(f"Deleted local file: {pem_path}")
+
+        parser._remove_variable_from_root("ec2_key_name")
+        parser._sync_root_tfvars_to_ssm()
+        actions.append("Removed ec2_key_name from tfvars and synced SSM")
+
+        logger.info(f"delete_aws_key_pair complete: {actions}")
+        return {"success": True, "message": f"Key pair '{key_name}' deleted", "actions": actions}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("delete_aws_key_pair error")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -885,6 +1090,17 @@ async def update_root_variable(var_name: str, payload: dict = Body(...)):
         raise
     except Exception as e:
         logger.error(f"Error updating variable: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/variables/{var_name}")
+async def delete_root_variable(var_name: str):
+    try:
+        parser._remove_variable_from_root(var_name)
+        parser._sync_root_tfvars_to_ssm()
+        return {"success": True, "message": f"Variable {var_name} removed"}
+    except Exception as e:
+        logger.error(f"Error deleting variable: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

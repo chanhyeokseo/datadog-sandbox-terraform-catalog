@@ -54,7 +54,8 @@ class ClusterShareManager:
     def ssm_client(self):
         if self._ssm_client is None:
             try:
-                self._ssm_client = boto3.client("ssm", region_name=self._get_region())
+                from app.services.config_manager import SSM_GLOBAL_REGION
+                self._ssm_client = boto3.client("ssm", region_name=SSM_GLOBAL_REGION)
             except Exception as e:
                 logger.warning(f"Failed to create SSM client: {e}")
         return self._ssm_client

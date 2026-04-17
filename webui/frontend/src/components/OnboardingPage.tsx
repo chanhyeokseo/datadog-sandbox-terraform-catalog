@@ -9,9 +9,11 @@ import {
   ConfigOnboardingPhase,
   AwsVpc,
   AwsSubnet,
+  SharedVpcResult,
 } from '../services/api';
 import DangerZoneModal from './DangerZoneModal';
 import SSOLoginModal from './SSOLoginModal';
+import SearchableSelect from './SearchableSelect';
 import '../styles/App.css';
 import '../styles/Unified.css';
 import '../styles/OnboardingPage.css';
@@ -24,6 +26,27 @@ const AWS_REGIONS = [
   'eu-west-1', 'eu-west-2', 'eu-west-3', 'il-central-1', 'me-central-1', 'me-south-1',
   'sa-east-1', 'us-east-1', 'us-east-2', 'us-west-1', 'us-west-2',
 ];
+
+const PHASE_GUIDES: Record<number, { field: string; desc: string }[]> = {
+  0: [
+    { field: 'Name Prefix', desc: 'A unique identifier that prefixes all your AWS resources. For example, if you set "my-sandbox", your resources will be named my-sandbox-ec2, my-sandbox-eks-cluster, etc. Must be 2\u201320 characters, only letters, digits, hyphens, and underscores.' },
+    { field: 'Creator', desc: 'Your name in firstname.lastname format (e.g. jane.doe). This is attached as a tag to every resource for ownership tracking.' },
+    { field: 'Team', desc: 'Your team name used for cost allocation and resource management. Defaults to technical-support-engineering.' },
+    { field: 'AWS Region', desc: 'The AWS region where all infrastructure will be deployed. Choose a region closest to your location for lower latency. Common choices: us-east-1 (N. Virginia), eu-west-1 (Ireland), ap-northeast-2 (Seoul).' },
+  ],
+  1: [
+    { field: 'EC2 Key Pair', desc: 'An SSH key pair is required for secure access to EC2 instances. Click "Generate key pair" to automatically create one. The private key will be saved locally and used by Terraform for provisioning. Make sure to copy and store the private key securely \u2014 it cannot be retrieved later.' },
+  ],
+  2: [
+    { field: 'Create VPC for DogSTAC', desc: 'Don\'t have a VPC? Click this button to automatically create "dogstac-shared-vpc" with 2 public subnets (10.0.1.0/24, 10.0.2.0/24), 1 private subnet (10.0.10.0/24), and an Internet Gateway. All fields will be auto-filled. If the VPC already exists, the button changes to "Use Shared VPC for DogSTAC" to auto-select it.' },
+    { field: 'VPC', desc: 'A Virtual Private Cloud (VPC) is an isolated virtual network in AWS. Select the VPC where your DogSTAC resources will be deployed. You can also use the button above to create one automatically.' },
+    { field: 'Public Subnet 1 & 2', desc: 'Public subnets have direct internet access via an Internet Gateway. Two public subnets in different Availability Zones are required for Application Load Balancers (ALB). Choose subnets in different AZs for high availability.' },
+    { field: 'Private Subnet', desc: 'A private subnet has no direct internet access. Backend services and databases are placed here for security. Note: the auto-created VPC does not include a NAT Gateway, so private subnet instances cannot reach the internet by default.' },
+  ],
+  3: [
+    { field: 'Datadog API Key', desc: 'Your Datadog API key enables the Datadog Agent to send metrics, traces, and logs to your Datadog account. You can find it at Organization Settings > API Keys in the Datadog web app (app.datadoghq.com).' },
+  ],
+};
 
 function getPlaceholder(v: ConfigOnboardingStep): string | undefined {
   if (v.sensitive) return '••••••••';
@@ -44,6 +67,7 @@ function OnboardingPage() {
   const [vpcs, setVpcs] = useState<AwsVpc[]>([]);
   const [subnets, setSubnets] = useState<AwsSubnet[]>([]);
   const [vpcLoading, setVpcLoading] = useState(false);
+  const [vpcCreating, setVpcCreating] = useState(false);
   const [keyResult, setKeyResult] = useState<{ key_name: string; private_key: string; key_path: string; ssh_hint: string } | null>(null);
   const [keyGenerating, setKeyGenerating] = useState(false);
   const [completing, setCompleting] = useState(false);
@@ -55,6 +79,7 @@ function OnboardingPage() {
   }>({ status: 'idle' });
   const [namePrefixStatus, setNamePrefixStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle');
   const [showDangerZone, setShowDangerZone] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
   const namePrefixTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const checkNamePrefixAvailability = useCallback((prefix: string) => {
@@ -271,6 +296,108 @@ function OnboardingPage() {
     });
   };
 
+  const applySharedVpcResult = (result: SharedVpcResult) => {
+    const newValues: Record<string, string> = { vpc_id: result.vpc.id };
+    const subs = result.subnets;
+    if (subs.public1) newValues.public_subnet_id = subs.public1.id;
+    if (subs.public2) newValues.public_subnet2_id = subs.public2.id;
+    if (subs.private1) newValues.private_subnet_id = subs.private1.id;
+    setPhaseValues(prev => ({ ...prev, ...newValues }));
+
+    const subnetList = [subs.public1, subs.public2, subs.private1].filter(Boolean) as AwsSubnet[];
+    setSubnets(subnetList);
+  };
+
+  const handleCreateSharedVpc = async () => {
+    setError(null);
+    setVpcCreating(true);
+    try {
+      const vars = await terraformApi.getVariables();
+      const region = vars.find(v => v.name === 'region')?.value?.trim() || '';
+      if (!region) { setError('Region is not configured.'); return; }
+
+      const result = await terraformApi.createSharedVpc(region);
+
+      const freshVpcs = await terraformApi.getAwsVpcs(region);
+      setVpcs(freshVpcs.vpcs);
+
+      applySharedVpcResult(result);
+    } catch (err: unknown) {
+      const ax = err as { response?: { status?: number; data?: { detail?: string } }; message?: string };
+      if (ax?.response?.status === 409) {
+        setError(ax.response.data?.detail || 'AWS resource quota exceeded.');
+      } else {
+        setError(ax?.response?.data?.detail || (err as Error).message);
+      }
+    } finally {
+      setVpcCreating(false);
+    }
+  };
+
+  const handleUseSharedVpc = async () => {
+    const sharedVpc = vpcs.find(v => v.name === 'dogstac-shared-vpc');
+    if (!sharedVpc) return;
+    setError(null);
+    setVpcCreating(true);
+    try {
+      const vars = await terraformApi.getVariables();
+      const region = vars.find(v => v.name === 'region')?.value?.trim() || '';
+      if (!region) { setError('Region is not configured.'); return; }
+
+      const result = await terraformApi.createSharedVpc(region);
+      applySharedVpcResult(result);
+    } catch (err: unknown) {
+      const ax = err as { response?: { data?: { detail?: string } }; message?: string };
+      setError(ax?.response?.data?.detail || (err as Error).message);
+    } finally {
+      setVpcCreating(false);
+    }
+  };
+
+  const sharedVpcExists = vpcs.some(v => v.name === 'dogstac-shared-vpc');
+
+  const [goingBack, setGoingBack] = useState(false);
+
+  const handleBack = async () => {
+    if (currentPhaseIndex <= 0) return;
+    const prevIndex = currentPhaseIndex - 1;
+    const currentPhase = phases[currentPhaseIndex];
+    const prevPhase = phases[prevIndex];
+    if (!currentPhase || !prevPhase) return;
+
+    const ok = window.confirm(
+      'Going back will clear all saved values in the current and previous phases. Continue?'
+    );
+    if (!ok) return;
+
+    setGoingBack(true);
+    setError(null);
+    try {
+      for (const v of currentPhase.variables) {
+        if (v.filled) await terraformApi.deleteRootVariable(v.name);
+      }
+
+      if (prevIndex === 1) {
+        await terraformApi.deleteAwsKeyPair();
+      } else {
+        for (const v of prevPhase.variables) {
+          if (v.filled) await terraformApi.deleteRootVariable(v.name);
+        }
+      }
+
+      setPhaseValues({});
+      setSubnets([]);
+      setKeyResult(null);
+      const updated = await terraformApi.getConfigOnboardingStatus();
+      setStatus(updated);
+      setCurrentPhaseIndex(prevIndex);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setGoingBack(false);
+    }
+  };
+
   const isPhaseComplete = () => {
     const phase = phases[currentPhaseIndex];
     if (!phase) return false;
@@ -362,9 +489,17 @@ function OnboardingPage() {
   return (
     <div className="onboarding-page">
       <h1 className="onboarding-page-welcome">Welcome to DogSTAC</h1>
-      <div className="onboarding-page-card">
-        <h2 className="onboarding-page-title">{phase?.name ?? 'Configuration'}</h2>
-        <p className="onboarding-page-subtitle">Phase {currentPhaseIndex + 1} of {totalPhases}</p>
+      <div className={`onboarding-page-card${showGuide ? ' onboarding-guide-open' : ''}`}>
+        <div className="onboarding-title-row">
+          <div>
+            <h2 className="onboarding-page-title">{phase?.name ?? 'Configuration'}</h2>
+            <p className="onboarding-page-subtitle">Phase {currentPhaseIndex + 1} of {totalPhases}</p>
+          </div>
+          <div className={`onboarding-help-wrap${!showGuide ? ' onboarding-help-glow' : ''}`}>
+            {!showGuide && <span className="onboarding-help-hint">Click me!</span>}
+            <button type="button" className="btn-help" onClick={() => setShowGuide(g => !g)} title="Field guide">?</button>
+          </div>
+        </div>
 
         {isKeyPhase ? (
           <div className="onboarding-step onboarding-phase-key">
@@ -396,10 +531,10 @@ function OnboardingPage() {
                     onClick={(e) => (e.target as HTMLTextAreaElement).select()}
                   />
                 </div>
-                <p className="onboarding-ssh-hint">{keyResult.ssh_hint}</p>
+                <p className="onboarding-key-save-note">Save the key with the name: <strong>{keyResult.key_name}.pem</strong></p>
               </>
             ) : (
-              <p className="onboarding-step-loading">EC2 key pair is configured. Key file is in the <strong>keys/</strong> directory. For manual SSH: <code>ssh -i keys/&lt;key-name&gt;.pem ec2-user@&lt;instance-ip&gt;</code></p>
+              <p className="onboarding-step-loading">EC2 key pair is configured. Key file is in the <strong>terraform-data/keys/</strong> directory.</p>
             )}
           </div>
         ) : isVpcPhase ? (
@@ -413,58 +548,68 @@ function OnboardingPage() {
                     <label className="onboarding-step-label">VPC</label>
                     <button type="button" className="onboarding-btn-refresh" onClick={loadVpcs} title="Refresh VPC list">Refresh</button>
                   </div>
-                  <select
-                    className="onboarding-step-input onboarding-select"
+                  <SearchableSelect
+                    options={vpcs.map(v => ({ value: v.id, label: `${v.name || v.id} (${v.cidr})` }))}
                     value={phaseValues.vpc_id ?? ''}
-                    onChange={(e) => handleVpcSelect(e.target.value)}
-                  >
-                    <option value="">Select VPC</option>
-                    {vpcs.map(v => (
-                      <option key={v.id} value={v.id}>{v.name || v.id} ({v.cidr})</option>
-                    ))}
-                  </select>
+                    onChange={handleVpcSelect}
+                    placeholder="Select VPC"
+                  />
+                </div>
+                <div className="onboarding-shared-vpc-actions">
+                  {sharedVpcExists ? (
+                    <button
+                      type="button"
+                      className="onboarding-btn-shared-vpc"
+                      onClick={handleUseSharedVpc}
+                      disabled={vpcCreating}
+                    >
+                      {vpcCreating ? 'Loading...' : 'Use Shared VPC for DogSTAC'}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="onboarding-btn-shared-vpc"
+                      onClick={handleCreateSharedVpc}
+                      disabled={vpcCreating}
+                    >
+                      {vpcCreating ? 'Creating VPC...' : 'Create VPC for DogSTAC'}
+                    </button>
+                  )}
+                  <span className="onboarding-shared-vpc-hint">
+                    {sharedVpcExists
+                      ? 'Auto-select dogstac-shared-vpc and its subnets.'
+                      : 'Creates a VPC with 2 public subnets, 1 private subnet, and an Internet Gateway.'}
+                  </span>
                 </div>
                 <p className="onboarding-subnet-requirement">DogSTAC requires at least 2 public subnets and 1 private subnet.</p>
                 {subnets.length > 0 && (
                   <>
                     <div className="onboarding-step-field">
                       <label className="onboarding-step-label">Public Subnet 1</label>
-                      <select
-                        className="onboarding-step-input onboarding-select"
+                      <SearchableSelect
+                        options={subnets.map(s => ({ value: s.id, label: `${s.name || s.id} (${s.cidr}, ${s.az})` }))}
                         value={phaseValues.public_subnet_id ?? ''}
-                        onChange={(e) => setPhaseValues(p => ({ ...p, public_subnet_id: e.target.value }))}
-                      >
-                        <option value="">Select subnet</option>
-                        {subnets.map(s => (
-                          <option key={s.id} value={s.id}>{s.name || s.id} ({s.cidr}, {s.az})</option>
-                        ))}
-                      </select>
+                        onChange={(val) => setPhaseValues(p => ({ ...p, public_subnet_id: val }))}
+                        placeholder="Select subnet"
+                      />
                     </div>
                     <div className="onboarding-step-field">
                       <label className="onboarding-step-label">Public Subnet 2</label>
-                      <select
-                        className="onboarding-step-input onboarding-select"
+                      <SearchableSelect
+                        options={subnets.map(s => ({ value: s.id, label: `${s.name || s.id} (${s.cidr}, ${s.az})` }))}
                         value={phaseValues.public_subnet2_id ?? ''}
-                        onChange={(e) => setPhaseValues(p => ({ ...p, public_subnet2_id: e.target.value }))}
-                      >
-                        <option value="">Select subnet</option>
-                        {subnets.map(s => (
-                          <option key={s.id} value={s.id}>{s.name || s.id} ({s.cidr}, {s.az})</option>
-                        ))}
-                      </select>
+                        onChange={(val) => setPhaseValues(p => ({ ...p, public_subnet2_id: val }))}
+                        placeholder="Select subnet"
+                      />
                     </div>
                     <div className="onboarding-step-field">
                       <label className="onboarding-step-label">Private Subnet</label>
-                      <select
-                        className="onboarding-step-input onboarding-select"
+                      <SearchableSelect
+                        options={subnets.map(s => ({ value: s.id, label: `${s.name || s.id} (${s.cidr}, ${s.az})` }))}
                         value={phaseValues.private_subnet_id ?? ''}
-                        onChange={(e) => setPhaseValues(p => ({ ...p, private_subnet_id: e.target.value }))}
-                      >
-                        <option value="">Select subnet</option>
-                        {subnets.map(s => (
-                          <option key={s.id} value={s.id}>{s.name || s.id} ({s.cidr}, {s.az})</option>
-                        ))}
-                      </select>
+                        onChange={(val) => setPhaseValues(p => ({ ...p, private_subnet_id: val }))}
+                        placeholder="Select subnet"
+                      />
                     </div>
                   </>
                 )}
@@ -477,22 +622,13 @@ function OnboardingPage() {
               <div key={variable.name} className="onboarding-step-field">
                 <label className="onboarding-step-label">{variable.label}</label>
                 {variable.name === 'region' ? (
-                  <>
-                    <input
-                      type="text"
-                      list="onboarding-regions"
-                      value={phaseValues[variable.name] ?? ''}
-                      onChange={(e) => setPhaseValues(p => ({ ...p, [variable.name]: e.target.value }))}
-                      className="onboarding-step-input"
-                      placeholder="Select or type region (e.g. us-east-1)"
-                      autoComplete="off"
-                    />
-                    <datalist id="onboarding-regions">
-                      {AWS_REGIONS.map((r) => (
-                        <option key={r} value={r} />
-                      ))}
-                    </datalist>
-                  </>
+                  <SearchableSelect
+                    options={AWS_REGIONS.map(r => ({ value: r, label: r }))}
+                    value={phaseValues[variable.name] ?? ''}
+                    onChange={(val) => setPhaseValues(p => ({ ...p, [variable.name]: val }))}
+                    placeholder="Select or type region (e.g. us-east-1)"
+                    searchable
+                  />
                 ) : (
                   <>
                     <input
@@ -519,11 +655,6 @@ function OnboardingPage() {
                 )}
               </div>
             ))}
-            {currentPhaseIndex === 0 && (
-              <p className="onboarding-resource-naming-note">
-                All resources will be named with <strong>name_prefix</strong> (e.g. my-sandbox-ec2, my-sandbox-eks-cluster). Max 20 chars, only A-Z a-z 0-9 _ - allowed.
-              </p>
-            )}
           </div>
         )}
 
@@ -539,6 +670,15 @@ function OnboardingPage() {
         )}
 
         <div className="onboarding-step-actions">
+          {currentPhaseIndex > 0 && (
+            <button
+              onClick={handleBack}
+              disabled={goingBack || saving || backendSetup.status === 'setting_up'}
+              className="onboarding-btn-back"
+            >
+              {goingBack ? 'Going back...' : 'Back'}
+            </button>
+          )}
           <button
             onClick={saveAndNextPhase}
             disabled={saving || !isPhaseComplete() || backendSetup.status === 'setting_up'}
@@ -555,6 +695,23 @@ function OnboardingPage() {
           <p className="onboarding-progress-text">{completedPhases} of {totalPhases} phases completed</p>
         </div>
       </div>
+
+      {showGuide && (
+        <div className="onboarding-guide-panel">
+          <div className="onboarding-guide-header">
+            <h3 className="onboarding-guide-title">Field Guide</h3>
+            <button type="button" className="close-button" onClick={() => setShowGuide(false)}>&times;</button>
+          </div>
+          <div className="onboarding-guide-body">
+            {(PHASE_GUIDES[currentPhaseIndex] ?? []).map(g => (
+              <div key={g.field} className="onboarding-guide-item">
+                <h4 className="onboarding-guide-field">{g.field}</h4>
+                <p className="onboarding-guide-desc">{g.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {showDangerZone && (
         <DangerZoneModal onClose={() => setShowDangerZone(false)} />

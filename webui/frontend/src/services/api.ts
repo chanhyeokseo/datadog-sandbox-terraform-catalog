@@ -97,6 +97,12 @@ export interface AwsSubnet {
   name: string;
 }
 
+export interface SharedVpcResult {
+  existed: boolean;
+  vpc: { id: string; cidr: string; name: string };
+  subnets: { public1: AwsSubnet | null; public2: AwsSubnet | null; private1: AwsSubnet | null };
+}
+
 export const terraformApi = {
   checkCredentials: async (): Promise<{ valid: boolean; account: string; arn: string }> => {
     const response = await api.get<{ valid: boolean; account: string; arn: string }>('/credentials/check');
@@ -155,6 +161,16 @@ export const terraformApi = {
 
   createAwsKeyPair: async (): Promise<{ key_name: string; private_key: string; key_path: string; ssh_hint: string }> => {
     const response = await api.post<{ key_name: string; private_key: string; key_path: string; ssh_hint: string }>('/aws/key-pair');
+    return response.data;
+  },
+
+  deleteAwsKeyPair: async (): Promise<ApiResponse> => {
+    const response = await api.delete<ApiResponse>('/aws/key-pair');
+    return response.data;
+  },
+
+  createSharedVpc: async (region: string): Promise<SharedVpcResult> => {
+    const response = await api.post<SharedVpcResult>('/aws/shared-vpc', null, { params: { region } });
     return response.data;
   },
 
@@ -235,6 +251,11 @@ export const terraformApi = {
 
   updateRootVariable: async (varName: string, value: string): Promise<ApiResponse> => {
     const response = await api.put<ApiResponse>(`/variables/${varName}`, { value });
+    return response.data;
+  },
+
+  deleteRootVariable: async (varName: string): Promise<ApiResponse> => {
+    const response = await api.delete<ApiResponse>(`/variables/${varName}`);
     return response.data;
   },
 
