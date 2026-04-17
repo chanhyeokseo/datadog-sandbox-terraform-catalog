@@ -10,8 +10,81 @@ import DangerZoneModal from './components/DangerZoneModal';
 import SSOLoginModal from './components/SSOLoginModal';
 import FeedbackFab from './components/FeedbackFab';
 import ClusterShareModal from './components/ClusterShareModal';
+import Tutorial, { TutorialStep } from './components/Tutorial';
 import { TerraformResource, ResourceType } from './types';
 import { terraformApi as api, OnboardingStatus } from './services/api';
+
+const TUTORIAL_STEPS: TutorialStep[] = [
+  {
+    target: '[data-tutorial="resource-security_group"]',
+    title: 'Select Security Group',
+    description: 'Security Group is the foundational resource that other resources depend on. Click it to select.',
+    placement: 'right',
+    advanceOn: 'click',
+  },
+  {
+    target: '[data-tutorial="btn-deploy"]',
+    title: 'Deploy Security Group',
+    description: 'Click Deploy to provision the Security Group. This creates firewall rules that protect your resources.',
+    placement: 'bottom',
+    advanceOn: 'click',
+  },
+  {
+    target: '[data-tutorial="results-panel"]',
+    title: 'Deploying...',
+    description: 'Terraform is provisioning your Security Group. You can watch the real-time output in the Results panel.',
+    placement: 'left',
+    advanceOn: 'action-complete',
+  },
+  {
+    target: '[data-tutorial="btn-plan"]',
+    title: 'Plan (Optional)',
+    description: 'Plan lets you preview what Terraform will change before applying. It is safe and makes no modifications to your infrastructure.',
+    placement: 'bottom',
+  },
+  {
+    target: '[data-tutorial="btn-destroy"]',
+    title: 'Destroy',
+    description: 'Destroy tears down the deployed AWS resources. Use it to clean up when you no longer need them.',
+    placement: 'bottom',
+  },
+  {
+    target: '[data-tutorial="resource-ec2_basic"]',
+    title: 'Select EC2 Basic',
+    description: 'Now let\'s try launching an EC2 instance. Click EC2 Basic to select it.',
+    placement: 'right',
+    advanceOn: 'click',
+  },
+  {
+    target: '[data-tutorial="btn-deploy"]',
+    title: 'Deploy EC2 Instance',
+    description: 'Click Deploy to launch your first EC2 instance. This will take a minute or two.',
+    placement: 'bottom',
+    advanceOn: 'click',
+  },
+  {
+    target: '[data-tutorial="results-panel"]',
+    title: 'Deploying EC2...',
+    description: 'Terraform is launching your EC2 instance. Watch the progress here — it may take a minute or two.',
+    placement: 'left',
+    advanceOn: 'action-complete',
+  },
+  {
+    target: '[data-tutorial="btn-connect"]',
+    title: 'Connect via SSH',
+    description: 'Your instance is running! Click Connect to open an SSH terminal. A new window will open — you can try commands there, then come back to this tab to finish the tutorial.',
+    placement: 'bottom',
+    advanceOn: 'click',
+    waitForSelector: '[data-tutorial="btn-connect"]',
+  },
+  {
+    target: '[data-tutorial="btn-destroy"]',
+    title: 'Clean Up',
+    description: 'Great job! Now destroy the EC2 instance to clean up. Click Destroy.',
+    placement: 'bottom',
+    advanceOn: 'action-complete',
+  },
+];
 
 interface CredentialError {
   type: 'profile_not_found' | 'expired';
@@ -112,6 +185,12 @@ function App() {
   const [providerReady, setProviderReady] = useState<boolean | null>(null);
   const [providerProgress, setProviderProgress] = useState({ progress: 0, message: '' });
   const [feedbackFabPulse, setFeedbackFabPulse] = useState(false);
+  const [showTutorial, setShowTutorial] = useState(false);
+  const showTutorialRef = useRef(false);
+  const [showCongrats, setShowCongrats] = useState(false);
+  const [tutorialActionEvent, setTutorialActionEvent] = useState<string | undefined>(undefined);
+
+  useEffect(() => { showTutorialRef.current = showTutorial; }, [showTutorial]);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme');
@@ -491,13 +570,17 @@ function App() {
       }
       return updated;
     });
-    
+
     if (resourceId) {
       setRunningResources(prev => {
         const newMap = new Map(prev);
         newMap.delete(resourceId);
         return newMap;
       });
+    }
+
+    if (showTutorialRef.current && success) {
+      setTutorialActionEvent(`${a}-success-${Date.now()}`);
     }
   };
 
@@ -526,30 +609,41 @@ function App() {
   };
 
   const handleSelectShared = () => {
-    const sharedResource = resources.find(r => {
-      return r.id === 'security_group' || r.name === 'security_group' || r.id.includes('shared');
-    });
-    
-    if (sharedResource) {
-      setShowOnboardingModal(false);
-      
-      setTimeout(() => {
-        setSelectedResource(sharedResource);
-        
-        const successResult: Result = {
-          id: Date.now().toString(),
-          action: 'ONBOARDING',
-          status: 'success',
-          message: '✅ Security Group resource selected! Click PLAN to preview, and DEPLOY to deploy.',
-          timestamp: new Date(),
-          output: ''
-        };
-        setResults(prev => [successResult, ...prev]);
-      }, 100);
+    const tutorialDone = localStorage.getItem('tutorial_completed') === 'true';
+    setShowOnboardingModal(false);
+
+    if (!tutorialDone) {
+      setTimeout(() => setShowTutorial(true), 200);
     } else {
-      console.error('Shared resource not found in resources:', resources);
-      alert('⚠️ Shared resource not found. Resources available: ' + resources.map(r => r.id).join(', '));
+      const sharedResource = resources.find(r =>
+        r.id === 'security_group' || r.name === 'security_group' || r.id.includes('shared')
+      );
+      if (sharedResource) {
+        setTimeout(() => {
+          setSelectedResource(sharedResource);
+          const successResult: Result = {
+            id: Date.now().toString(),
+            action: 'ONBOARDING',
+            status: 'success',
+            message: 'Security Group resource selected! Click PLAN to preview, and DEPLOY to deploy.',
+            timestamp: new Date(),
+            output: ''
+          };
+          setResults(prev => [successResult, ...prev]);
+        }, 100);
+      }
     }
+  };
+
+  const handleTutorialComplete = () => {
+    setShowTutorial(false);
+    localStorage.setItem('tutorial_completed', 'true');
+    setShowCongrats(true);
+  };
+
+  const handleTutorialSkip = () => {
+    setShowTutorial(false);
+    localStorage.setItem('tutorial_completed', 'true');
   };
 
   const handleOpenConnections = () => {
@@ -732,6 +826,38 @@ function App() {
         </span>
         <span className="danger-zone-fab-label">Danger Zone</span>
       </button>
+
+      <Tutorial
+        steps={TUTORIAL_STEPS}
+        isActive={showTutorial}
+        actionCompleted={tutorialActionEvent}
+        onComplete={handleTutorialComplete}
+        onSkip={handleTutorialSkip}
+      />
+
+      {showCongrats && (
+        <div className="tutorial-congrats-overlay" onClick={() => setShowCongrats(false)}>
+          <div className="tutorial-congrats-modal" onClick={e => e.stopPropagation()}>
+            <div className="tutorial-congrats-icon">🎉</div>
+            <h2 className="tutorial-congrats-title">
+              Congratulations! You completed the DogSTAC tutorial.
+            </h2>
+            <p className="tutorial-congrats-body">
+              You have deployed a Security Group, launched and connected to an EC2 instance,
+              and cleaned up resources with Destroy. You are ready to explore everything DogSTAC has to offer.
+            </p>
+            <div className="tutorial-congrats-mcp">
+              <p>
+                <strong>Tip:</strong> Connect the DogSTAC MCP Server to your IDE for
+                AI-assisted infrastructure management.
+              </p>
+            </div>
+            <button className="tutorial-btn-start" onClick={() => setShowCongrats(false)}>
+              Get Started
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

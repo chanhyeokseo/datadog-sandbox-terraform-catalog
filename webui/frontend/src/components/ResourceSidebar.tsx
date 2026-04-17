@@ -170,6 +170,7 @@ const ResourceSidebar = ({ onResourceSelect, selectedResourceId, refreshTrigger,
           <div key={type} className="sidebar-section">
             <div
               className="section-header"
+              data-tutorial-section={type}
               onClick={() => toggleSection(type)}
             >
               <span className="section-icon">{expandedSections.has(type) ? '▼' : '▶'}</span>
@@ -184,6 +185,7 @@ const ResourceSidebar = ({ onResourceSelect, selectedResourceId, refreshTrigger,
                 {items.map((resource) => (
                   <div
                     key={resource.id}
+                    data-tutorial={`resource-${resource.id}`}
                     className={`sidebar-item ${selectedResourceId === resource.id ? 'selected' : ''} ${runningResources?.has(resource.id) ? 'running' : ''}`}
                     onClick={() => onResourceSelect(resource)}
                   >

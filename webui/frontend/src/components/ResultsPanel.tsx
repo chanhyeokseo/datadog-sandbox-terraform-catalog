@@ -99,7 +99,7 @@ const ResultsPanel = ({ results, onClear }: ResultsPanelProps) => {
   };
 
   return (
-    <div className="results-panel">
+    <div className="results-panel" data-tutorial="results-panel">
       <div className="results-header">
         <h2>Results</h2>
         <button onClick={onClear} className="btn-clear-small" disabled={results.length === 0}>

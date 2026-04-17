@@ -1,0 +1,236 @@
+.tutorial-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10000;
+  pointer-events: auto;
+}
+
+
+.tutorial-overlay-dim {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.65);
+  z-index: 10001;
+}
+
+.tutorial-spotlight {
+  position: fixed;
+  border-radius: 0;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.65);
+  z-index: 10001;
+  transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.tutorial-click-target {
+  position: fixed;
+  z-index: 10003;
+  background: transparent;
+  cursor: pointer;
+}
+
+.tutorial-tooltip {
+  position: fixed;
+  z-index: 10002;
+  pointer-events: auto;
+  background: var(--bg-primary);
+  border: 2px solid var(--primary-color);
+  border-radius: 0;
+  padding: 20px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 40px rgba(139, 127, 199, 0.2);
+  animation: tutorialFadeIn 0.3s ease-out;
+}
+
+.tutorial-tooltip-centered {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+
+@keyframes tutorialFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.tutorial-tooltip-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.tutorial-step-badge {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--primary-color);
+  background: rgba(139, 127, 199, 0.15);
+  padding: 3px 10px;
+  border: 1px solid rgba(139, 127, 199, 0.3);
+}
+
+.tutorial-btn-skip {
+  background: none;
+  border: none;
+  color: var(--text-tertiary);
+  font-size: 0.8rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  transition: color 0.2s;
+}
+
+.tutorial-btn-skip:hover {
+  color: var(--text-primary);
+}
+
+.tutorial-tooltip-title {
+  margin: 0 0 8px;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.3px;
+}
+
+.tutorial-tooltip-desc {
+  margin: 0 0 16px;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.tutorial-tooltip-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.tutorial-btn-next {
+  padding: 8px 24px;
+  background: linear-gradient(135deg, rgba(139, 127, 199, 0.3) 0%, rgba(139, 127, 199, 0.15) 100%);
+  color: #fff;
+  border: 2px solid rgba(139, 127, 199, 0.4);
+  border-radius: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.tutorial-btn-next:hover {
+  background: linear-gradient(135deg, rgba(139, 127, 199, 0.45) 0%, rgba(139, 127, 199, 0.25) 100%);
+  border-color: rgba(139, 127, 199, 0.6);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(139, 127, 199, 0.3);
+}
+
+.tutorial-tooltip-hint {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+
+.tutorial-congrats-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10010;
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.tutorial-congrats-modal {
+  background: var(--bg-primary);
+  border: 1px solid var(--glass-border-strong);
+  border-radius: 0;
+  width: 90%;
+  max-width: 520px;
+  padding: 40px;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4), 0 0 80px rgba(139, 127, 199, 0.2);
+  animation: tutorialSlideIn 0.4s ease-out;
+}
+
+.tutorial-congrats-icon {
+  font-size: 3rem;
+  margin-bottom: 16px;
+}
+
+.tutorial-congrats-title {
+  margin: 0 0 12px;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.tutorial-congrats-body {
+  margin: 0 0 24px;
+  font-size: 0.95rem;
+  line-height: 1.7;
+  color: var(--text-secondary);
+}
+
+.tutorial-congrats-mcp {
+  padding: 16px;
+  margin-bottom: 24px;
+  background: rgba(139, 127, 199, 0.1);
+  border: 1px solid rgba(139, 127, 199, 0.25);
+}
+
+.tutorial-congrats-mcp p {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.tutorial-congrats-mcp strong {
+  color: var(--primary-color);
+}
+
+.tutorial-btn-start {
+  padding: 12px 36px;
+  background: linear-gradient(135deg, rgba(139, 127, 199, 0.35) 0%, rgba(139, 127, 199, 0.18) 100%);
+  color: #fff;
+  border: 2px solid rgba(139, 127, 199, 0.45);
+  border-radius: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.tutorial-btn-start:hover {
+  background: linear-gradient(135deg, rgba(139, 127, 199, 0.5) 0%, rgba(139, 127, 199, 0.3) 100%);
+  border-color: rgba(139, 127, 199, 0.65);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(139, 127, 199, 0.35);
+}
+
+.light-mode .tutorial-spotlight {
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
+}
+
+.light-mode .tutorial-congrats-overlay {
+  background: rgba(0, 0, 0, 0.5);
+}
