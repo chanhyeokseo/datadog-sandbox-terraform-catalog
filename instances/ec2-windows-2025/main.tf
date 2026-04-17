@@ -1,3 +1,4 @@
+# EC2 Windows Server 2025 Basic
 terraform {
   required_providers {
     aws = {
@@ -62,4 +63,27 @@ module "ec2_windows_2025" {
   enable_detailed_monitoring = var.ec2_enable_detailed_monitoring
   get_password_data   = true
   common_tags         = local.common_tags
+
+  user_data                   = local.windows_openssh_userdata
+  user_data_replace_on_change = true
+}
+
+locals {
+  windows_openssh_userdata = <<-USERDATA
+    <powershell>
+    Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0
+    Set-Service -Name sshd -StartupType Automatic
+    Start-Service sshd
+    Set-NetFirewallRule -Name "OpenSSH-Server-In-TCP" -Profile Any
+    New-ItemProperty -Path "HKLM:\SOFTWARE\OpenSSH" -Name DefaultShell -Value "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" -PropertyType String -Force
+
+    $token = Invoke-RestMethod -Uri "http://169.254.169.254/latest/api/token" -Method PUT -Headers @{"X-aws-ec2-metadata-token-ttl-seconds"="21600"}
+    $key = Invoke-RestMethod -Uri "http://169.254.169.254/latest/meta-data/public-keys/0/openssh-key" -Headers @{"X-aws-ec2-metadata-token"=$token}
+    $keyPath = "C:\ProgramData\ssh\administrators_authorized_keys"
+    Set-Content -Path $keyPath -Value $key -Encoding UTF8
+    icacls $keyPath /inheritance:r /grant "SYSTEM:(R)" /grant "Administrators:(R)"
+
+    Restart-Service sshd
+    </powershell>
+  USERDATA
 }

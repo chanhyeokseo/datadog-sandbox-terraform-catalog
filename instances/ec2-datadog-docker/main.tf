@@ -1,3 +1,4 @@
+# EC2 Linux with Datadog Container Agent
 terraform {
   required_providers {
     aws = {
