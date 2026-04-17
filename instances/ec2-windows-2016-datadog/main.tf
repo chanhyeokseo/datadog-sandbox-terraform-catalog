@@ -1,4 +1,4 @@
-# EC2 Windows Server 2022 Basic
+# EC2 Windows Server 2016 with Datadog Host Agent
 terraform {
   required_providers {
     aws = {
@@ -11,12 +11,12 @@ provider "aws" {
   region = var.region
 }
 
-data "aws_ami" "windows_2022" {
+data "aws_ami" "windows_2016" {
   most_recent = true
   owners      = ["amazon"]
   filter {
     name   = "name"
-    values = ["Windows_Server-2022-English-Full-Base-*"]
+    values = ["Windows_Server-2016-English-Full-Base-*"]
   }
   filter {
     name   = "virtualization-type"
@@ -48,15 +48,15 @@ locals {
   security_group_ids = length(var.security_group_ids) > 0 ? var.security_group_ids : [data.aws_security_group.personal_sg.id]
 }
 
-module "ec2_windows_2022" {
+module "ec2_windows_2016_datadog" {
   source = "../../modules/ec2-basic"
 
-  name_prefix        = "${local.name_prefix}-windows-2022"
+  name_prefix        = "${local.name_prefix}-windows-2016-dd"
   instance_type      = var.ec2_instance_type
   subnet_id          = local.vpc.public_subnet_id
   security_group_ids = local.security_group_ids
   key_name            = var.ec2_key_name
-  custom_ami_id       = data.aws_ami.windows_2022.id
+  custom_ami_id       = data.aws_ami.windows_2016.id
   associate_public_ip        = var.ec2_associate_public_ip
   root_volume_size           = var.ec2_root_volume_size
   root_volume_type           = var.ec2_root_volume_type
@@ -64,18 +64,26 @@ module "ec2_windows_2022" {
   get_password_data   = true
   common_tags         = local.common_tags
 
-  user_data                   = local.windows_openssh_userdata
+  user_data                   = local.windows_datadog_userdata
   user_data_replace_on_change = true
 }
 
 locals {
-  windows_openssh_userdata = <<-USERDATA
+  windows_datadog_userdata = <<-USERDATA
     <powershell>
-    Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    $opensshUrl = "https://github.com/PowerShell/Win32-OpenSSH/releases/latest/download/OpenSSH-Win64.zip"
+    $zipPath = "$env:TEMP\OpenSSH-Win64.zip"
+    $installPath = "C:\Program Files\OpenSSH-Win64"
+    Invoke-WebRequest -Uri $opensshUrl -OutFile $zipPath
+    Expand-Archive -Path $zipPath -DestinationPath "C:\Program Files" -Force
+    & "$installPath\install-sshd.ps1"
     Set-Service -Name sshd -StartupType Automatic
     Start-Service sshd
-    Set-NetFirewallRule -Name "OpenSSH-Server-In-TCP" -Profile Any
+    New-NetFirewallRule -Name "OpenSSH-Server-In-TCP" -DisplayName "OpenSSH Server (sshd)" -Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22 -Profile Any -ErrorAction SilentlyContinue
     New-ItemProperty -Path "HKLM:\SOFTWARE\OpenSSH" -Name DefaultShell -Value "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" -PropertyType String -Force
+    $env:PATH += ";$installPath"
+    [Environment]::SetEnvironmentVariable("PATH", $env:PATH, [EnvironmentVariableTarget]::Machine)
 
     $token = Invoke-RestMethod -Uri "http://169.254.169.254/latest/api/token" -Method PUT -Headers @{"X-aws-ec2-metadata-token-ttl-seconds"="21600"}
     $key = Invoke-RestMethod -Uri "http://169.254.169.254/latest/meta-data/public-keys/0/openssh-key" -Headers @{"X-aws-ec2-metadata-token"=$token}
@@ -84,6 +92,11 @@ locals {
     icacls $keyPath /inheritance:r /grant "SYSTEM:(R)" /grant "Administrators:(R)"
 
     Restart-Service sshd
+
+    $p = Start-Process -Wait -PassThru msiexec -ArgumentList '/qn /i "https://windows-agent.datadoghq.com/datadog-agent-7-latest.amd64.msi" /log C:\Windows\SystemTemp\install-datadog.log APIKEY="${data.aws_ssm_parameter.datadog_api_key.value}" SITE="${var.datadog_site}"'
+    if ($p.ExitCode -ne 0) {
+      Write-Host "msiexec failed with exit code $($p.ExitCode) please check the logs at C:\Windows\SystemTemp\install-datadog.log" -ForegroundColor Red
+    }
     </powershell>
   USERDATA
 }

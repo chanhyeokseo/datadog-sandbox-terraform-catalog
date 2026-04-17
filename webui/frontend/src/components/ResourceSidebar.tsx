@@ -190,7 +190,6 @@ const ResourceSidebar = ({ onResourceSelect, selectedResourceId, refreshTrigger,
                     <span className={`item-status ${runningResources?.has(resource.id) ? 'running' : resource.status === 'enabled' ? 'enabled' : 'disabled'}`} />
                     <div className="item-content">
                       <div className="item-name">{resource.description || resource.name}</div>
-                      <div className="item-file">{resource.file_path}</div>
                     </div>
                   </div>
                 ))}

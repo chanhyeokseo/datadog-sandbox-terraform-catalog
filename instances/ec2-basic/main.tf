@@ -1,3 +1,4 @@
+# EC2 Linux Basic
 terraform {
   required_providers {
     aws = {

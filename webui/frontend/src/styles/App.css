@@ -554,15 +554,10 @@ body.light-mode .section-header:hover {
 
 .item-name {
   font-weight: 500;
-  font-size: 0.9rem;
+  font-size: 0.82rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.item-file {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
 }
 
 .sidebar-item.shared-item {

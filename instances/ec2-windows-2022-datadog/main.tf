@@ -1,4 +1,4 @@
-# EC2 Windows Server 2022 Basic
+# EC2 Windows Server 2022 with Datadog Host Agent
 terraform {
   required_providers {
     aws = {
@@ -48,10 +48,10 @@ locals {
   security_group_ids = length(var.security_group_ids) > 0 ? var.security_group_ids : [data.aws_security_group.personal_sg.id]
 }
 
-module "ec2_windows_2022" {
+module "ec2_windows_2022_datadog" {
   source = "../../modules/ec2-basic"
 
-  name_prefix        = "${local.name_prefix}-windows-2022"
+  name_prefix        = "${local.name_prefix}-windows-2022-dd"
   instance_type      = var.ec2_instance_type
   subnet_id          = local.vpc.public_subnet_id
   security_group_ids = local.security_group_ids
@@ -64,12 +64,12 @@ module "ec2_windows_2022" {
   get_password_data   = true
   common_tags         = local.common_tags
 
-  user_data                   = local.windows_openssh_userdata
+  user_data                   = local.windows_datadog_userdata
   user_data_replace_on_change = true
 }
 
 locals {
-  windows_openssh_userdata = <<-USERDATA
+  windows_datadog_userdata = <<-USERDATA
     <powershell>
     Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0
     Set-Service -Name sshd -StartupType Automatic
@@ -84,6 +84,11 @@ locals {
     icacls $keyPath /inheritance:r /grant "SYSTEM:(R)" /grant "Administrators:(R)"
 
     Restart-Service sshd
+
+    $p = Start-Process -Wait -PassThru msiexec -ArgumentList '/qn /i "https://windows-agent.datadoghq.com/datadog-agent-7-latest.amd64.msi" /log C:\Windows\SystemTemp\install-datadog.log APIKEY="${data.aws_ssm_parameter.datadog_api_key.value}" SITE="${var.datadog_site}"'
+    if ($p.ExitCode -ne 0) {
+      Write-Host "msiexec failed with exit code $($p.ExitCode) please check the logs at C:\Windows\SystemTemp\install-datadog.log" -ForegroundColor Red
+    }
     </powershell>
   USERDATA
 }

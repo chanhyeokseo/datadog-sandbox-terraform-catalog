@@ -92,9 +92,15 @@ DATADOG_HOST_AGENT_CONFIGS = [
     ResourceVariableConfig("datadog_agent_version", VariableType.STRING, "latest", "Datadog Agent minor version (e.g. 65.0 for 7.65.0)"),
 ]
 
+DATADOG_WINDOWS_AGENT_CONFIGS = [
+    ResourceVariableConfig("datadog_site", VariableType.STRING, "datadoghq.com",
+                          "Datadog site (e.g. datadoghq.com, datadoghq.eu, us5.datadoghq.com)"),
+]
+
 RESOURCE_VARIABLE_CONFIGS: Dict[str, List[ResourceVariableConfig]] = {
     "ec2": EC2_VARIABLE_CONFIGS,
     "ec2_windows": EC2_VARIABLE_CONFIGS + EC2_WINDOWS_EXTRA_CONFIGS,
+    "ec2_windows_datadog": EC2_VARIABLE_CONFIGS + EC2_WINDOWS_EXTRA_CONFIGS + DATADOG_WINDOWS_AGENT_CONFIGS,
     "ec2_datadog_docker": EC2_VARIABLE_CONFIGS + DATADOG_DOCKER_AGENT_CONFIGS,
     "ec2_datadog_host": EC2_VARIABLE_CONFIGS + DATADOG_HOST_AGENT_CONFIGS,
     "ec2_forwardog": EC2_VARIABLE_CONFIGS + DATADOG_DOCKER_AGENT_CONFIGS,
@@ -138,6 +144,8 @@ RESOURCE_VARIABLE_CONFIGS: Dict[str, List[ResourceVariableConfig]] = {
 
 
 def get_resource_type_for_variables(resource_type: str, resource_id: str) -> str:
+    if resource_type == "ec2" and resource_id.startswith("ec2_windows") and resource_id.endswith("_datadog"):
+        return "ec2_windows_datadog"
     if resource_type == "ec2" and resource_id.startswith("ec2_windows"):
         return "ec2_windows"
     if resource_type == "ec2" and resource_id == "ec2_forwardog":

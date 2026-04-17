@@ -548,7 +548,7 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
           {selectedResource && (
             <div className="selected-resource-info">
               <span className="selected-label">Selected:</span>
-              <span className="selected-name">{selectedResource.name}</span>
+              <span className="selected-name">{selectedResource.description || selectedResource.name}</span>
             </div>
           )}
         </div>
