@@ -188,6 +188,7 @@ function App() {
   const [showTutorial, setShowTutorial] = useState(false);
   const showTutorialRef = useRef(false);
   const [showCongrats, setShowCongrats] = useState(false);
+  const [showMcpGuide, setShowMcpGuide] = useState(false);
   const [tutorialActionEvent, setTutorialActionEvent] = useState<string | undefined>(undefined);
 
   useEffect(() => { showTutorialRef.current = showTutorial; }, [showTutorial]);
@@ -722,6 +723,9 @@ function App() {
           <h1>DogSTAC</h1>
         </div>
         <div className="header-actions">
+          <button onClick={() => setShowMcpGuide(true)} className="config-button">
+            🤖 MCP Server
+          </button>
           <button onClick={handleOpenConnections} className="config-button">
             🔗 Connections
           </button>
@@ -835,25 +839,63 @@ function App() {
         onSkip={handleTutorialSkip}
       />
 
-      {showCongrats && (
-        <div className="tutorial-congrats-overlay" onClick={() => setShowCongrats(false)}>
-          <div className="tutorial-congrats-modal" onClick={e => e.stopPropagation()}>
-            <div className="tutorial-congrats-icon">🎉</div>
-            <h2 className="tutorial-congrats-title">
-              Congratulations! You completed the DogSTAC tutorial.
-            </h2>
-            <p className="tutorial-congrats-body">
-              You have deployed a Security Group, launched and connected to an EC2 instance,
-              and cleaned up resources with Destroy. You are ready to explore everything DogSTAC has to offer.
-            </p>
+      {(showCongrats || showMcpGuide) && (
+        <div className="tutorial-congrats-overlay" onClick={() => { setShowCongrats(false); setShowMcpGuide(false); }}>
+          <div className="tutorial-congrats-modal tutorial-congrats-modal--wide" onClick={e => e.stopPropagation()}>
+            {showCongrats && (
+              <>
+                <div className="tutorial-congrats-icon">🎉</div>
+                <h2 className="tutorial-congrats-title">
+                  Congratulations! You completed the DogSTAC tutorial.
+                </h2>
+                <p className="tutorial-congrats-body">
+                  You have deployed a Security Group, launched and connected to an EC2 instance,
+                  and cleaned up resources with Destroy. You are ready to explore everything DogSTAC has to offer.
+                </p>
+              </>
+            )}
             <div className="tutorial-congrats-mcp">
+              <p className="tutorial-congrats-mcp-heading">
+                <strong>Connect the DogSTAC MCP Server to your IDE</strong>
+              </p>
               <p>
-                <strong>Tip:</strong> Connect the DogSTAC MCP Server to your IDE for
-                AI-assisted infrastructure management.
+                DogSTAC ships with an MCP server that lets AI assistants manage your
+                infrastructure directly. Add the following to your Cursor MCP config:
+              </p>
+              <pre className="tutorial-congrats-code">{`{
+  "mcpServers": {
+    "dogstac": {
+      "type": "sse",
+      "url": "http://localhost:7622/sse"
+    }
+  }
+}`}</pre>
+              <p className="tutorial-congrats-mcp-sub">
+                The MCP server starts automatically with <code>docker-compose up</code> on
+                port <strong>7622</strong>. To use a custom port, set <code>MCP_PORT</code> in
+                your <code>.env</code> file.
+              </p>
+              <img
+                src="/dogstac-mcp-demo.gif"
+                alt="DogSTAC MCP Demo"
+                className="tutorial-congrats-gif"
+              />
+            </div>
+            <div className="tutorial-congrats-mcp tutorial-congrats-examples">
+              <p>
+                Complex implementations are also possible! For example:
+              </p>
+              <ol>
+                <li>Set up Oracle DB with DBM, then generate slow query example data via a load generator</li>
+                <li>Configure Squid Proxy metric collection environment</li>
+                <li>Set up Windows Security Events collection with Datadog Agent on a Windows Host</li>
+              </ol>
+              <p className="tutorial-congrats-examples-cta">
+                Skeptical? Try it yourself :)
               </p>
             </div>
-            <button className="tutorial-btn-start" onClick={() => setShowCongrats(false)}>
-              Get Started
+            <button className="tutorial-btn-start" onClick={() => { setShowCongrats(false); setShowMcpGuide(false); }}>
+              {showCongrats ? 'Get Started' : 'Close'}
             </button>
           </div>
         </div>

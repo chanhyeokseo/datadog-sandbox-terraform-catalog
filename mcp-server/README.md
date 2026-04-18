@@ -12,6 +12,7 @@ The MCP server is bundled inside the `dogstac/dogstac` container. When you run `
 {
   "mcpServers": {
     "dogstac": {
+      "type": "sse",
       "url": "http://localhost:7622/sse"
     }
   }
@@ -36,6 +37,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
 {
   "mcpServers": {
     "dogstac": {
+      "type": "sse",
       "url": "http://localhost:7622/sse"
     }
   }

@@ -163,10 +163,16 @@
   border-radius: 0;
   width: 90%;
   max-width: 520px;
+  max-height: 85vh;
+  overflow-y: auto;
   padding: 40px;
   text-align: center;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4), 0 0 80px rgba(139, 127, 199, 0.2);
   animation: tutorialSlideIn 0.4s ease-out;
+}
+
+.tutorial-congrats-modal--wide {
+  max-width: 640px;
 }
 
 .tutorial-congrats-icon {
@@ -196,14 +202,83 @@
 }
 
 .tutorial-congrats-mcp p {
-  margin: 0;
+  margin: 0 0 12px;
   font-size: 0.875rem;
   line-height: 1.6;
   color: var(--text-secondary);
+  text-align: left;
+}
+
+.tutorial-congrats-mcp p:last-of-type {
+  margin-bottom: 0;
+}
+
+.tutorial-congrats-mcp-heading {
+  text-align: center !important;
+  font-size: 0.95rem !important;
+  margin-bottom: 16px !important;
+}
+
+.tutorial-congrats-mcp-sub {
+  margin-top: 0;
+  font-size: 0.8rem !important;
+  color: var(--text-tertiary, var(--text-secondary));
+}
+
+.tutorial-congrats-mcp-sub code {
+  background: rgba(139, 127, 199, 0.15);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 0.78rem;
 }
 
 .tutorial-congrats-mcp strong {
   color: var(--primary-color);
+}
+
+.tutorial-congrats-code {
+  text-align: left;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--glass-border);
+  padding: 14px 18px;
+  margin: 12px 0 14px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--text-primary);
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.tutorial-congrats-gif {
+  width: 100%;
+  margin-top: 16px;
+  border: 1px solid var(--glass-border);
+  border-radius: 4px;
+}
+
+.tutorial-congrats-examples {
+  margin-top: 16px;
+}
+
+.tutorial-congrats-examples ol {
+  margin: 0 0 12px;
+  padding-left: 20px;
+  text-align: left;
+  font-size: 0.84rem;
+  line-height: 1.7;
+  color: var(--text-secondary);
+}
+
+.tutorial-congrats-examples li {
+  margin-bottom: 6px;
+}
+
+.tutorial-congrats-examples-cta {
+  text-align: center !important;
+  font-weight: 600;
+  color: var(--primary-color) !important;
+  margin-bottom: 0 !important;
 }
 
 .tutorial-btn-start {
