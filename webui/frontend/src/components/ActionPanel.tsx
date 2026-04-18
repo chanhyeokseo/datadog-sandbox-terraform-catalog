@@ -72,7 +72,7 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
     } else {
       setVariables([]);
     }
-  }, [selectedResource]);
+  }, [selectedResource?.id]);
 
   const loadVariables = async (resourceId: string) => {
     setVariablesLoading(true);
