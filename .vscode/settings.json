@@ -1,4 +1,0 @@
-{
-  "python.defaultInterpreterPath": "${workspaceFolder}/webui/backend/.venv/bin/python",
-  "python.terminal.activateEnvironment": true
-}

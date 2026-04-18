@@ -106,6 +106,7 @@ tmp/
 *.bak
 *.backup
 .cursor/
+.vscode/
 
 # ============================================
 # Project Specific
