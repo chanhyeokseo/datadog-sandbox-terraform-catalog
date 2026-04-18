@@ -33,21 +33,21 @@ const ResourceSidebar = ({ onResourceSelect, selectedResourceId, refreshTrigger,
   
   const [expandedSections, setExpandedSections] = useState<Set<string>>(getInitialExpandedSections());
 
-  const loadResources = async (showLoading = true) => {
+  const loadResources = async (initial = true) => {
     try {
-      if (showLoading) {
+      if (initial) {
         setLoading(true);
       }
       const data = await terraformApi.getResources();
       setResources(data);
-      
+
       sessionStorage.setItem('terraform_resources', JSON.stringify(data));
-      
+
       if (onResourcesLoaded) {
         onResourcesLoaded(data);
       }
-      
-      if (selectedResourceId) {
+
+      if (initial && selectedResourceId) {
         const updatedResource = data.find(r => r.id === selectedResourceId);
         if (updatedResource) {
           onResourceSelect(updatedResource);
@@ -56,7 +56,7 @@ const ResourceSidebar = ({ onResourceSelect, selectedResourceId, refreshTrigger,
     } catch (err) {
       console.error('Failed to load resources:', err);
     } finally {
-      if (showLoading) {
+      if (initial) {
         setLoading(false);
       }
     }

@@ -190,6 +190,7 @@ function App() {
   const [showCongrats, setShowCongrats] = useState(false);
   const [showMcpGuide, setShowMcpGuide] = useState(false);
   const [tutorialActionEvent, setTutorialActionEvent] = useState<string | undefined>(undefined);
+  const [initTrigger, setInitTrigger] = useState(0);
 
   useEffect(() => { showTutorialRef.current = showTutorial; }, [showTutorial]);
 
@@ -228,6 +229,7 @@ function App() {
         console.warn('ensureData failed, continuing:', err);
       }
       if (cancelled) return;
+      let reachedLoading = false;
       try {
         const configStatus = await api.getConfigOnboardingStatus();
         if (cancelled) return;
@@ -241,6 +243,7 @@ function App() {
           return;
         }
         setInitialLoadPhase('loading');
+        reachedLoading = true;
         await api.getResources();
         if (cancelled) return;
         const status = await api.getOnboardingStatus();
@@ -256,7 +259,7 @@ function App() {
           setCredentialError(extractCredentialError(err));
           return;
         }
-        setInitialLoadPhase('loading');
+        if (!reachedLoading) setInitialLoadPhase('loading');
         const id = setInterval(async () => {
           if (cancelled) return;
           try {
@@ -301,7 +304,7 @@ function App() {
       cancelled = true;
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, []);
+  }, [initTrigger]);
 
   useEffect(() => {
     let cancelled = false;
@@ -494,7 +497,6 @@ function App() {
         navigate('/onboarding', { replace: true });
         return;
       }
-      await api.getResources();
       const status = await api.getOnboardingStatus();
       setOnboardingStatus(status);
       const dismissed = localStorage.getItem('onboarding_dismissed');
@@ -667,13 +669,14 @@ function App() {
     setCredentialError(null);
     setShowSSOModal(false);
     setInitialLoadPhase('config_check');
-    window.location.reload();
+    setInitTrigger(prev => prev + 1);
   }, []);
 
   const handleSSOSuccess = useCallback(() => {
     setCredentialError(null);
     setShowSSOModal(false);
-    window.location.reload();
+    setInitialLoadPhase('config_check');
+    setInitTrigger(prev => prev + 1);
   }, []);
 
   if (credentialError?.type === 'profile_not_found') {
@@ -699,7 +702,7 @@ function App() {
     );
   }
 
-  if (initialLoadPhase === 'loading' || (initialLoadPhase === 'ready' && providerReady !== true)) {
+  if (initialLoadPhase === 'loading') {
     if (providerReady === false) {
       return <ProviderLoadingScreen progress={providerProgress.progress} message={providerProgress.message} />;
     }
@@ -717,6 +720,20 @@ function App() {
 
   return (
     <div className="app">
+      {providerReady !== true && (
+        providerReady === false
+          ? <ProviderLoadingScreen progress={providerProgress.progress} message={providerProgress.message} />
+          : (
+            <div className="app-loading-screen">
+              <div className="app-loading-content">
+                <img src="/logo.png" alt="DogSTAC" className="app-logo" />
+                <h1 className="app-loading-title">DogSTAC</h1>
+                <div className="app-loading-spinner" />
+                <p className="app-loading-text">Loading...</p>
+              </div>
+            </div>
+          )
+      )}
       <header className="app-header">
         <div className="header-content">
           <img src="/logo.png" alt="DogSTAC" className="app-logo-header" />
