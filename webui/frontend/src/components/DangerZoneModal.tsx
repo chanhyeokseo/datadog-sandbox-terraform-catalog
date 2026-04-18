@@ -85,6 +85,8 @@ const DangerZoneModal = ({ onClose, onResourcesNeedRefresh }: DangerZoneModalPro
       }
       setLog(output);
       setResetDone(true);
+      localStorage.removeItem('tutorial_completed');
+      localStorage.removeItem('onboarding_dismissed');
     } catch (err: unknown) {
       const ax = err as { response?: { data?: { detail?: string } }; message?: string };
       const msg = ax.response?.data?.detail ?? ax.message ?? String(err);

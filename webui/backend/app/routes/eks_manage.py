@@ -399,7 +399,8 @@ def _discover_owner_bucket(owner_prefix: str) -> str:
     safe_prefix = ''.join(c if c.isalnum() or c in '-_' else '-' for c in owner_prefix)[:64]
     ssm_path = f"/dogstac-{safe_prefix}/"
     try:
-        ssm = boto3.client("ssm", region_name=cm._get_region())
+        from app.services.config_manager import SSM_GLOBAL_REGION
+        ssm = boto3.client("ssm", region_name=SSM_GLOBAL_REGION)
         response = ssm.get_parameters_by_path(Path=ssm_path, Recursive=True, MaxResults=1)
         for param in response.get("Parameters", []):
             parts = param["Name"].split("/")

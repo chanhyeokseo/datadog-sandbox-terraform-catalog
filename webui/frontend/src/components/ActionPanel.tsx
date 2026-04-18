@@ -623,6 +623,7 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
             ) : (
               <>
                 <button
+                  data-tutorial="btn-deploy"
                   onClick={handleDeploy}
                   disabled={!selectedResource || !!runningAction}
                   className={`btn ${selectedResource?.status === 'enabled' ? 'btn-update' : 'btn-deploy'}`}
@@ -631,6 +632,7 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
                   {selectedResource?.status === 'enabled' ? 'Update' : 'Deploy'}
                 </button>
                 <button
+                  data-tutorial="btn-plan"
                   onClick={handlePlan}
                   disabled={!selectedResource || !!runningAction}
                   className="btn btn-plan"
@@ -639,6 +641,7 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
                   Plan
                 </button>
                 <button
+                  data-tutorial="btn-destroy"
                   onClick={handleDestroy}
                   disabled={!selectedResource || selectedResource.status === 'disabled' || !!runningAction || checkingWorkloads}
                   className="btn btn-destroy"
@@ -648,6 +651,7 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
                 </button>
                 {selectedResource && selectedResource.status === 'enabled' && selectedResource.type === ResourceType.EC2 && (
                   <button
+                    data-tutorial="btn-connect"
                     onClick={handleConnect}
                     className="btn btn-connect"
                     disabled={!!runningAction}
