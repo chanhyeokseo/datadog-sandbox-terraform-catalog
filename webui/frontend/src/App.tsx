@@ -877,7 +877,7 @@ function App() {
               </p>
               <p>
                 DogSTAC ships with an MCP server that lets AI assistants manage your
-                infrastructure directly. Add the following to your Cursor MCP config:
+                infrastructure directly. Add the following to your MCP config:
               </p>
               <pre className="tutorial-congrats-code">{`{
   "mcpServers": {

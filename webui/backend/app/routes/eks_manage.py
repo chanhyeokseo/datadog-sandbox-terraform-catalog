@@ -91,6 +91,11 @@ def _build_credential_error(health: Dict) -> str:
     )
 
 
+def _get_my_prefix() -> str:
+    tfvars = parser._read_tfvars_to_map(Path(TERRAFORM_DIR) / "terraform.tfvars")
+    return tfvars.get("name_prefix", "").strip('"').strip("'")
+
+
 def _resolve_template_vars(command: str) -> str:
     root_tfvars = parser._read_tfvars_to_map(Path(TERRAFORM_DIR) / "terraform.tfvars")
     sensitive_vars = parser.config_manager.load_all_sensitive_variables()
@@ -484,13 +489,33 @@ async def get_shared_preset_file(name: str, filename: str, owner_prefix: str = Q
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _build_ownership_warnings(deployments: Dict, my_prefix: str) -> List[str]:
+    foreign: List[str] = []
+    for name, info in deployments.items():
+        deployer = info.get("deployed_by", "") or "unknown"
+        if deployer != my_prefix:
+            foreign.append(f"{name} (by {deployer})")
+    if not foreign:
+        return []
+    return [
+        f"Ownership mismatch: {', '.join(foreign)} deployed by another user. "
+        "These deployments use the deployer's Datadog API key, not yours."
+    ]
+
+
 @router.get("/shared-deployments")
 async def list_shared_deployments(owner_prefix: str = Query(...)):
     try:
+        my_prefix = _get_my_prefix()
         s3 = _get_owner_s3(owner_prefix)
         content = s3.download_text(S3_PRESET_PREFIX + "/_deployments.json")
         if content:
-            return {"deployments": json.loads(content)}
+            deployments = json.loads(content)
+            result = {"deployments": deployments}
+            warnings = _build_ownership_warnings(deployments, my_prefix)
+            if warnings:
+                result["warnings"] = warnings
+            return result
         return {"deployments": {}}
     except Exception as e:
         logger.warning(f"Failed to list shared deployments for {owner_prefix}: {e}")
@@ -500,13 +525,16 @@ async def list_shared_deployments(owner_prefix: str = Query(...)):
 S3_DEPLOYMENTS_KEY = S3_PRESET_PREFIX + "/_deployments.json"
 
 
-def _owner_mark_deployed(name: str, owner_prefix: str):
+def _owner_mark_deployed(name: str, owner_prefix: str, deployed_by: str = ""):
     s3 = _get_owner_s3(owner_prefix)
     content = s3.download_text(S3_DEPLOYMENTS_KEY)
     deployments = json.loads(content) if content else {}
-    deployments[name] = {"deployed_at": datetime.now(timezone.utc).isoformat()}
+    entry = {"deployed_at": datetime.now(timezone.utc).isoformat()}
+    if deployed_by:
+        entry["deployed_by"] = deployed_by
+    deployments[name] = entry
     s3.upload_text(S3_DEPLOYMENTS_KEY, json.dumps(deployments, indent=2) + "\n")
-    logger.debug(f"Marked preset as deployed in owner({owner_prefix}) S3: {name}")
+    logger.debug(f"Marked preset as deployed in owner({owner_prefix}) S3: {name} (by={deployed_by or 'unknown'})")
 
 
 def _owner_mark_undeployed(name: str, owner_prefix: str):
@@ -716,7 +744,13 @@ async def _stream_action(action_label: str, name: str, commands: List[str],
 @router.get("/deployments")
 async def get_deployments():
     try:
-        return {"deployments": preset_manager.get_deployments()}
+        deployments = preset_manager.get_deployments()
+        my_prefix = _get_my_prefix()
+        result: Dict = {"deployments": deployments}
+        warnings = _build_ownership_warnings(deployments, my_prefix)
+        if warnings:
+            result["warnings"] = warnings
+        return result
     except Exception as e:
         logger.error(f"Failed to get deployments: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -743,11 +777,12 @@ async def deploy_preset(name: str, cluster_name: Optional[str] = Query(None),
         raise HTTPException(status_code=400, detail="No deploy commands defined for this preset")
 
     resource_id, resource_dir = _get_eks_resource_info()
+    my_prefix = _get_my_prefix()
 
     if owner_prefix and cluster_name:
-        on_success = lambda: _owner_mark_deployed(name, owner_prefix)
+        on_success = lambda: _owner_mark_deployed(name, owner_prefix, deployed_by=my_prefix)
     else:
-        on_success = lambda: preset_manager.mark_deployed(name)
+        on_success = lambda: preset_manager.mark_deployed(name, deployed_by=my_prefix)
 
     return StreamingResponse(
         _stream_action("Deploy", name, commands, resource_id, resource_dir,
