@@ -47,7 +47,7 @@ const ResourceSidebar = ({ onResourceSelect, selectedResourceId, refreshTrigger,
         onResourcesLoaded(data);
       }
 
-      if (initial && selectedResourceId) {
+      if (selectedResourceId) {
         const updatedResource = data.find(r => r.id === selectedResourceId);
         if (updatedResource) {
           onResourceSelect(updatedResource);
