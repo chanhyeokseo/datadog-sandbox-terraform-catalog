@@ -1,0 +1,291 @@
+{
+  "idle": [
+    {
+      "scenario": "idle",
+      "run": 1,
+      "timestamp": "2026-04-19T06:46:58.103308+00:00",
+      "container_stats": {
+        "duration_sec": 30.0,
+        "sample_count": 30,
+        "cpu_avg_percent": 0.46,
+        "cpu_peak_percent": 0.63,
+        "memory_avg_mb": 371.97,
+        "memory_peak_mb": 372.22,
+        "net_rx_total_kb": 0.17,
+        "net_tx_total_kb": 0.27
+      },
+      "steps": []
+    },
+    {
+      "scenario": "idle",
+      "run": 2,
+      "timestamp": "2026-04-19T06:47:28.315405+00:00",
+      "container_stats": {
+        "duration_sec": 30.0,
+        "sample_count": 29,
+        "cpu_avg_percent": 0.56,
+        "cpu_peak_percent": 2.52,
+        "memory_avg_mb": 372.29,
+        "memory_peak_mb": 372.45,
+        "net_rx_total_kb": 7.44,
+        "net_tx_total_kb": 5.86
+      },
+      "steps": []
+    },
+    {
+      "scenario": "idle",
+      "run": 3,
+      "timestamp": "2026-04-19T06:47:58.504244+00:00",
+      "container_stats": {
+        "duration_sec": 30.0,
+        "sample_count": 29,
+        "cpu_avg_percent": 0.45,
+        "cpu_peak_percent": 0.66,
+        "memory_avg_mb": 372.18,
+        "memory_peak_mb": 372.21,
+        "net_rx_total_kb": 0.17,
+        "net_tx_total_kb": 0.27
+      },
+      "steps": []
+    },
+    {
+      "scenario": "idle",
+      "run": 4,
+      "timestamp": "2026-04-19T06:48:28.715625+00:00",
+      "container_stats": {
+        "duration_sec": 30.01,
+        "sample_count": 29,
+        "cpu_avg_percent": 0.47,
+        "cpu_peak_percent": 1.03,
+        "memory_avg_mb": 372.04,
+        "memory_peak_mb": 372.22,
+        "net_rx_total_kb": 3.38,
+        "net_tx_total_kb": 18.75
+      },
+      "steps": []
+    },
+    {
+      "scenario": "idle",
+      "run": 5,
+      "timestamp": "2026-04-19T06:48:58.927431+00:00",
+      "container_stats": {
+        "duration_sec": 30.01,
+        "sample_count": 29,
+        "cpu_avg_percent": 0.43,
+        "cpu_peak_percent": 0.74,
+        "memory_avg_mb": 372.18,
+        "memory_peak_mb": 372.21,
+        "net_rx_total_kb": 0.17,
+        "net_tx_total_kb": 0.27
+      },
+      "steps": []
+    }
+  ],
+  "ec2_deploy": [
+    {
+      "scenario": "ec2_deploy",
+      "run": 1,
+      "timestamp": "2026-04-19T06:50:00.945273+00:00",
+      "container_stats": {
+        "duration_sec": 24.32,
+        "sample_count": 24,
+        "cpu_avg_percent": 44.96,
+        "cpu_peak_percent": 194.3,
+        "memory_avg_mb": 726.47,
+        "memory_peak_mb": 905.21,
+        "net_rx_total_kb": 193.29,
+        "net_tx_total_kb": 157.8
+      },
+      "steps": [
+        {
+          "action": "init",
+          "elapsed_sec": 2.13,
+          "exit_code": 0,
+          "output_bytes": 645
+        },
+        {
+          "action": "plan",
+          "elapsed_sec": 4.23,
+          "exit_code": 0,
+          "output_bytes": 5020
+        },
+        {
+          "action": "apply",
+          "elapsed_sec": 17.96,
+          "exit_code": 0,
+          "output_bytes": 5439
+        },
+        {
+          "action": "destroy",
+          "elapsed_sec": 36.87,
+          "exit_code": 0,
+          "output_bytes": 6110
+        }
+      ]
+    },
+    {
+      "scenario": "ec2_deploy",
+      "run": 2,
+      "timestamp": "2026-04-19T06:51:03.292666+00:00",
+      "container_stats": {
+        "duration_sec": 24.18,
+        "sample_count": 25,
+        "cpu_avg_percent": 44.79,
+        "cpu_peak_percent": 202.16,
+        "memory_avg_mb": 706.56,
+        "memory_peak_mb": 905.15,
+        "net_rx_total_kb": 214.58,
+        "net_tx_total_kb": 173.21
+      },
+      "steps": [
+        {
+          "action": "init",
+          "elapsed_sec": 1.96,
+          "exit_code": 0,
+          "output_bytes": 645
+        },
+        {
+          "action": "plan",
+          "elapsed_sec": 4.31,
+          "exit_code": 0,
+          "output_bytes": 5020
+        },
+        {
+          "action": "apply",
+          "elapsed_sec": 17.91,
+          "exit_code": 0,
+          "output_bytes": 5441
+        },
+        {
+          "action": "destroy",
+          "elapsed_sec": 27.18,
+          "exit_code": 0,
+          "output_bytes": 5928
+        }
+      ]
+    },
+    {
+      "scenario": "ec2_deploy",
+      "run": 3,
+      "timestamp": "2026-04-19T06:52:05.667789+00:00",
+      "container_stats": {
+        "duration_sec": 24.42,
+        "sample_count": 25,
+        "cpu_avg_percent": 44.84,
+        "cpu_peak_percent": 185.4,
+        "memory_avg_mb": 675.66,
+        "memory_peak_mb": 903.59,
+        "net_rx_total_kb": 210.85,
+        "net_tx_total_kb": 171.74
+      },
+      "steps": [
+        {
+          "action": "init",
+          "elapsed_sec": 2.03,
+          "exit_code": 0,
+          "output_bytes": 645
+        },
+        {
+          "action": "plan",
+          "elapsed_sec": 4.13,
+          "exit_code": 0,
+          "output_bytes": 5020
+        },
+        {
+          "action": "apply",
+          "elapsed_sec": 18.27,
+          "exit_code": 0,
+          "output_bytes": 5437
+        },
+        {
+          "action": "destroy",
+          "elapsed_sec": 27.21,
+          "exit_code": 0,
+          "output_bytes": 5922
+        }
+      ]
+    },
+    {
+      "scenario": "ec2_deploy",
+      "run": 4,
+      "timestamp": "2026-04-19T06:53:17.565443+00:00",
+      "container_stats": {
+        "duration_sec": 24.23,
+        "sample_count": 25,
+        "cpu_avg_percent": 44.79,
+        "cpu_peak_percent": 178.16,
+        "memory_avg_mb": 726.18,
+        "memory_peak_mb": 906.39,
+        "net_rx_total_kb": 225.39,
+        "net_tx_total_kb": 172.55
+      },
+      "steps": [
+        {
+          "action": "init",
+          "elapsed_sec": 1.91,
+          "exit_code": 0,
+          "output_bytes": 645
+        },
+        {
+          "action": "plan",
+          "elapsed_sec": 4.28,
+          "exit_code": 0,
+          "output_bytes": 5020
+        },
+        {
+          "action": "apply",
+          "elapsed_sec": 18.04,
+          "exit_code": 0,
+          "output_bytes": 5439
+        },
+        {
+          "action": "destroy",
+          "elapsed_sec": 36.64,
+          "exit_code": 0,
+          "output_bytes": 6017
+        }
+      ]
+    },
+    {
+      "scenario": "ec2_deploy",
+      "run": 5,
+      "timestamp": "2026-04-19T06:54:28.124251+00:00",
+      "container_stats": {
+        "duration_sec": 23.53,
+        "sample_count": 24,
+        "cpu_avg_percent": 46.6,
+        "cpu_peak_percent": 214.7,
+        "memory_avg_mb": 639.3,
+        "memory_peak_mb": 904.09,
+        "net_rx_total_kb": 204.13,
+        "net_tx_total_kb": 163.35
+      },
+      "steps": [
+        {
+          "action": "init",
+          "elapsed_sec": 1.82,
+          "exit_code": 0,
+          "output_bytes": 645
+        },
+        {
+          "action": "plan",
+          "elapsed_sec": 3.76,
+          "exit_code": 0,
+          "output_bytes": 5020
+        },
+        {
+          "action": "apply",
+          "elapsed_sec": 17.95,
+          "exit_code": 0,
+          "output_bytes": 5437
+        },
+        {
+          "action": "destroy",
+          "elapsed_sec": 36.41,
+          "exit_code": 0,
+          "output_bytes": 6015
+        }
+      ]
+    }
+  ]
+}
