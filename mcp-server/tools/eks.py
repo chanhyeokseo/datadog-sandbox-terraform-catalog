@@ -21,6 +21,7 @@ def register(mcp: FastMCP, client: DogSTACClient):
 
         Returns clusters shared by other users, including cluster name, ARN, and owner prefix.
         Use the returned owner_prefix and cluster_name with other EKS tools to operate on shared clusters.
+        Each user's deployments use their own Datadog API key — check deployed_by via manage_eks_deployment(list).
         """
         data = await client.get("/api/cluster-share/shared")
         return json.dumps(data, indent=2)
@@ -86,7 +87,7 @@ def register(mcp: FastMCP, client: DogSTACClient):
 
         Args:
             action: One of "list", "deploy", "undeploy".
-                - list: Get currently deployed presets (preset_name not required).
+                - list: Get currently deployed presets with deployed_at and deployed_by fields.
                 - deploy: Deploy a preset. Prefer this over imperative kubectl apply.
                 - undeploy: Remove a deployed preset from the cluster.
             preset_name: Required for deploy/undeploy.
@@ -120,10 +121,8 @@ def register(mcp: FastMCP, client: DogSTACClient):
         Allowed binaries: kubectl, helm, istioctl, kustomize (alias: k -> kubectl).
         Shell operators (|, &&, ;, etc.) are forbidden.
 
-        IMPORTANT: Do NOT use this tool to deploy workloads (kubectl apply/create) or
-        to define cluster state imperatively (e.g. kubectl create secret). Put Secrets and
-        other resources in preset manifest files, then use create_eks_preset or
-        update_eks_preset and manage_eks_deployment.
+        Do NOT use this tool to deploy workloads (kubectl apply/create) or define cluster
+        state imperatively. Use create_eks_preset + manage_eks_deployment instead.
 
         Use this tool for: get, describe, logs, exec, top, rollout status, etc.
 

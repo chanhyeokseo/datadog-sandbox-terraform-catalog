@@ -117,6 +117,7 @@ const EKSManageModal = ({ onClose, connectInfo, sharedClusterName, sharedOwnerPr
   const [deploying, setDeploying] = useState(false);
   const [deployStatus, setDeployStatus] = useState<'idle' | 'running' | 'success' | 'error'>('idle');
   const [deployedPresets, setDeployedPresets] = useState<Record<string, DeploymentInfo>>({});
+  const [deploymentWarnings, setDeploymentWarnings] = useState<string[]>([]);
   const deployLogRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const highlightRef = useRef<HTMLPreElement>(null);
@@ -152,14 +153,17 @@ const EKSManageModal = ({ onClose, connectInfo, sharedClusterName, sharedOwnerPr
   const loadDeployments = useCallback(async () => {
     try {
       if (isShared && sharedOwnerPrefix) {
-        const [myData, sharedData] = await Promise.all([
+        const [myResult, sharedResult] = await Promise.all([
           eksManageApi.getDeployments(),
           eksManageApi.listSharedDeployments(sharedOwnerPrefix),
         ]);
-        setDeployedPresets({ ...sharedData, ...myData });
+        setDeployedPresets({ ...sharedResult.deployments, ...myResult.deployments });
+        const allWarnings = [...(sharedResult.warnings || []), ...(myResult.warnings || [])];
+        setDeploymentWarnings(allWarnings);
       } else {
-        const data = await eksManageApi.getDeployments();
-        setDeployedPresets(data);
+        const result = await eksManageApi.getDeployments();
+        setDeployedPresets(result.deployments);
+        setDeploymentWarnings(result.warnings || []);
       }
     } catch (e) {
       console.error('Failed to load deployments:', e);
@@ -1269,9 +1273,19 @@ const EKSManageModal = ({ onClose, connectInfo, sharedClusterName, sharedOwnerPr
 
     return (
       <div className="eks-deploy-section">
+        {deploymentWarnings.length > 0 && (
+          <div className="eks-ownership-warning">
+            {deploymentWarnings.map((w, i) => (
+              <div key={i} className="eks-ownership-warning-item">⚠ {w}</div>
+            ))}
+          </div>
+        )}
         {deployedNames.length > 0 && (
           <div className="eks-deployed-list">
-            <div className="eks-deployed-header">Deployed Presets</div>
+            <div className="eks-deployed-header">
+              Deployed Presets
+              <button className="eks-deployed-refresh" onClick={loadDeployments} title="Refresh">↻</button>
+            </div>
             <div className="eks-deployed-items">
               {deployedNames.map(name => (
                 <div
@@ -1280,8 +1294,13 @@ const EKSManageModal = ({ onClose, connectInfo, sharedClusterName, sharedOwnerPr
                   onClick={() => { setDeployPreset(name); localStorage.setItem(STORAGE_KEY, name); }}
                 >
                   <span className="eks-deployed-name">{name}</span>
-                  <span className="eks-deployed-time">
-                    {new Date(deployedPresets[name].deployed_at).toLocaleString()}
+                  <span className="eks-deployed-meta">
+                    {deployedPresets[name].deployed_by && (
+                      <span className="eks-deployed-by">by {deployedPresets[name].deployed_by}</span>
+                    )}
+                    <span className="eks-deployed-time">
+                      {new Date(deployedPresets[name].deployed_at).toLocaleString()}
+                    </span>
                   </span>
                 </div>
               ))}

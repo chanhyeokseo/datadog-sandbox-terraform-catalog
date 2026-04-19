@@ -608,6 +608,12 @@ export interface KubeconfigStatus {
 
 export interface DeploymentInfo {
   deployed_at: string;
+  deployed_by?: string;
+}
+
+export interface SharedDeploymentsResponse {
+  deployments: Record<string, DeploymentInfo>;
+  warnings?: string[];
 }
 
 export interface ClusterInstance {
@@ -837,9 +843,9 @@ export const ecsManageApi = {
 };
 
 export const eksManageApi = {
-  getDeployments: async (): Promise<Record<string, DeploymentInfo>> => {
-    const response = await axios.get<{ deployments: Record<string, DeploymentInfo> }>(`${EKS_MANAGE_BASE}/deployments`);
-    return response.data.deployments;
+  getDeployments: async (): Promise<SharedDeploymentsResponse> => {
+    const response = await axios.get<SharedDeploymentsResponse>(`${EKS_MANAGE_BASE}/deployments`);
+    return response.data;
   },
 
   listPresets: async (): Promise<{ presets: EKSPreset[] }> => {
@@ -917,11 +923,11 @@ export const eksManageApi = {
     return response.data;
   },
 
-  listSharedDeployments: async (ownerPrefix: string): Promise<Record<string, DeploymentInfo>> => {
-    const response = await axios.get<{ deployments: Record<string, DeploymentInfo> }>(
+  listSharedDeployments: async (ownerPrefix: string): Promise<SharedDeploymentsResponse> => {
+    const response = await axios.get<SharedDeploymentsResponse>(
       `${EKS_MANAGE_BASE}/shared-deployments`, { params: { owner_prefix: ownerPrefix } }
     );
-    return response.data.deployments;
+    return response.data;
   },
 
   streamDeploy: async (

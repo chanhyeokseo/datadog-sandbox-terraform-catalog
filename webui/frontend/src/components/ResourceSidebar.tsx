@@ -119,18 +119,16 @@ const ResourceSidebar = ({ onResourceSelect, selectedResourceId, refreshTrigger,
     'test',
   ];
 
-  // Sort grouped resources by defined order
+  if (sharedClusters.length > 0 && !groupedResources['eks']) {
+    groupedResources['eks'] = [];
+  }
+
   const sortedResourceTypes = Object.keys(groupedResources).sort((a, b) => {
     const indexA = RESOURCE_TYPE_ORDER.indexOf(a);
     const indexB = RESOURCE_TYPE_ORDER.indexOf(b);
-    
-    // If both are in the order list, sort by their index
     if (indexA !== -1 && indexB !== -1) return indexA - indexB;
-    // If only A is in the list, A comes first
     if (indexA !== -1) return -1;
-    // If only B is in the list, B comes first
     if (indexB !== -1) return 1;
-    // If neither is in the list, sort alphabetically
     return a.localeCompare(b);
   });
 
@@ -177,7 +175,7 @@ const ResourceSidebar = ({ onResourceSelect, selectedResourceId, refreshTrigger,
               <span className="section-title">
                 {getTypeIcon(type)} {type.toUpperCase()}
               </span>
-              <span className="section-count">{items.length}</span>
+              <span className="section-count">{items.length + (type === 'eks' ? sharedClusters.length : 0)}</span>
             </div>
 
             {expandedSections.has(type) && (

@@ -519,23 +519,23 @@ class EKSPresetManager:
             s3.upload_file(path, S3_DEPLOYMENTS_KEY)
 
     def get_deployments(self) -> Dict[str, Dict]:
-        local = self._read_deployments()
-        if local:
-            return local
         s3 = self._get_s3_manager()
         if s3:
             path = self._deployments_path()
             path.parent.mkdir(parents=True, exist_ok=True)
             if s3.download_file(S3_DEPLOYMENTS_KEY, path):
                 return self._read_deployments()
-        return {}
+        return self._read_deployments()
 
-    def mark_deployed(self, name: str) -> None:
+    def mark_deployed(self, name: str, deployed_by: str = "") -> None:
         from datetime import datetime, timezone
         deployments = self._read_deployments()
-        deployments[name] = {"deployed_at": datetime.now(timezone.utc).isoformat()}
+        entry: Dict = {"deployed_at": datetime.now(timezone.utc).isoformat()}
+        if deployed_by:
+            entry["deployed_by"] = deployed_by
+        deployments[name] = entry
         self._save_deployments(deployments)
-        logger.debug(f"Marked preset as deployed: {name}")
+        logger.debug(f"Marked preset as deployed: {name} (by={deployed_by or 'unknown'})")
 
     def mark_undeployed(self, name: str) -> None:
         deployments = self._read_deployments()

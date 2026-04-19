@@ -904,6 +904,22 @@ body.light-mode .eks-code-editor {
   border: 1px solid rgba(33, 150, 243, 0.3);
 }
 
+/* Ownership warning */
+.eks-ownership-warning {
+  margin-bottom: 10px;
+  padding: 10px 14px;
+  background: rgba(255, 152, 0, 0.1);
+  border: 1px solid rgba(255, 152, 0, 0.4);
+  border-radius: 6px;
+}
+
+.eks-ownership-warning-item {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #ff9800;
+  font-weight: 500;
+}
+
 /* Deployed presets list */
 .eks-deployed-list {
   border: 1px solid var(--border-color);
@@ -911,11 +927,30 @@ body.light-mode .eks-code-editor {
 }
 
 .eks-deployed-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   padding: 10px 14px;
   font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
   border-bottom: 1px solid var(--border-color);
+}
+
+.eks-deployed-refresh {
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 6px;
+  line-height: 1;
+}
+
+.eks-deployed-refresh:hover {
+  color: var(--text-primary);
+  border-color: var(--text-secondary);
 }
 
 .eks-deployed-items {
@@ -949,6 +984,18 @@ body.light-mode .eks-code-editor {
   font-size: 13px;
   font-weight: 500;
   color: #4caf50;
+}
+
+.eks-deployed-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.eks-deployed-by {
+  font-size: 11px;
+  color: #42a5f5;
+  font-weight: 500;
 }
 
 .eks-deployed-time {
