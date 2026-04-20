@@ -60,12 +60,23 @@ const ClusterShareModal = ({ onClose, onSharedClustersChanged }: ClusterShareMod
   }, [activeTab, loadClusters, loadRequests]);
 
   useEffect(() => {
+    if (activeTab !== 'manage') return;
+    const id = setInterval(loadRequests, 30000);
+    return () => clearInterval(id);
+  }, [activeTab, loadRequests]);
+
+  useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
     document.addEventListener('keydown', handleEsc);
     return () => document.removeEventListener('keydown', handleEsc);
   }, [onClose]);
+
+  const handleRefresh = () => {
+    if (activeTab === 'request') loadClusters();
+    else loadRequests();
+  };
 
   const handleRequestShare = async (cluster: EKSClusterInfo) => {
     if (!cluster.owner_prefix) {
@@ -288,7 +299,17 @@ const ClusterShareModal = ({ onClose, onSharedClustersChanged }: ClusterShareMod
       <div className="modal-content cs-modal" onClick={e => e.stopPropagation()}>
         <div className="cs-header">
           <h2>Cluster Share</h2>
-          <button className="cs-close" onClick={onClose}>&times;</button>
+          <div className="cs-header-actions">
+            <button
+              className="modal-header-refresh"
+              onClick={handleRefresh}
+              disabled={clustersLoading || requestsLoading}
+              title="Refresh"
+            >
+              ↻
+            </button>
+            <button className="cs-close" onClick={onClose}>&times;</button>
+          </div>
         </div>
 
         <div className="cs-tabs">

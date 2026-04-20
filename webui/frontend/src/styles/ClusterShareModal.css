@@ -23,6 +23,12 @@
   color: var(--text-primary);
 }
 
+.cs-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .cs-close {
   background: none;
   border: none;

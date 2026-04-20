@@ -398,7 +398,15 @@ async def list_presets():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+_owner_bucket_cache: Dict[str, str] = {}
+
+
 def _discover_owner_bucket(owner_prefix: str) -> str:
+    cached = _owner_bucket_cache.get(owner_prefix)
+    if cached:
+        logger.debug(f"Owner bucket cache hit: {cached} (prefix={owner_prefix})")
+        return cached
+
     from app.services.config_manager import ConfigManager
     cm = ConfigManager()
     safe_prefix = ''.join(c if c.isalnum() or c in '-_' else '-' for c in owner_prefix)[:64]
@@ -415,11 +423,13 @@ def _discover_owner_bucket(owner_prefix: str) -> str:
                 safe = ''.join(c if c.isalnum() or c == '-' else '-' for c in safe)[:32]
                 bucket = f"dogstac-{safe}-{owner_hash}"
                 logger.debug(f"Discovered owner bucket via SSM: {bucket} (prefix={owner_prefix})")
+                _owner_bucket_cache[owner_prefix] = bucket
                 return bucket
     except Exception as e:
         logger.warning(f"SSM discovery failed for {owner_prefix}: {e}")
     bucket = cm.generate_bucket_name(owner_prefix)
     logger.debug(f"Falling back to local hash for owner bucket: {bucket}")
+    _owner_bucket_cache[owner_prefix] = bucket
     return bucket
 
 
@@ -503,20 +513,30 @@ def _build_ownership_warnings(deployments: Dict, my_prefix: str) -> List[str]:
     ]
 
 
+_shared_deployments_cache: Dict[str, tuple] = {}
+SHARED_DEPLOYMENTS_TTL = 30
+
+
 @router.get("/shared-deployments")
-async def list_shared_deployments(owner_prefix: str = Query(...)):
+async def list_shared_deployments(owner_prefix: str = Query(...), force: bool = Query(False)):
     try:
         my_prefix = _get_my_prefix()
-        s3 = _get_owner_s3(owner_prefix)
-        content = s3.download_text(S3_PRESET_PREFIX + "/_deployments.json")
-        if content:
-            deployments = json.loads(content)
-            result = {"deployments": deployments}
-            warnings = _build_ownership_warnings(deployments, my_prefix)
-            if warnings:
-                result["warnings"] = warnings
-            return result
-        return {"deployments": {}}
+        now = time.time()
+        cached = _shared_deployments_cache.get(owner_prefix)
+        if not force and cached and (now - cached[0]) < SHARED_DEPLOYMENTS_TTL:
+            logger.debug(f"Shared deployments cache hit for {owner_prefix}")
+            deployments = cached[1]
+        else:
+            s3 = _get_owner_s3(owner_prefix)
+            content = s3.download_text(S3_PRESET_PREFIX + "/_deployments.json")
+            deployments = json.loads(content) if content else {}
+            _shared_deployments_cache[owner_prefix] = (now, deployments)
+
+        result: Dict = {"deployments": deployments}
+        warnings = _build_ownership_warnings(deployments, my_prefix)
+        if warnings:
+            result["warnings"] = warnings
+        return result
     except Exception as e:
         logger.warning(f"Failed to list shared deployments for {owner_prefix}: {e}")
         return {"deployments": {}}
@@ -742,9 +762,9 @@ async def _stream_action(action_label: str, name: str, commands: List[str],
 
 
 @router.get("/deployments")
-async def get_deployments():
+async def get_deployments(force: bool = Query(False)):
     try:
-        deployments = preset_manager.get_deployments()
+        deployments = preset_manager.get_deployments(force=force)
         my_prefix = _get_my_prefix()
         result: Dict = {"deployments": deployments}
         warnings = _build_ownership_warnings(deployments, my_prefix)

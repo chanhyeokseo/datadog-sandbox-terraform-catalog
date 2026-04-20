@@ -843,8 +843,10 @@ export const ecsManageApi = {
 };
 
 export const eksManageApi = {
-  getDeployments: async (): Promise<SharedDeploymentsResponse> => {
-    const response = await axios.get<SharedDeploymentsResponse>(`${EKS_MANAGE_BASE}/deployments`);
+  getDeployments: async (force = false): Promise<SharedDeploymentsResponse> => {
+    const response = await axios.get<SharedDeploymentsResponse>(
+      `${EKS_MANAGE_BASE}/deployments`, { params: force ? { force: true } : undefined }
+    );
     return response.data;
   },
 
@@ -923,9 +925,11 @@ export const eksManageApi = {
     return response.data;
   },
 
-  listSharedDeployments: async (ownerPrefix: string): Promise<SharedDeploymentsResponse> => {
+  listSharedDeployments: async (ownerPrefix: string, force = false): Promise<SharedDeploymentsResponse> => {
+    const params: Record<string, string | boolean> = { owner_prefix: ownerPrefix };
+    if (force) params.force = true;
     const response = await axios.get<SharedDeploymentsResponse>(
-      `${EKS_MANAGE_BASE}/shared-deployments`, { params: { owner_prefix: ownerPrefix } }
+      `${EKS_MANAGE_BASE}/shared-deployments`, { params }
     );
     return response.data;
   },

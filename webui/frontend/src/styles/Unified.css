@@ -995,6 +995,28 @@ body.light-mode .sg-modal {
    RESPONSIVE DESIGN
    ============================================ */
 
+.modal-header-refresh {
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 2px 8px;
+  line-height: 1;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.modal-header-refresh:hover {
+  color: var(--text-primary);
+  border-color: var(--text-secondary);
+}
+
+.modal-header-refresh:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 @media (max-width: 1400px) {
   .sidebar { width: 280px; }
   .results-panel { width: 350px; }

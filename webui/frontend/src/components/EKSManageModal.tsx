@@ -150,18 +150,18 @@ const EKSManageModal = ({ onClose, connectInfo, sharedClusterName, sharedOwnerPr
   const presetsMap = useRef<Record<string, EKSPreset>>({});
   const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
-  const loadDeployments = useCallback(async () => {
+  const loadDeployments = useCallback(async (force = false) => {
     try {
       if (isShared && sharedOwnerPrefix) {
         const [myResult, sharedResult] = await Promise.all([
-          eksManageApi.getDeployments(),
-          eksManageApi.listSharedDeployments(sharedOwnerPrefix),
+          eksManageApi.getDeployments(force),
+          eksManageApi.listSharedDeployments(sharedOwnerPrefix, force),
         ]);
         setDeployedPresets({ ...sharedResult.deployments, ...myResult.deployments });
         const allWarnings = [...(sharedResult.warnings || []), ...(myResult.warnings || [])];
         setDeploymentWarnings(allWarnings);
       } else {
-        const result = await eksManageApi.getDeployments();
+        const result = await eksManageApi.getDeployments(force);
         setDeployedPresets(result.deployments);
         setDeploymentWarnings(result.warnings || []);
       }
@@ -183,16 +183,16 @@ const EKSManageModal = ({ onClose, connectInfo, sharedClusterName, sharedOwnerPr
         const layout = await eksManageApi.getLayout();
         setTreeLayout(layout);
       } catch { /* layout will be generated server-side on next call */ }
-      await loadDeployments();
     } catch (e) {
       console.error('Failed to load presets:', e);
     } finally {
       setLoadingPresets(false);
     }
-  }, [loadDeployments]);
+  }, []);
 
   useEffect(() => {
     loadPresets();
+    loadDeployments();
     if (isShared && sharedOwnerPrefix) {
       eksManageApi.listSharedPresets(sharedOwnerPrefix)
         .then(data => setSharedPresets(data.presets))
@@ -206,7 +206,7 @@ const EKSManageModal = ({ onClose, connectInfo, sharedClusterName, sharedOwnerPr
         })
         .catch(e => console.error('Failed to load connected users:', e));
     }
-  }, [loadPresets, isShared, sharedOwnerPrefix]);
+  }, [loadPresets, loadDeployments, isShared, sharedOwnerPrefix]);
 
   useEffect(() => {
     if (!selectedConnectedUser) { setConnectedPresets([]); return; }
@@ -214,6 +214,17 @@ const EKSManageModal = ({ onClose, connectInfo, sharedClusterName, sharedOwnerPr
       .then(data => setConnectedPresets(data.presets))
       .catch(e => console.error('Failed to load connected user presets:', e));
   }, [selectedConnectedUser]);
+
+  useEffect(() => {
+    if (activeTab !== 'deploy') return;
+    const id = setInterval(loadDeployments, 15000);
+    return () => clearInterval(id);
+  }, [activeTab, loadDeployments]);
+
+  const handleHeaderRefresh = useCallback(() => {
+    if (activeTab === 'deploy') loadDeployments(true);
+    else if (activeTab === 'presets') loadPresets();
+  }, [activeTab, loadDeployments, loadPresets]);
 
   useEffect(() => {
     if (presets.length === 0) return;
@@ -1284,7 +1295,6 @@ const EKSManageModal = ({ onClose, connectInfo, sharedClusterName, sharedOwnerPr
           <div className="eks-deployed-list">
             <div className="eks-deployed-header">
               Deployed Presets
-              <button className="eks-deployed-refresh" onClick={loadDeployments} title="Refresh">↻</button>
             </div>
             <div className="eks-deployed-items">
               {deployedNames.map(name => (
@@ -1386,7 +1396,19 @@ const EKSManageModal = ({ onClose, connectInfo, sharedClusterName, sharedOwnerPr
       <div className="eks-manage-modal" onClick={e => e.stopPropagation()}>
         <div className="eks-manage-header">
           <h2>{isShared ? `Shared EKS: ${sharedClusterName}` : 'EKS Connect & Manage'}</h2>
-          <button className="eks-manage-close" onClick={onClose}>&times;</button>
+          <div className="eks-manage-header-actions">
+            {(activeTab === 'deploy' || activeTab === 'presets') && (
+              <button
+                className="modal-header-refresh"
+                onClick={handleHeaderRefresh}
+                disabled={loadingPresets}
+                title="Refresh"
+              >
+                ↻
+              </button>
+            )}
+            <button className="eks-manage-close" onClick={onClose}>&times;</button>
+          </div>
         </div>
         <div className="eks-manage-tabs">
           {(['connection', 'presets', 'editor', 'deploy', 'run'] as TabId[]).map(tab => (
