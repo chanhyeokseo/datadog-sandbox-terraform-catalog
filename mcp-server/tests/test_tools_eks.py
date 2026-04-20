@@ -176,6 +176,93 @@ class TestRunKubectl:
         )
 
 
+class TestManageClusterShare:
+
+    async def test_list_clusters(self, mcp_with_tools):
+        mcp, client = mcp_with_tools
+        client.get.return_value = {
+            "clusters": [{"name": "my-eks", "arn": "arn:aws:eks:ap-northeast-2:123:cluster/my-eks", "status": "ACTIVE", "owner_prefix": "user-a"}],
+            "my_prefix": "user-b",
+        }
+        result = json.loads(await _tool(mcp, "manage_cluster_share").run({"action": "list_clusters"}))
+        assert result["my_prefix"] == "user-b"
+        client.get.assert_called_once_with("/api/cluster-share/clusters")
+
+    async def test_request_share(self, mcp_with_tools):
+        mcp, client = mcp_with_tools
+        client.post.return_value = {"id": "req-1", "status": "pending"}
+        result = json.loads(await _tool(mcp, "manage_cluster_share").run({
+            "action": "request",
+            "cluster_name": "other-eks",
+            "cluster_arn": "arn:aws:eks:ap-northeast-2:123:cluster/other-eks",
+            "owner_prefix": "user-a",
+        }))
+        assert result["status"] == "pending"
+        client.post.assert_called_once_with("/api/cluster-share/requests", {
+            "cluster_name": "other-eks",
+            "cluster_arn": "arn:aws:eks:ap-northeast-2:123:cluster/other-eks",
+            "owner_prefix": "user-a",
+        })
+
+    async def test_request_missing_fields(self, mcp_with_tools):
+        mcp, client = mcp_with_tools
+        result = json.loads(await _tool(mcp, "manage_cluster_share").run({
+            "action": "request", "cluster_name": "x",
+        }))
+        assert "error" in result
+
+    async def test_list_incoming(self, mcp_with_tools):
+        mcp, client = mcp_with_tools
+        client.get.return_value = {"requests": [{"id": "r1", "status": "pending"}]}
+        result = json.loads(await _tool(mcp, "manage_cluster_share").run({"action": "list_incoming"}))
+        assert len(result["requests"]) == 1
+        client.get.assert_called_once_with("/api/cluster-share/requests/incoming")
+
+    async def test_list_outgoing(self, mcp_with_tools):
+        mcp, client = mcp_with_tools
+        client.get.return_value = {"requests": [{"id": "r2", "status": "approved"}]}
+        result = json.loads(await _tool(mcp, "manage_cluster_share").run({"action": "list_outgoing"}))
+        assert result["requests"][0]["id"] == "r2"
+        client.get.assert_called_once_with("/api/cluster-share/requests/outgoing")
+
+    async def test_approve(self, mcp_with_tools):
+        mcp, client = mcp_with_tools
+        client.post.return_value = {"id": "r1", "status": "approved"}
+        result = json.loads(await _tool(mcp, "manage_cluster_share").run({
+            "action": "approve", "request_id": "r1",
+        }))
+        assert result["status"] == "approved"
+        client.post.assert_called_once_with("/api/cluster-share/requests/r1/approve")
+
+    async def test_deny(self, mcp_with_tools):
+        mcp, client = mcp_with_tools
+        client.post.return_value = {"id": "r1", "status": "denied"}
+        result = json.loads(await _tool(mcp, "manage_cluster_share").run({
+            "action": "deny", "request_id": "r1",
+        }))
+        assert result["status"] == "denied"
+        client.post.assert_called_once_with("/api/cluster-share/requests/r1/deny")
+
+    async def test_delete(self, mcp_with_tools):
+        mcp, client = mcp_with_tools
+        client.delete.return_value = {"success": True}
+        result = json.loads(await _tool(mcp, "manage_cluster_share").run({
+            "action": "delete", "request_id": "r1",
+        }))
+        assert result["success"] is True
+        client.delete.assert_called_once_with("/api/cluster-share/requests/r1")
+
+    async def test_approve_missing_request_id(self, mcp_with_tools):
+        mcp, client = mcp_with_tools
+        result = json.loads(await _tool(mcp, "manage_cluster_share").run({"action": "approve"}))
+        assert "error" in result
+
+    async def test_invalid_action(self, mcp_with_tools):
+        mcp, client = mcp_with_tools
+        result = json.loads(await _tool(mcp, "manage_cluster_share").run({"action": "bad"}))
+        assert "error" in result
+
+
 class TestListSharedClusters:
 
     async def test_returns_shared_clusters(self, mcp_with_tools):
