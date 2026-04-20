@@ -153,13 +153,9 @@ const EKSManageModal = ({ onClose, connectInfo, sharedClusterName, sharedOwnerPr
   const loadDeployments = useCallback(async (force = false) => {
     try {
       if (isShared && sharedOwnerPrefix) {
-        const [myResult, sharedResult] = await Promise.all([
-          eksManageApi.getDeployments(force),
-          eksManageApi.listSharedDeployments(sharedOwnerPrefix, force),
-        ]);
-        setDeployedPresets({ ...sharedResult.deployments, ...myResult.deployments });
-        const allWarnings = [...(sharedResult.warnings || []), ...(myResult.warnings || [])];
-        setDeploymentWarnings(allWarnings);
+        const sharedResult = await eksManageApi.listSharedDeployments(sharedOwnerPrefix, force);
+        setDeployedPresets(sharedResult.deployments);
+        setDeploymentWarnings(sharedResult.warnings || []);
       } else {
         const result = await eksManageApi.getDeployments(force);
         setDeployedPresets(result.deployments);

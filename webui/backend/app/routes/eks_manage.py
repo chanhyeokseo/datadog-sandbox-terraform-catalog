@@ -26,8 +26,13 @@ logger = logging.getLogger(__name__)
 
 TERRAFORM_DIR = os.environ.get("TERRAFORM_DIR", "/terraform")
 EXIT_SENTINEL_PREFIX = "__TF_EXIT__:"
-KUBECONFIG_PATH = Path.home() / ".kube" / "config"
+KUBECONFIG_DIR = Path.home() / ".kube"
 TOKEN_EXPIRY_SECONDS = 900
+
+
+def _kubeconfig_path_for(cluster_name: str) -> Path:
+    safe = cluster_name.replace("/", "_").replace("\\", "_")
+    return KUBECONFIG_DIR / f"dogstac-{safe}.config"
 
 preset_manager = EKSPresetManager(TERRAFORM_DIR)
 parser = TerraformParser(TERRAFORM_DIR)
@@ -94,6 +99,13 @@ def _build_credential_error(health: Dict) -> str:
 def _get_my_prefix() -> str:
     tfvars = parser._read_tfvars_to_map(Path(TERRAFORM_DIR) / "terraform.tfvars")
     return tfvars.get("name_prefix", "").strip('"').strip("'")
+
+
+def _get_my_cluster_name() -> Optional[str]:
+    prefix = _get_my_prefix()
+    if prefix:
+        return f"{prefix}-eks-cluster"
+    return None
 
 
 def _resolve_template_vars(command: str) -> str:
@@ -221,9 +233,10 @@ def _write_kubeconfig(cluster_name: str, region: str) -> tuple[bool, str]:
         "users": [{"name": cluster_name, "user": {"token": token}}],
     }
 
-    KUBECONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    KUBECONFIG_PATH.write_text(json.dumps(kubeconfig, indent=2))
-    logger.debug(f"Kubeconfig written to {KUBECONFIG_PATH} for cluster {cluster_name}")
+    kc_path = _kubeconfig_path_for(cluster_name)
+    kc_path.parent.mkdir(parents=True, exist_ok=True)
+    kc_path.write_text(json.dumps(kubeconfig, indent=2))
+    logger.debug("Kubeconfig written to %s for cluster %s", kc_path, cluster_name)
     return True, f"Kubeconfig configured for {cluster_name} at {endpoint}"
 
 
@@ -243,86 +256,68 @@ def _configure_kubeconfig(cluster_name: str, region: str) -> tuple[bool, str]:
         return False, str(e)
 
 
-def _read_kubeconfig_context() -> Optional[str]:
-    try:
-        if KUBECONFIG_PATH.exists() and KUBECONFIG_PATH.stat().st_size > 0:
-            data = json.loads(KUBECONFIG_PATH.read_text())
-            return data.get("current-context")
-    except Exception:
-        pass
-    return None
+def _is_kubeconfig_fresh(cluster_name: str) -> bool:
+    kc_path = _kubeconfig_path_for(cluster_name)
+    if not kc_path.exists() or kc_path.stat().st_size == 0:
+        return False
+    return (time.time() - kc_path.stat().st_mtime) < TOKEN_EXPIRY_SECONDS
 
 
 async def _setup_kubeconfig(resource_id: Optional[str], resource_dir: Optional[Path],
                             force: bool = False,
-                            explicit_cluster_name: Optional[str] = None) -> tuple[bool, list[str]]:
-    lines = []
+                            explicit_cluster_name: Optional[str] = None) -> tuple[bool, str, list[str]]:
+    lines: list[str] = []
+    target_cluster: Optional[str] = explicit_cluster_name
 
-    if not force and KUBECONFIG_PATH.exists() and KUBECONFIG_PATH.stat().st_size > 0:
-        age = time.time() - KUBECONFIG_PATH.stat().st_mtime
-        if age < TOKEN_EXPIRY_SECONDS:
-            cached_context = _read_kubeconfig_context()
-            if explicit_cluster_name:
-                if cached_context == explicit_cluster_name:
-                    logger.debug("Reusing cached kubeconfig for shared cluster %s", explicit_cluster_name)
-                    return True, lines
-            elif cached_context:
-                return True, lines
-        else:
-            logger.debug("Kubeconfig token expired (age=%.0fs), refreshing", age)
+    if not target_cluster:
+        target_cluster = _get_my_cluster_name()
 
-    if explicit_cluster_name:
-        region = os.environ.get("AWS_REGION", "ap-northeast-2")
-        lines.append(f"Shared cluster: {explicit_cluster_name} (region: {region})\n")
-        lines.append("Configuring kubeconfig...\n")
-        success, output = _configure_kubeconfig(explicit_cluster_name, region)
-        lines.append(output + "\n")
-        if not success:
-            lines.append("Error: Failed to configure kubeconfig\n")
-            lines.append(f"{EXIT_SENTINEL_PREFIX}1\n")
-            return False, lines
-        return True, lines
-
-    if resource_dir and resource_id:
+    if not target_cluster and resource_dir and resource_id:
         lines.append("Resolving EKS cluster info from Terraform outputs...\n")
         cluster_info = await _get_cluster_info_async(resource_id, resource_dir)
-        cluster_name = cluster_info.get("cluster_name")
-        region = cluster_info.get("region")
+        target_cluster = cluster_info.get("cluster_name")
+        if target_cluster:
+            lines.append(f"Cluster: {target_cluster} (region: {cluster_info.get('region')})\n")
 
-        if cluster_name:
-            lines.append(f"Cluster: {cluster_name} (region: {region})\n")
-            lines.append("Configuring kubeconfig...\n")
-            success, output = _configure_kubeconfig(cluster_name, region)
-            lines.append(output + "\n")
-            if not success:
-                lines.append("Error: Failed to configure kubeconfig\n")
-                lines.append(f"{EXIT_SENTINEL_PREFIX}1\n")
-                return False, lines
-            return True, lines
+    if not target_cluster:
+        if not resource_dir:
+            msg = "Error: No EKS Terraform instance directory found. Cannot configure kubectl for this workspace.\n"
         else:
-            lines.append(
+            msg = (
                 "Error: Could not resolve EKS cluster name from Terraform outputs. "
                 "Ensure the eks_cluster instance applied successfully and outputs exist, then retry.\n"
             )
-            lines.append(f"{EXIT_SENTINEL_PREFIX}1\n")
-            logger.warning("EKS kubeconfig setup aborted: missing cluster_name in terraform outputs")
-            return False, lines
-    else:
-        lines.append(
-            "Error: No EKS Terraform instance directory found. Cannot configure kubectl for this workspace.\n"
-        )
+        lines.append(msg)
         lines.append(f"{EXIT_SENTINEL_PREFIX}1\n")
-        logger.warning("EKS kubeconfig setup aborted: no EKS resource directory")
-        return False, lines
+        logger.warning("EKS kubeconfig setup aborted: could not determine cluster name")
+        return False, "", lines
+
+    if not force and _is_kubeconfig_fresh(target_cluster):
+        logger.debug("Reusing cached kubeconfig for cluster %s", target_cluster)
+        return True, target_cluster, lines
+
+    lines.append("Configuring kubeconfig...\n")
+    region = os.environ.get("AWS_REGION", "ap-northeast-2")
+    success, output = _configure_kubeconfig(target_cluster, region)
+    lines.append(output + "\n")
+    if not success:
+        lines.append("Error: Failed to configure kubeconfig\n")
+        lines.append(f"{EXIT_SENTINEL_PREFIX}1\n")
+        return False, "", lines
+    return True, target_cluster, lines
 
 
-async def _stream_shell(cmd_str: str, cwd: str = None) -> AsyncIterator[str]:
+async def _stream_shell(cmd_str: str, cwd: str = None, kubeconfig: str = None) -> AsyncIterator[str]:
     try:
+        env = None
+        if kubeconfig:
+            env = {**os.environ, "KUBECONFIG": kubeconfig}
         process = await asyncio.create_subprocess_shell(
             cmd_str,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
             cwd=cwd,
+            env=env,
         )
         while True:
             line = await process.stdout.readline()
@@ -336,7 +331,7 @@ async def _stream_shell(cmd_str: str, cwd: str = None) -> AsyncIterator[str]:
         yield f"{EXIT_SENTINEL_PREFIX}1\n"
 
 
-async def _execute_commands(commands: List[str], preset_dir: str) -> AsyncIterator[str]:
+async def _execute_commands(commands: List[str], preset_dir: str, kubeconfig: str = None) -> AsyncIterator[str]:
     for cmd_str in commands:
         cmd_str = cmd_str.strip()
         if not cmd_str or cmd_str.startswith("#"):
@@ -345,7 +340,7 @@ async def _execute_commands(commands: List[str], preset_dir: str) -> AsyncIterat
         cmd_str = _resolve_template_vars(cmd_str)
         yield f"\n$ {cmd_str}\n"
 
-        async for line in _stream_shell(cmd_str, cwd=preset_dir):
+        async for line in _stream_shell(cmd_str, cwd=preset_dir, kubeconfig=kubeconfig):
             if line.startswith(EXIT_SENTINEL_PREFIX):
                 if "1" in line:
                     yield f"Error: command failed (exit 1)\n"
@@ -726,12 +721,14 @@ async def _stream_action(action_label: str, name: str, commands: List[str],
         yield "Syncing preset cache from S3...\n"
         await asyncio.to_thread(preset_manager.initialize_local_cache)
 
-    ok, lines = await _setup_kubeconfig(resource_id, resource_dir,
-                                         explicit_cluster_name=explicit_cluster_name)
+    ok, target_cluster, lines = await _setup_kubeconfig(resource_id, resource_dir,
+                                                         explicit_cluster_name=explicit_cluster_name)
     for line in lines:
         yield line
     if not ok:
         return
+
+    kc_path = str(_kubeconfig_path_for(target_cluster))
 
     if owner_prefix:
         yield f"Syncing shared preset from {owner_prefix}...\n"
@@ -749,7 +746,7 @@ async def _stream_action(action_label: str, name: str, commands: List[str],
     yield f"\n{action_label} from: {preset_dir}\n"
 
     success = True
-    async for line in _execute_commands(commands, str(preset_dir)):
+    async for line in _execute_commands(commands, str(preset_dir), kubeconfig=kc_path):
         if line.startswith(EXIT_SENTINEL_PREFIX) and "1" in line:
             success = False
         yield line
@@ -909,15 +906,16 @@ async def run_kubectl(body: dict = Body(...)):
             yield f"{EXIT_SENTINEL_PREFIX}1\n"
             return
 
-        ok, lines = await _setup_kubeconfig(resource_id, resource_dir,
-                                             explicit_cluster_name=cluster_name)
+        ok, target_cluster, lines = await _setup_kubeconfig(resource_id, resource_dir,
+                                                             explicit_cluster_name=cluster_name)
         for line in lines:
             yield line
         if not ok:
             return
 
+        kc_path = str(_kubeconfig_path_for(target_cluster))
         yield f"$ {command}\n"
-        async for line in _stream_shell(command):
+        async for line in _stream_shell(command, kubeconfig=kc_path):
             yield line
 
     return StreamingResponse(_stream(), media_type="text/plain")
