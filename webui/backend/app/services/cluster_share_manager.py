@@ -274,6 +274,19 @@ class ClusterShareManager:
                 users.add(r.requester_prefix)
         return sorted(users)
 
+    def get_cluster_members(self, owner_prefix: str) -> List[str]:
+        my_prefix = self._get_my_prefix()
+        if not my_prefix:
+            return []
+        all_requests = self._get_all_requests()
+        members = {owner_prefix}
+        for r in all_requests:
+            if r.owner_prefix == owner_prefix and r.status == ClusterShareRequestStatus.APPROVED:
+                members.add(r.requester_prefix)
+        members.discard(my_prefix)
+        logger.debug("Cluster members for owner '%s' (excluding self '%s'): %s", owner_prefix, my_prefix, members)
+        return sorted(members)
+
     def delete_request(self, request_id: str) -> bool:
         request = self._get_request_by_id(request_id)
         if not request:

@@ -3,15 +3,18 @@ from mcp.server.fastmcp import FastMCP
 from dogstac_client import DogSTACClient
 
 DEPLOYMENT_ACTIONS = ("list", "deploy", "undeploy")
-SHARE_ACTIONS = ("list_shareable_clusters", "list_approved", "request", "list_incoming", "list_outgoing", "approve", "deny", "delete")
+SHARE_ACTIONS = ("list_shareable_clusters", "list_approved", "request", "list_incoming", "list_outgoing", "approve", "deny", "delete", "list_members")
 
 
-def _shared_params(cluster_name: str | None, owner_prefix: str | None) -> dict | None:
+def _shared_params(cluster_name: str | None, owner_prefix: str | None,
+                    preset_owner_prefix: str | None = None) -> dict | None:
     params = {}
     if cluster_name:
         params["cluster_name"] = cluster_name
     if owner_prefix:
         params["owner_prefix"] = owner_prefix
+    if preset_owner_prefix and preset_owner_prefix != owner_prefix:
+        params["preset_owner_prefix"] = preset_owner_prefix
     return params or None
 
 
@@ -27,7 +30,7 @@ def register(mcp: FastMCP, client: DogSTACClient):
         """Manage EKS cluster sharing: request, accept, deny, or remove shares.
 
         Args:
-            action: One of "list_shareable_clusters", "list_approved", "request", "list_incoming", "list_outgoing", "approve", "deny", "delete".
+            action: One of "list_shareable_clusters", "list_approved", "request", "list_incoming", "list_outgoing", "approve", "deny", "delete", "list_members".
                 - list_shareable_clusters: List DogSTAC-managed EKS clusters available for sharing (shows owner_prefix per cluster).
                 - list_approved: List clusters already approved for your use. Use returned owner_prefix/cluster_name with other EKS tools.
                 - request: Send a share request to a cluster owner. Requires cluster_name, cluster_arn, owner_prefix.
@@ -36,9 +39,12 @@ def register(mcp: FastMCP, client: DogSTACClient):
                 - approve: Approve an incoming share request. Requires request_id.
                 - deny: Deny an incoming share request. Requires request_id.
                 - delete: Delete/remove a share request (yours or incoming). Requires request_id.
+                - list_members: List all members of a shared cluster (excluding self). Requires owner_prefix.
+                  Returns all users who share the cluster (owner + approved requesters, minus current user).
+                  Use member prefixes with get_eks_preset_info(owner_prefix=...) to browse each member's presets.
             cluster_name: Target cluster name (required for "request").
             cluster_arn: Target cluster ARN (required for "request").
-            owner_prefix: Cluster owner's name_prefix (required for "request").
+            owner_prefix: Cluster owner's name_prefix (required for "request", "list_members").
             request_id: Share request ID (required for "approve", "deny", "delete").
         """
         if action not in SHARE_ACTIONS:
@@ -50,6 +56,12 @@ def register(mcp: FastMCP, client: DogSTACClient):
 
         if action == "list_approved":
             data = await client.get("/api/cluster-share/shared")
+            return json.dumps(data, indent=2)
+
+        if action == "list_members":
+            if not owner_prefix:
+                return json.dumps({"error": "owner_prefix is required for 'list_members'"})
+            data = await client.get("/api/cluster-share/cluster-members", owner_prefix=owner_prefix)
             return json.dumps(data, indent=2)
 
         if action == "request":
@@ -140,7 +152,8 @@ def register(mcp: FastMCP, client: DogSTACClient):
     @mcp.tool()
     async def manage_eks_deployment(action: str, preset_name: str = "",
                                     cluster_name: str = "",
-                                    owner_prefix: str = "") -> str:
+                                    owner_prefix: str = "",
+                                    preset_owner_prefix: str = "") -> str:
         """Manage EKS preset deployments.
 
         Args:
@@ -151,6 +164,10 @@ def register(mcp: FastMCP, client: DogSTACClient):
             preset_name: Required for deploy/undeploy.
             cluster_name: Target shared cluster name. Use with owner_prefix for shared clusters.
             owner_prefix: Owner of the shared cluster. Use with cluster_name for shared clusters.
+                Deployment tracking is stored in the cluster owner's bucket.
+            preset_owner_prefix: The member who owns the preset. Required when deploying another
+                member's preset (not the cluster owner's). If omitted, defaults to owner_prefix.
+                Use manage_cluster_share(action="list_members") to discover member prefixes.
         """
         if action not in DEPLOYMENT_ACTIONS:
             return json.dumps({"error": f"Invalid action '{action}'. Must be one of: {', '.join(DEPLOYMENT_ACTIONS)}"})
@@ -168,7 +185,7 @@ def register(mcp: FastMCP, client: DogSTACClient):
 
         result = await client.stream_post(
             f"/api/terraform/eks/manage/presets/{preset_name}/{action}",
-            params=_shared_params(cluster_name, owner_prefix),
+            params=_shared_params(cluster_name, owner_prefix, preset_owner_prefix or None),
         )
         return json.dumps(result, indent=2)
 

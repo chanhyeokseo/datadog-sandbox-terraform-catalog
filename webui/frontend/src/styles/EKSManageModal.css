@@ -458,6 +458,26 @@
   border: 1px solid rgba(255, 152, 0, 0.3);
 }
 
+.eks-preset-badge.member {
+  background: rgba(76, 175, 80, 0.15);
+  color: #66bb6a;
+  border: 1px solid rgba(76, 175, 80, 0.3);
+}
+
+.eks-member-group {
+  margin-bottom: 8px;
+}
+
+.eks-member-group-header {
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border-radius: 6px;
+  margin-bottom: 4px;
+}
+
 
 
 .eks-btn-delete {

@@ -108,9 +108,29 @@ def _get_my_cluster_name() -> Optional[str]:
     return None
 
 
-def _resolve_template_vars(command: str) -> str:
+def _load_sensitive_vars_for_prefix(prefix: str) -> Dict[str, str]:
+    from app.config import SENSITIVE_VARIABLES
+    from app.services.config_manager import SSM_GLOBAL_REGION
+    safe = ''.join(c if c.isalnum() or c in '-_' else '-' for c in prefix)[:64]
+    ssm_prefix = f"/dogstac-{safe}/sensitive"
+    ssm = boto3.client("ssm", region_name=SSM_GLOBAL_REGION)
+    result: Dict[str, str] = {}
+    for var_name in SENSITIVE_VARIABLES:
+        try:
+            resp = ssm.get_parameter(Name=f"{ssm_prefix}/{var_name}", WithDecryption=True)
+            result[var_name] = resp["Parameter"]["Value"]
+        except Exception:
+            pass
+    logger.debug("Loaded %d sensitive vars for deployer prefix '%s'", len(result), prefix)
+    return result
+
+
+def _resolve_template_vars(command: str, deployer_prefix: str = None) -> str:
     root_tfvars = parser._read_tfvars_to_map(Path(TERRAFORM_DIR) / "terraform.tfvars")
-    sensitive_vars = parser.config_manager.load_all_sensitive_variables()
+    if deployer_prefix:
+        sensitive_vars = _load_sensitive_vars_for_prefix(deployer_prefix)
+    else:
+        sensitive_vars = parser.config_manager.load_all_sensitive_variables()
     merged = {**root_tfvars, **sensitive_vars}
     def _replacer(m):
         var_name = m.group(1)
@@ -331,13 +351,14 @@ async def _stream_shell(cmd_str: str, cwd: str = None, kubeconfig: str = None) -
         yield f"{EXIT_SENTINEL_PREFIX}1\n"
 
 
-async def _execute_commands(commands: List[str], preset_dir: str, kubeconfig: str = None) -> AsyncIterator[str]:
+async def _execute_commands(commands: List[str], preset_dir: str, kubeconfig: str = None,
+                           deployer_prefix: str = None) -> AsyncIterator[str]:
     for cmd_str in commands:
         cmd_str = cmd_str.strip()
         if not cmd_str or cmd_str.startswith("#"):
             continue
 
-        cmd_str = _resolve_template_vars(cmd_str)
+        cmd_str = _resolve_template_vars(cmd_str, deployer_prefix=deployer_prefix)
         yield f"\n$ {cmd_str}\n"
 
         async for line in _stream_shell(cmd_str, cwd=preset_dir, kubeconfig=kubeconfig):
@@ -699,7 +720,8 @@ async def _stream_action(action_label: str, name: str, commands: List[str],
                          resource_id: Optional[str], resource_dir: Optional[Path],
                          on_success=None,
                          explicit_cluster_name: Optional[str] = None,
-                         owner_prefix: Optional[str] = None) -> AsyncIterator[str]:
+                         owner_prefix: Optional[str] = None,
+                         deployer_prefix: Optional[str] = None) -> AsyncIterator[str]:
     cred_err = await _eks_aws_credentials_error_message()
     if cred_err:
         yield cred_err
@@ -746,7 +768,8 @@ async def _stream_action(action_label: str, name: str, commands: List[str],
     yield f"\n{action_label} from: {preset_dir}\n"
 
     success = True
-    async for line in _execute_commands(commands, str(preset_dir), kubeconfig=kc_path):
+    async for line in _execute_commands(commands, str(preset_dir), kubeconfig=kc_path,
+                                        deployer_prefix=deployer_prefix):
         if line.startswith(EXIT_SENTINEL_PREFIX) and "1" in line:
             success = False
         yield line
@@ -784,8 +807,10 @@ def _resolve_preset(name: str, owner_prefix: Optional[str] = None) -> dict:
 
 @router.post("/presets/{name}/deploy")
 async def deploy_preset(name: str, cluster_name: Optional[str] = Query(None),
-                        owner_prefix: Optional[str] = Query(None)):
-    preset = _resolve_preset(name, owner_prefix)
+                        owner_prefix: Optional[str] = Query(None),
+                        preset_owner_prefix: Optional[str] = Query(None)):
+    source_prefix = preset_owner_prefix or owner_prefix
+    preset = _resolve_preset(name, source_prefix)
     if not preset:
         raise HTTPException(status_code=404, detail=f"Preset not found: {name}")
 
@@ -805,15 +830,18 @@ async def deploy_preset(name: str, cluster_name: Optional[str] = Query(None),
         _stream_action("Deploy", name, commands, resource_id, resource_dir,
                         on_success=on_success,
                         explicit_cluster_name=cluster_name,
-                        owner_prefix=owner_prefix),
+                        owner_prefix=source_prefix,
+                        deployer_prefix=my_prefix),
         media_type="text/plain",
     )
 
 
 @router.post("/presets/{name}/update")
 async def update_preset_deploy(name: str, cluster_name: Optional[str] = Query(None),
-                               owner_prefix: Optional[str] = Query(None)):
-    preset = _resolve_preset(name, owner_prefix)
+                               owner_prefix: Optional[str] = Query(None),
+                               preset_owner_prefix: Optional[str] = Query(None)):
+    source_prefix = preset_owner_prefix or owner_prefix
+    preset = _resolve_preset(name, source_prefix)
     if not preset:
         raise HTTPException(status_code=404, detail=f"Preset not found: {name}")
 
@@ -822,19 +850,23 @@ async def update_preset_deploy(name: str, cluster_name: Optional[str] = Query(No
         raise HTTPException(status_code=400, detail="No update commands defined for this preset")
 
     resource_id, resource_dir = _get_eks_resource_info()
+    my_prefix = _get_my_prefix()
 
     return StreamingResponse(
         _stream_action("Update", name, commands, resource_id, resource_dir,
                         explicit_cluster_name=cluster_name,
-                        owner_prefix=owner_prefix),
+                        owner_prefix=source_prefix,
+                        deployer_prefix=my_prefix),
         media_type="text/plain",
     )
 
 
 @router.post("/presets/{name}/undeploy")
 async def undeploy_preset(name: str, cluster_name: Optional[str] = Query(None),
-                          owner_prefix: Optional[str] = Query(None)):
-    preset = _resolve_preset(name, owner_prefix)
+                          owner_prefix: Optional[str] = Query(None),
+                          preset_owner_prefix: Optional[str] = Query(None)):
+    source_prefix = preset_owner_prefix or owner_prefix
+    preset = _resolve_preset(name, source_prefix)
     if not preset:
         raise HTTPException(status_code=404, detail=f"Preset not found: {name}")
 
@@ -843,6 +875,7 @@ async def undeploy_preset(name: str, cluster_name: Optional[str] = Query(None),
         raise HTTPException(status_code=400, detail="No undeploy commands defined for this preset")
 
     resource_id, resource_dir = _get_eks_resource_info()
+    my_prefix = _get_my_prefix()
 
     if owner_prefix and cluster_name:
         on_success = lambda: _owner_mark_undeployed(name, owner_prefix)
@@ -853,7 +886,8 @@ async def undeploy_preset(name: str, cluster_name: Optional[str] = Query(None),
         _stream_action("Undeploy", name, commands, resource_id, resource_dir,
                         on_success=on_success,
                         explicit_cluster_name=cluster_name,
-                        owner_prefix=owner_prefix),
+                        owner_prefix=source_prefix,
+                        deployer_prefix=my_prefix),
         media_type="text/plain",
     )
 

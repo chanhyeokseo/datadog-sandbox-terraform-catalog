@@ -1,8 +1,7 @@
 import logging
 import os
 
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, Query
 
 from app.models.schemas import ClusterShareRequestCreate
 from app.services.cluster_share_manager import ClusterShareManager
@@ -77,6 +76,12 @@ async def get_shared_clusters():
 async def get_connected_users():
     users = share_manager.get_connected_users()
     return {"users": users}
+
+
+@router.get("/cluster-members")
+async def get_cluster_members(owner_prefix: str = Query(...)):
+    members = share_manager.get_cluster_members(owner_prefix)
+    return {"members": members}
 
 
 @router.delete("/requests/{request_id}")

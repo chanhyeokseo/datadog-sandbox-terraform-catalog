@@ -587,6 +587,7 @@ export interface EKSPreset {
   update_commands: string[];
   undeploy_commands: string[];
   files: string[];
+  owner_prefix?: string;
 }
 
 export interface EKSPresetFileResponse {
@@ -940,11 +941,13 @@ export const eksManageApi = {
     onComplete: (success: boolean) => void,
     signal?: AbortSignal,
     clusterName?: string,
-    ownerPrefix?: string
+    ownerPrefix?: string,
+    presetOwnerPrefix?: string,
   ): Promise<void> => {
     const qp = new URLSearchParams();
     if (clusterName) qp.set('cluster_name', clusterName);
     if (ownerPrefix) qp.set('owner_prefix', ownerPrefix);
+    if (presetOwnerPrefix) qp.set('preset_owner_prefix', presetOwnerPrefix);
     const qs = qp.toString() ? `?${qp.toString()}` : '';
     const response = await fetch(`${EKS_MANAGE_BASE}/presets/${name}/deploy${qs}`, {
       method: 'POST',
@@ -978,11 +981,13 @@ export const eksManageApi = {
     onComplete: (success: boolean) => void,
     signal?: AbortSignal,
     clusterName?: string,
-    ownerPrefix?: string
+    ownerPrefix?: string,
+    presetOwnerPrefix?: string,
   ): Promise<void> => {
     const qp = new URLSearchParams();
     if (clusterName) qp.set('cluster_name', clusterName);
     if (ownerPrefix) qp.set('owner_prefix', ownerPrefix);
+    if (presetOwnerPrefix) qp.set('preset_owner_prefix', presetOwnerPrefix);
     const qs = qp.toString() ? `?${qp.toString()}` : '';
     const response = await fetch(`${EKS_MANAGE_BASE}/presets/${name}/update${qs}`, {
       method: 'POST',
@@ -1016,11 +1021,13 @@ export const eksManageApi = {
     onComplete: (success: boolean) => void,
     signal?: AbortSignal,
     clusterName?: string,
-    ownerPrefix?: string
+    ownerPrefix?: string,
+    presetOwnerPrefix?: string,
   ): Promise<void> => {
     const qp = new URLSearchParams();
     if (clusterName) qp.set('cluster_name', clusterName);
     if (ownerPrefix) qp.set('owner_prefix', ownerPrefix);
+    if (presetOwnerPrefix) qp.set('preset_owner_prefix', presetOwnerPrefix);
     const qs = qp.toString() ? `?${qp.toString()}` : '';
     const response = await fetch(`${EKS_MANAGE_BASE}/presets/${name}/undeploy${qs}`, {
       method: 'POST',
@@ -1158,5 +1165,12 @@ export const clusterShareApi = {
   getConnectedUsers: async (): Promise<string[]> => {
     const response = await axios.get<{ users: string[] }>(`${CLUSTER_SHARE_BASE}/connected-users`);
     return response.data.users;
+  },
+
+  getClusterMembers: async (ownerPrefix: string): Promise<string[]> => {
+    const response = await axios.get<{ members: string[] }>(
+      `${CLUSTER_SHARE_BASE}/cluster-members`, { params: { owner_prefix: ownerPrefix } }
+    );
+    return response.data.members;
   },
 };
