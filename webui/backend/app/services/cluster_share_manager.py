@@ -89,6 +89,8 @@ class ClusterShareManager:
                                 owner_prefix = cluster_name_tag[: -len("-eks-cluster")]
                             elif cluster_name_tag:
                                 owner_prefix = cluster_name_tag.split("-")[0]
+                        if not owner_prefix:
+                            continue
                         clusters.append(EKSClusterInfo(
                             name=name,
                             arn=cluster.get("arn", ""),

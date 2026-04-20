@@ -178,13 +178,13 @@ class TestRunKubectl:
 
 class TestManageClusterShare:
 
-    async def test_list_clusters(self, mcp_with_tools):
+    async def test_list_shareable_clusters(self, mcp_with_tools):
         mcp, client = mcp_with_tools
         client.get.return_value = {
             "clusters": [{"name": "my-eks", "arn": "arn:aws:eks:ap-northeast-2:123:cluster/my-eks", "status": "ACTIVE", "owner_prefix": "user-a"}],
             "my_prefix": "user-b",
         }
-        result = json.loads(await _tool(mcp, "manage_cluster_share").run({"action": "list_clusters"}))
+        result = json.loads(await _tool(mcp, "manage_cluster_share").run({"action": "list_shareable_clusters"}))
         assert result["my_prefix"] == "user-b"
         client.get.assert_called_once_with("/api/cluster-share/clusters")
 
@@ -263,16 +263,14 @@ class TestManageClusterShare:
         assert "error" in result
 
 
-class TestListSharedClusters:
-
-    async def test_returns_shared_clusters(self, mcp_with_tools):
+    async def test_list_approved(self, mcp_with_tools):
         mcp, client = mcp_with_tools
         client.get.return_value = {
             "clusters": [
                 {"cluster_name": "other-eks-cluster", "cluster_arn": "arn:aws:eks:...", "owner_prefix": "other-user", "shared_at": "2026-04-10T00:00:00Z"},
             ]
         }
-        result = json.loads(await _tool(mcp, "list_shared_clusters").run({}))
+        result = json.loads(await _tool(mcp, "manage_cluster_share").run({"action": "list_approved"}))
         assert len(result["clusters"]) == 1
         assert result["clusters"][0]["owner_prefix"] == "other-user"
         client.get.assert_called_once_with("/api/cluster-share/shared")

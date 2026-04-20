@@ -141,12 +141,12 @@ const ClusterShareModal = ({ onClose, onSharedClustersChanged }: ClusterShareMod
   const renderRequestTab = () => (
     <div className="cs-tab-content">
       <p className="cs-description">
-        All EKS clusters in the current region are listed. Only clusters created by DogSTAC are available for sharing.
+        DogSTAC-managed EKS clusters available for sharing.
       </p>
       {clustersLoading ? (
         <div className="cs-loading">Loading EKS clusters...</div>
       ) : clusters.length === 0 ? (
-        <div className="cs-empty">No EKS clusters found in this AWS account.</div>
+        <div className="cs-empty">No shareable EKS clusters found in this AWS account.</div>
       ) : (
         <div className="cs-cluster-list">
           {clusters.map(cluster => (
@@ -169,8 +169,8 @@ const ClusterShareModal = ({ onClose, onSharedClustersChanged }: ClusterShareMod
                 <button
                   className="btn btn-deploy cs-request-btn"
                   onClick={() => handleRequestShare(cluster)}
-                  disabled={actionLoading === cluster.arn || !cluster.owner_prefix}
-                  title={!cluster.owner_prefix ? 'Cannot determine owner' : 'Request cluster share'}
+                  disabled={actionLoading === cluster.arn}
+                  title="Request cluster share"
                 >
                   {actionLoading === cluster.arn ? 'Sending...' : 'Request Share'}
                 </button>

@@ -3,7 +3,7 @@ from mcp.server.fastmcp import FastMCP
 from dogstac_client import DogSTACClient
 
 DEPLOYMENT_ACTIONS = ("list", "deploy", "undeploy")
-SHARE_ACTIONS = ("list_clusters", "request", "list_incoming", "list_outgoing", "approve", "deny", "delete")
+SHARE_ACTIONS = ("list_shareable_clusters", "list_approved", "request", "list_incoming", "list_outgoing", "approve", "deny", "delete")
 
 
 def _shared_params(cluster_name: str | None, owner_prefix: str | None) -> dict | None:
@@ -17,17 +17,6 @@ def _shared_params(cluster_name: str | None, owner_prefix: str | None) -> dict |
 
 def register(mcp: FastMCP, client: DogSTACClient):
     @mcp.tool()
-    async def list_shared_clusters() -> str:
-        """List shared EKS clusters that have been approved for your use.
-
-        Returns clusters shared by other users, including cluster name, ARN, and owner prefix.
-        Use the returned owner_prefix and cluster_name with other EKS tools to operate on shared clusters.
-        Each user's deployments use their own Datadog API key — check deployed_by via manage_eks_deployment(list).
-        """
-        data = await client.get("/api/cluster-share/shared")
-        return json.dumps(data, indent=2)
-
-    @mcp.tool()
     async def manage_cluster_share(
         action: str,
         cluster_name: str = "",
@@ -38,8 +27,9 @@ def register(mcp: FastMCP, client: DogSTACClient):
         """Manage EKS cluster sharing: request, accept, deny, or remove shares.
 
         Args:
-            action: One of "list_clusters", "request", "list_incoming", "list_outgoing", "approve", "deny", "delete".
-                - list_clusters: List all EKS clusters available for sharing (shows owner_prefix per cluster).
+            action: One of "list_shareable_clusters", "list_approved", "request", "list_incoming", "list_outgoing", "approve", "deny", "delete".
+                - list_shareable_clusters: List DogSTAC-managed EKS clusters available for sharing (shows owner_prefix per cluster).
+                - list_approved: List clusters already approved for your use. Use returned owner_prefix/cluster_name with other EKS tools.
                 - request: Send a share request to a cluster owner. Requires cluster_name, cluster_arn, owner_prefix.
                 - list_incoming: List share requests others have sent to you (pending/approved/denied).
                 - list_outgoing: List share requests you have sent to others.
@@ -54,8 +44,12 @@ def register(mcp: FastMCP, client: DogSTACClient):
         if action not in SHARE_ACTIONS:
             return json.dumps({"error": f"Invalid action '{action}'. Must be one of: {', '.join(SHARE_ACTIONS)}"})
 
-        if action == "list_clusters":
+        if action == "list_shareable_clusters":
             data = await client.get("/api/cluster-share/clusters")
+            return json.dumps(data, indent=2)
+
+        if action == "list_approved":
+            data = await client.get("/api/cluster-share/shared")
             return json.dumps(data, indent=2)
 
         if action == "request":
