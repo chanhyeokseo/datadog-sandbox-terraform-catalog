@@ -849,6 +849,7 @@ const EKSManageModal = ({ onClose, connectInfo, sharedClusterName, sharedOwnerPr
                             localStorage.setItem(STORAGE_KEY, p.name);
                             setActiveTab('deploy');
                           }}>Deploy</button>
+                          <button onClick={(e) => { e.stopPropagation(); handleClonePreset(p.name); }}>Clone</button>
                         </span>
                       </div>
                     ))}
