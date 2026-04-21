@@ -150,14 +150,18 @@ const EKSManageModal = ({ onClose, connectInfo, sharedClusterName, sharedOwnerPr
   const presetsMap = useRef<Record<string, EKSPreset>>({});
   const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
+  const cancelledRef = useRef(false);
+
   const loadDeployments = useCallback(async (force = false) => {
     try {
       if (isShared && sharedOwnerPrefix) {
         const sharedResult = await eksManageApi.listSharedDeployments(sharedOwnerPrefix, force);
+        if (cancelledRef.current) return;
         setDeployedPresets(sharedResult.deployments);
         setDeploymentWarnings(sharedResult.warnings || []);
       } else {
         const result = await eksManageApi.getDeployments(force);
+        if (cancelledRef.current) return;
         setDeployedPresets(result.deployments);
         setDeploymentWarnings(result.warnings || []);
       }
@@ -170,19 +174,21 @@ const EKSManageModal = ({ onClose, connectInfo, sharedClusterName, sharedOwnerPr
     setLoadingPresets(true);
     try {
       const { presets: list } = await eksManageApi.listPresets();
-      setPresets(list);
-      presetsMap.current = Object.fromEntries(list.map(p => [p.name, p]));
+      if (cancelledRef.current) return;
+      const safeList = Array.isArray(list) ? list : [];
+      setPresets(safeList);
+      presetsMap.current = Object.fromEntries(safeList.map(p => [p.name, p]));
       const saved = localStorage.getItem(STORAGE_KEY);
-      const fallback = saved && list.some(p => p.name === saved) ? saved : list[0]?.name || '';
+      const fallback = saved && safeList.some(p => p.name === saved) ? saved : safeList[0]?.name || '';
       if (!deployPresetRef.current) setDeployPreset(fallback);
       try {
         const layout = await eksManageApi.getLayout();
-        setTreeLayout(layout);
+        if (!cancelledRef.current && Array.isArray(layout)) setTreeLayout(layout);
       } catch { /* layout will be generated server-side on next call */ }
     } catch (e) {
       console.error('Failed to load presets:', e);
     } finally {
-      setLoadingPresets(false);
+      if (!cancelledRef.current) setLoadingPresets(false);
     }
   }, []);
 
@@ -192,7 +198,7 @@ const EKSManageModal = ({ onClose, connectInfo, sharedClusterName, sharedOwnerPr
     await Promise.all(members.map(async (prefix) => {
       try {
         const data = await eksManageApi.listSharedPresets(prefix);
-        const tagged = data.presets.map(p => ({ ...p, owner_prefix: prefix }));
+        const tagged = Array.isArray(data.presets) ? data.presets.map(p => ({ ...p, owner_prefix: prefix })) : [];
         result[prefix] = tagged;
         allShared.push(...tagged);
       } catch (e) {
@@ -200,16 +206,19 @@ const EKSManageModal = ({ onClose, connectInfo, sharedClusterName, sharedOwnerPr
         result[prefix] = [];
       }
     }));
+    if (cancelledRef.current) return;
     setMemberPresets(result);
     setSharedPresets(allShared);
   }, []);
 
   useEffect(() => {
+    cancelledRef.current = false;
     loadPresets();
     loadDeployments();
     if (isShared && sharedOwnerPrefix) {
       clusterShareApi.getClusterMembers(sharedOwnerPrefix)
         .then(members => {
+          if (cancelledRef.current) return;
           setClusterMembers(members);
           loadMemberPresets(members);
         })
@@ -218,11 +227,13 @@ const EKSManageModal = ({ onClose, connectInfo, sharedClusterName, sharedOwnerPr
     if (!isShared) {
       clusterShareApi.getConnectedUsers()
         .then(users => {
+          if (cancelledRef.current) return;
           setConnectedUsers(users);
           loadMemberPresets(users);
         })
         .catch(e => console.error('Failed to load connected users:', e));
     }
+    return () => { cancelledRef.current = true; };
   }, [loadPresets, loadDeployments, isShared, sharedOwnerPrefix, loadMemberPresets]);
 
 
@@ -890,18 +901,19 @@ const EKSManageModal = ({ onClose, connectInfo, sharedClusterName, sharedOwnerPr
           </div>
         )}
 
-        <SortableContext items={treeLayout.filter(n => n.type === 'preset').map(n => n.id)} strategy={verticalListSortingStrategy}>
+        <SortableContext items={(Array.isArray(treeLayout) ? treeLayout : []).filter(n => n.type === 'preset').map(n => n.id)} strategy={verticalListSortingStrategy}>
           <div className="eks-tree">
-            {treeLayout.map(node => {
+            {(Array.isArray(treeLayout) ? treeLayout : []).map(node => {
               if (node.type === 'folder') {
                 const folder = node as TreeFolder;
                 const expanded = expandedFolders.has(folder.id);
+                const children = Array.isArray(folder.children) ? folder.children : [];
                 return (
                   <DroppableFolder key={folder.id} id={folder.id}>
                     <div className="eks-tree-folder-header" onClick={() => toggleFolder(folder.id)}>
                       <span className="eks-tree-folder-icon">{expanded ? '▼' : '▶'}</span>
                       <span className="eks-tree-folder-name">{folder.name}</span>
-                      <span className="eks-tree-folder-count">{folder.children.length}</span>
+                      <span className="eks-tree-folder-count">{children.length}</span>
                       <button
                         className="eks-tree-folder-delete"
                         onClick={(e) => { e.stopPropagation(); handleDeleteFolder(folder.id); }}
@@ -911,10 +923,10 @@ const EKSManageModal = ({ onClose, connectInfo, sharedClusterName, sharedOwnerPr
                       </button>
                     </div>
                     {expanded && (
-                      <SortableContext items={folder.children} strategy={verticalListSortingStrategy}>
+                      <SortableContext items={children} strategy={verticalListSortingStrategy}>
                         <div className="eks-tree-folder-children">
-                          {folder.children.map(cid => renderPresetNode(cid))}
-                          {folder.children.length === 0 && (
+                          {children.map(cid => renderPresetNode(cid))}
+                          {children.length === 0 && (
                             <div className="eks-tree-empty-folder">Drop presets here</div>
                           )}
                         </div>

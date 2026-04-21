@@ -68,6 +68,7 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
 
   useEffect(() => {
     if (selectedResource) {
+      setVariables([]);
       loadVariables(selectedResource.id);
     } else {
       setVariables([]);
@@ -78,7 +79,7 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
     setVariablesLoading(true);
     try {
       const vars = await terraformApi.getResourceVariables(resourceId);
-      setVariables(vars);
+      setVariables(Array.isArray(vars) ? vars : []);
     } catch (err) {
       console.error('Failed to load variables:', err);
       setVariables([]);
@@ -761,7 +762,7 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
                 <p className="no-variables">Select a resource to view its variables</p>
               ) : variablesLoading ? (
                 <p className="loading-text"><span className="spinner">⟳</span> Loading variables...</p>
-              ) : variables.length === 0 ? (
+              ) : !Array.isArray(variables) || variables.length === 0 ? (
                 <p className="no-variables">No variables for this resource</p>
               ) : (
                 variables.map((variable) => (

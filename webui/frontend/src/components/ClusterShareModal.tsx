@@ -155,7 +155,7 @@ const ClusterShareModal = ({ onClose, onSharedClustersChanged }: ClusterShareMod
   const renderRequestTab = () => (
     <div className="cs-tab-content">
       <p className="cs-description">
-        DogSTAC-managed EKS clusters available for sharing.
+        DogSTAC-managed EKS clusters available for sharing. You can share clusters within the same region.
       </p>
       {clustersLoading ? (
         <div className="cs-loading">Loading EKS clusters...</div>
@@ -283,14 +283,14 @@ const ClusterShareModal = ({ onClose, onSharedClustersChanged }: ClusterShareMod
                     {statusBadge(req.status)} &middot; {new Date(req.created_at).toLocaleDateString()}
                   </div>
                 </div>
-                {req.status === 'pending' && (
+                {(req.status === 'pending' || req.status === 'approved') && (
                   <button
                     className="btn cs-action-btn cs-delete-btn"
                     onClick={() => handleDelete(req.id)}
                     disabled={actionLoading === req.id}
-                    title="Cancel this request"
+                    title={req.status === 'pending' ? 'Cancel this request' : 'Leave this shared cluster'}
                   >
-                    {actionLoading === req.id ? '...' : 'Cancel'}
+                    {actionLoading === req.id ? '...' : req.status === 'pending' ? 'Cancel' : 'Leave'}
                   </button>
                 )}
               </div>
