@@ -130,3 +130,6 @@ legacy/
 
 # Terraform Data
 terraform-data/
+
+# DogSTAC build script
+dogstac-build.sh

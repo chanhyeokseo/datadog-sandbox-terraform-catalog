@@ -933,20 +933,12 @@ function App() {
               </p>
               <p>
                 DogSTAC ships with an MCP server that lets AI assistants manage your
-                infrastructure directly. Add the following to your MCP config:
+                infrastructure directly. Run the following command to register the MCP server with your IDE:
               </p>
-              <pre className="tutorial-congrats-code">{`{
-  "mcpServers": {
-    "dogstac": {
-      "type": "sse",
-      "url": "http://localhost:7622/sse"
-    }
-  }
-}`}</pre>
+              <pre className="tutorial-congrats-code">{`./dogstac.sh mcp-init`}</pre>
               <p className="tutorial-congrats-mcp-sub">
-                The MCP server starts automatically with <code>docker-compose up</code> on
-                port <strong>7622</strong>. To use a custom port, set <code>MCP_PORT</code> in
-                your <code>.env</code> file.
+                This command automatically detects your IDE (Claude Code or Cursor) and
+                configures the MCP server connection.
               </p>
               <img
                 src="/dogstac-mcp-demo.gif"
