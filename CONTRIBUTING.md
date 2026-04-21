@@ -6,7 +6,7 @@ Thank you for your interest in contributing. This guide covers the development w
 
 | Tool | Purpose |
 |:----:|---------|
-| **Docker** | Container runtime & Docker Compose |
+| **Docker or Podman** | Container runtime |
 | **Git** | Version control |
 | **Python 3.11+** | Backend development |
 | **Node 18+** | Frontend development |
@@ -14,11 +14,27 @@ Thank you for your interest in contributing. This guide covers the development w
 
 ## Development Setup
 
-### Full Stack (Docker Compose)
+### Full Stack (dogstac-build)
+
+First-time setup:
 
 ```bash
-cp .env.example .env        # configure AWS_PROFILE and DOGSTAC_SALT
-docker compose -f docker-compose.build.yml up --build
+./dogstac-build.sh init
+```
+
+The interactive wizard configures `.env` (AWS credentials, salt), builds the image from local source, and starts the container.
+
+Subsequent runs:
+
+```bash
+./dogstac-build.sh start          # rebuild and start
+./dogstac-build.sh start-no-build # start without rebuilding
+```
+
+Set up a shell alias for convenience:
+
+```bash
+./dogstac-build.sh alias          # adds 'dogstac-build' alias
 ```
 
 - UI + API docs: http://localhost:7621 (API docs at `/docs`)
@@ -167,13 +183,27 @@ Use the provided [issue templates](.github/ISSUE_TEMPLATE/):
 - Sensitive Terraform variables (`datadog_api_key`, `rds_password`) are stored in AWS Parameter Store, not in tfvars.
 - Redact tokens, keys, and account IDs in any logs or screenshots shared in issues or PRs.
 
+## CLI Reference (dogstac-build)
+
+| Command | Description |
+|---------|-------------|
+| `./dogstac-build.sh init` | Interactive setup (.env) and start the container |
+| `./dogstac-build.sh start` | Build from local source and start |
+| `./dogstac-build.sh start-no-build` | Start without rebuilding |
+| `./dogstac-build.sh build` | Build the local image only |
+| `./dogstac-build.sh publish` | Tag and push to trigger release build **(admin only)** |
+| `./dogstac-build.sh stop` | Stop the running container |
+| `./dogstac-build.sh delete` | Stop and remove the container |
+| `./dogstac-build.sh status` | Show container status |
+| `./dogstac-build.sh logs` | Follow container logs |
+| `./dogstac-build.sh alias` | Add `dogstac-build` alias to your shell config |
+
 ## Releases
 
-Docker images are published automatically when a semver tag is pushed:
+> **Admin only.** The `publish` command requires push access to the repository. If you don't have write permission, `git push` will fail with a permission error — no tags will be published remotely.
 
 ```bash
-git tag v1.2.3
-git push origin v1.2.3
+./dogstac-build.sh publish
 ```
 
-This triggers the [docker-publish](.github/workflows/docker-publish.yml) workflow, building multi-platform images (`linux/amd64` + `linux/arm64`) and pushing to Docker Hub as `dogstac/dogstac`.
+This prompts for a version number, creates a git tag `v{version}`, and pushes it to origin. The [docker-publish](.github/workflows/docker-publish.yml) workflow then builds multi-platform images (`linux/amd64` + `linux/arm64`) and pushes to Docker Hub as `dogstac/dogstac:{version}` and `dogstac/dogstac:latest`.
