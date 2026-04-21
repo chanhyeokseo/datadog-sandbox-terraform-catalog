@@ -354,6 +354,10 @@ MCPJSON
         fi
         echo "Restart Cursor or run 'Developer: Reload Window' to activate."
     fi
+
+    echo ""
+    printf "\033[1;31mWARNING: To use the DogSTAC MCP server, you must first complete onboarding via the Web UI.\033[0m\n"
+    printf "\033[1;31mVisit http://localhost:${TFRUNNER_PORT} to complete onboarding before using MCP tools.\033[0m\n"
 }
 
 cmd_alias() {
