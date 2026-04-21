@@ -8,6 +8,7 @@ import ConnectionsModal from './components/ConnectionsModal';
 import OnboardingModal from './components/OnboardingModal';
 import DangerZoneModal from './components/DangerZoneModal';
 import SSOLoginModal from './components/SSOLoginModal';
+import IdleOverlay from './components/IdleOverlay';
 import FeedbackFab from './components/FeedbackFab';
 import ClusterShareModal from './components/ClusterShareModal';
 import Tutorial, { TutorialStep } from './components/Tutorial';
@@ -180,8 +181,10 @@ function App() {
   const [initialLoadPhase, setInitialLoadPhase] = useState<LoadPhase>('config_check');
   const [credentialError, setCredentialError] = useState<CredentialError | null>(null);
   const [showSSOModal, setShowSSOModal] = useState(false);
+  const [showIdleOverlay, setShowIdleOverlay] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const healthRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const idleSinceRef = useRef<number>(0);
   const [providerReady, setProviderReady] = useState<boolean | null>(null);
   const [providerProgress, setProviderProgress] = useState({ progress: 0, message: '' });
   const [feedbackFabPulse, setFeedbackFabPulse] = useState(false);
@@ -356,6 +359,8 @@ function App() {
     if (initialLoadPhase !== 'ready') return;
     let lastCheckTs = 0;
     const DEBOUNCE_MS = 5000;
+    const IDLE_THRESHOLD_MS = 300_000;
+    const ACTIVITY_EVENTS = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart'] as const;
 
     const checkHealth = async () => {
       const now = Date.now();
@@ -381,18 +386,42 @@ function App() {
       } catch {}
     };
 
-    const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') checkHealth();
-    };
-    const onFocus = () => checkHealth();
+    let idleTimer: ReturnType<typeof setTimeout> | null = null;
 
+    const markIdle = () => {
+      idleSinceRef.current = Date.now();
+      setShowIdleOverlay(true);
+    };
+
+    const resetIdleTimer = () => {
+      if (idleSinceRef.current) return;
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(markIdle, IDLE_THRESHOLD_MS);
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        if (idleTimer) clearTimeout(idleTimer);
+        if (!idleSinceRef.current) idleSinceRef.current = Date.now();
+        idleTimer = setTimeout(markIdle, Math.max(0, IDLE_THRESHOLD_MS - (Date.now() - idleSinceRef.current)));
+      } else if (document.visibilityState === 'visible') {
+        if (idleSinceRef.current && Date.now() - idleSinceRef.current >= IDLE_THRESHOLD_MS) {
+          setShowIdleOverlay(true);
+        } else {
+          resetIdleTimer();
+        }
+      }
+    };
+
+    resetIdleTimer();
+    for (const evt of ACTIVITY_EVENTS) document.addEventListener(evt, resetIdleTimer, { passive: true });
     document.addEventListener('visibilitychange', onVisibilityChange);
-    window.addEventListener('focus', onFocus);
     healthRef.current = setInterval(checkHealth, 300000);
 
     return () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      for (const evt of ACTIVITY_EVENTS) document.removeEventListener(evt, resetIdleTimer);
       document.removeEventListener('visibilitychange', onVisibilityChange);
-      window.removeEventListener('focus', onFocus);
       if (healthRef.current) clearInterval(healthRef.current);
     };
   }, [initialLoadPhase]);
@@ -679,6 +708,31 @@ function App() {
     setInitTrigger(prev => prev + 1);
   }, []);
 
+  const handleIdleResume = useCallback(async () => {
+    try {
+      const health = await api.getCredentialHealth();
+      if (health.status === 'expiring_soon' || health.status === 'expired') {
+        await api.checkCredentials();
+      }
+      idleSinceRef.current = 0;
+      setShowIdleOverlay(false);
+    } catch (err: any) {
+      if (err?.response?.status === 401) {
+        const detail = err?.response?.data?.detail;
+        idleSinceRef.current = 0;
+        setShowIdleOverlay(false);
+        setCredentialError({
+          type: 'expired',
+          ssoCommand: detail?.sso_command || 'aws sso login',
+          ssoConfigured: detail?.sso_configured ?? false,
+        });
+        setShowSSOModal(true);
+        return;
+      }
+      throw err;
+    }
+  }, []);
+
   if (credentialError?.type === 'profile_not_found') {
     return <ProfileNotFoundScreen error={credentialError} onRetry={handleCredentialRetry} />;
   }
@@ -827,6 +881,8 @@ function App() {
           onRetry={handleCredentialRetry}
         />
       )}
+
+      {showIdleOverlay && <IdleOverlay onResume={handleIdleResume} />}
 
       <FeedbackFab
         selectedResourceId={selectedResource?.id ?? null}

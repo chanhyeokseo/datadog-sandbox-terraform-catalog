@@ -587,6 +587,7 @@ export interface EKSPreset {
   update_commands: string[];
   undeploy_commands: string[];
   files: string[];
+  owner_prefix?: string;
 }
 
 export interface EKSPresetFileResponse {
@@ -843,8 +844,10 @@ export const ecsManageApi = {
 };
 
 export const eksManageApi = {
-  getDeployments: async (): Promise<SharedDeploymentsResponse> => {
-    const response = await axios.get<SharedDeploymentsResponse>(`${EKS_MANAGE_BASE}/deployments`);
+  getDeployments: async (force = false): Promise<SharedDeploymentsResponse> => {
+    const response = await axios.get<SharedDeploymentsResponse>(
+      `${EKS_MANAGE_BASE}/deployments`, { params: force ? { force: true } : undefined }
+    );
     return response.data;
   },
 
@@ -923,9 +926,11 @@ export const eksManageApi = {
     return response.data;
   },
 
-  listSharedDeployments: async (ownerPrefix: string): Promise<SharedDeploymentsResponse> => {
+  listSharedDeployments: async (ownerPrefix: string, force = false): Promise<SharedDeploymentsResponse> => {
+    const params: Record<string, string | boolean> = { owner_prefix: ownerPrefix };
+    if (force) params.force = true;
     const response = await axios.get<SharedDeploymentsResponse>(
-      `${EKS_MANAGE_BASE}/shared-deployments`, { params: { owner_prefix: ownerPrefix } }
+      `${EKS_MANAGE_BASE}/shared-deployments`, { params }
     );
     return response.data;
   },
@@ -936,11 +941,13 @@ export const eksManageApi = {
     onComplete: (success: boolean) => void,
     signal?: AbortSignal,
     clusterName?: string,
-    ownerPrefix?: string
+    ownerPrefix?: string,
+    presetOwnerPrefix?: string,
   ): Promise<void> => {
     const qp = new URLSearchParams();
     if (clusterName) qp.set('cluster_name', clusterName);
     if (ownerPrefix) qp.set('owner_prefix', ownerPrefix);
+    if (presetOwnerPrefix) qp.set('preset_owner_prefix', presetOwnerPrefix);
     const qs = qp.toString() ? `?${qp.toString()}` : '';
     const response = await fetch(`${EKS_MANAGE_BASE}/presets/${name}/deploy${qs}`, {
       method: 'POST',
@@ -974,11 +981,13 @@ export const eksManageApi = {
     onComplete: (success: boolean) => void,
     signal?: AbortSignal,
     clusterName?: string,
-    ownerPrefix?: string
+    ownerPrefix?: string,
+    presetOwnerPrefix?: string,
   ): Promise<void> => {
     const qp = new URLSearchParams();
     if (clusterName) qp.set('cluster_name', clusterName);
     if (ownerPrefix) qp.set('owner_prefix', ownerPrefix);
+    if (presetOwnerPrefix) qp.set('preset_owner_prefix', presetOwnerPrefix);
     const qs = qp.toString() ? `?${qp.toString()}` : '';
     const response = await fetch(`${EKS_MANAGE_BASE}/presets/${name}/update${qs}`, {
       method: 'POST',
@@ -1012,11 +1021,13 @@ export const eksManageApi = {
     onComplete: (success: boolean) => void,
     signal?: AbortSignal,
     clusterName?: string,
-    ownerPrefix?: string
+    ownerPrefix?: string,
+    presetOwnerPrefix?: string,
   ): Promise<void> => {
     const qp = new URLSearchParams();
     if (clusterName) qp.set('cluster_name', clusterName);
     if (ownerPrefix) qp.set('owner_prefix', ownerPrefix);
+    if (presetOwnerPrefix) qp.set('preset_owner_prefix', presetOwnerPrefix);
     const qs = qp.toString() ? `?${qp.toString()}` : '';
     const response = await fetch(`${EKS_MANAGE_BASE}/presets/${name}/undeploy${qs}`, {
       method: 'POST',
@@ -1107,8 +1118,8 @@ export const eksManageApi = {
 const CLUSTER_SHARE_BASE = '/api/cluster-share';
 
 export const clusterShareApi = {
-  listClusters: async (): Promise<{ clusters: EKSClusterInfo[]; my_prefix: string }> => {
-    const response = await axios.get<{ clusters: EKSClusterInfo[]; my_prefix: string }>(`${CLUSTER_SHARE_BASE}/clusters`);
+  listClusters: async (): Promise<{ clusters: EKSClusterInfo[]; my_prefix: string; requested_arns: Record<string, string> }> => {
+    const response = await axios.get<{ clusters: EKSClusterInfo[]; my_prefix: string; requested_arns: Record<string, string> }>(`${CLUSTER_SHARE_BASE}/clusters`);
     return response.data;
   },
 
@@ -1154,5 +1165,12 @@ export const clusterShareApi = {
   getConnectedUsers: async (): Promise<string[]> => {
     const response = await axios.get<{ users: string[] }>(`${CLUSTER_SHARE_BASE}/connected-users`);
     return response.data.users;
+  },
+
+  getClusterMembers: async (ownerPrefix: string): Promise<string[]> => {
+    const response = await axios.get<{ members: string[] }>(
+      `${CLUSTER_SHARE_BASE}/cluster-members`, { params: { owner_prefix: ownerPrefix } }
+    );
+    return response.data.members;
   },
 };

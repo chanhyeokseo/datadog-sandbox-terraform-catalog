@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import time
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -14,11 +15,14 @@ OOTB_SOURCE_DIR = Path("/app/terraform-source/eks")
 
 class EKSPresetManager:
 
+    DEPLOYMENTS_CACHE_TTL = 30
+
     def __init__(self, terraform_dir: str):
         self.terraform_dir = Path(terraform_dir)
         self.eks_dir = self.terraform_dir / "eks"
         self._cached_s3_manager = None
         self._cache_initialized = False
+        self._deployments_fetched_at: float = 0
 
     def _get_s3_manager(self):
         from app.services.s3_config_manager import S3ConfigManager
@@ -514,16 +518,22 @@ class EKSPresetManager:
         path = self._deployments_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(data, indent=2) + "\n")
+        self._deployments_fetched_at = time.monotonic()
         s3 = self._get_s3_manager()
         if s3:
             s3.upload_file(path, S3_DEPLOYMENTS_KEY)
 
-    def get_deployments(self) -> Dict[str, Dict]:
+    def get_deployments(self, force: bool = False) -> Dict[str, Dict]:
+        now = time.monotonic()
+        if not force and (now - self._deployments_fetched_at) < self.DEPLOYMENTS_CACHE_TTL:
+            logger.debug("Deployments cache hit (age=%.1fs)", now - self._deployments_fetched_at)
+            return self._read_deployments()
         s3 = self._get_s3_manager()
         if s3:
             path = self._deployments_path()
             path.parent.mkdir(parents=True, exist_ok=True)
             if s3.download_file(S3_DEPLOYMENTS_KEY, path):
+                self._deployments_fetched_at = now
                 return self._read_deployments()
         return self._read_deployments()
 

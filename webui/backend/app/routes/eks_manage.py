@@ -26,8 +26,13 @@ logger = logging.getLogger(__name__)
 
 TERRAFORM_DIR = os.environ.get("TERRAFORM_DIR", "/terraform")
 EXIT_SENTINEL_PREFIX = "__TF_EXIT__:"
-KUBECONFIG_PATH = Path.home() / ".kube" / "config"
+KUBECONFIG_DIR = Path.home() / ".kube"
 TOKEN_EXPIRY_SECONDS = 900
+
+
+def _kubeconfig_path_for(cluster_name: str) -> Path:
+    safe = cluster_name.replace("/", "_").replace("\\", "_")
+    return KUBECONFIG_DIR / f"dogstac-{safe}.config"
 
 preset_manager = EKSPresetManager(TERRAFORM_DIR)
 parser = TerraformParser(TERRAFORM_DIR)
@@ -96,9 +101,36 @@ def _get_my_prefix() -> str:
     return tfvars.get("name_prefix", "").strip('"').strip("'")
 
 
-def _resolve_template_vars(command: str) -> str:
+def _get_my_cluster_name() -> Optional[str]:
+    prefix = _get_my_prefix()
+    if prefix:
+        return f"{prefix}-eks-cluster"
+    return None
+
+
+def _load_sensitive_vars_for_prefix(prefix: str) -> Dict[str, str]:
+    from app.config import SENSITIVE_VARIABLES
+    from app.services.config_manager import SSM_GLOBAL_REGION
+    safe = ''.join(c if c.isalnum() or c in '-_' else '-' for c in prefix)[:64]
+    ssm_prefix = f"/dogstac-{safe}/sensitive"
+    ssm = boto3.client("ssm", region_name=SSM_GLOBAL_REGION)
+    result: Dict[str, str] = {}
+    for var_name in SENSITIVE_VARIABLES:
+        try:
+            resp = ssm.get_parameter(Name=f"{ssm_prefix}/{var_name}", WithDecryption=True)
+            result[var_name] = resp["Parameter"]["Value"]
+        except Exception:
+            pass
+    logger.debug("Loaded %d sensitive vars for deployer prefix '%s'", len(result), prefix)
+    return result
+
+
+def _resolve_template_vars(command: str, deployer_prefix: str = None) -> str:
     root_tfvars = parser._read_tfvars_to_map(Path(TERRAFORM_DIR) / "terraform.tfvars")
-    sensitive_vars = parser.config_manager.load_all_sensitive_variables()
+    if deployer_prefix:
+        sensitive_vars = _load_sensitive_vars_for_prefix(deployer_prefix)
+    else:
+        sensitive_vars = parser.config_manager.load_all_sensitive_variables()
     merged = {**root_tfvars, **sensitive_vars}
     def _replacer(m):
         var_name = m.group(1)
@@ -221,9 +253,10 @@ def _write_kubeconfig(cluster_name: str, region: str) -> tuple[bool, str]:
         "users": [{"name": cluster_name, "user": {"token": token}}],
     }
 
-    KUBECONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    KUBECONFIG_PATH.write_text(json.dumps(kubeconfig, indent=2))
-    logger.debug(f"Kubeconfig written to {KUBECONFIG_PATH} for cluster {cluster_name}")
+    kc_path = _kubeconfig_path_for(cluster_name)
+    kc_path.parent.mkdir(parents=True, exist_ok=True)
+    kc_path.write_text(json.dumps(kubeconfig, indent=2))
+    logger.debug("Kubeconfig written to %s for cluster %s", kc_path, cluster_name)
     return True, f"Kubeconfig configured for {cluster_name} at {endpoint}"
 
 
@@ -243,86 +276,68 @@ def _configure_kubeconfig(cluster_name: str, region: str) -> tuple[bool, str]:
         return False, str(e)
 
 
-def _read_kubeconfig_context() -> Optional[str]:
-    try:
-        if KUBECONFIG_PATH.exists() and KUBECONFIG_PATH.stat().st_size > 0:
-            data = json.loads(KUBECONFIG_PATH.read_text())
-            return data.get("current-context")
-    except Exception:
-        pass
-    return None
+def _is_kubeconfig_fresh(cluster_name: str) -> bool:
+    kc_path = _kubeconfig_path_for(cluster_name)
+    if not kc_path.exists() or kc_path.stat().st_size == 0:
+        return False
+    return (time.time() - kc_path.stat().st_mtime) < TOKEN_EXPIRY_SECONDS
 
 
 async def _setup_kubeconfig(resource_id: Optional[str], resource_dir: Optional[Path],
                             force: bool = False,
-                            explicit_cluster_name: Optional[str] = None) -> tuple[bool, list[str]]:
-    lines = []
+                            explicit_cluster_name: Optional[str] = None) -> tuple[bool, str, list[str]]:
+    lines: list[str] = []
+    target_cluster: Optional[str] = explicit_cluster_name
 
-    if not force and KUBECONFIG_PATH.exists() and KUBECONFIG_PATH.stat().st_size > 0:
-        age = time.time() - KUBECONFIG_PATH.stat().st_mtime
-        if age < TOKEN_EXPIRY_SECONDS:
-            cached_context = _read_kubeconfig_context()
-            if explicit_cluster_name:
-                if cached_context == explicit_cluster_name:
-                    logger.debug("Reusing cached kubeconfig for shared cluster %s", explicit_cluster_name)
-                    return True, lines
-            elif cached_context:
-                return True, lines
-        else:
-            logger.debug("Kubeconfig token expired (age=%.0fs), refreshing", age)
+    if not target_cluster:
+        target_cluster = _get_my_cluster_name()
 
-    if explicit_cluster_name:
-        region = os.environ.get("AWS_REGION", "ap-northeast-2")
-        lines.append(f"Shared cluster: {explicit_cluster_name} (region: {region})\n")
-        lines.append("Configuring kubeconfig...\n")
-        success, output = _configure_kubeconfig(explicit_cluster_name, region)
-        lines.append(output + "\n")
-        if not success:
-            lines.append("Error: Failed to configure kubeconfig\n")
-            lines.append(f"{EXIT_SENTINEL_PREFIX}1\n")
-            return False, lines
-        return True, lines
-
-    if resource_dir and resource_id:
+    if not target_cluster and resource_dir and resource_id:
         lines.append("Resolving EKS cluster info from Terraform outputs...\n")
         cluster_info = await _get_cluster_info_async(resource_id, resource_dir)
-        cluster_name = cluster_info.get("cluster_name")
-        region = cluster_info.get("region")
+        target_cluster = cluster_info.get("cluster_name")
+        if target_cluster:
+            lines.append(f"Cluster: {target_cluster} (region: {cluster_info.get('region')})\n")
 
-        if cluster_name:
-            lines.append(f"Cluster: {cluster_name} (region: {region})\n")
-            lines.append("Configuring kubeconfig...\n")
-            success, output = _configure_kubeconfig(cluster_name, region)
-            lines.append(output + "\n")
-            if not success:
-                lines.append("Error: Failed to configure kubeconfig\n")
-                lines.append(f"{EXIT_SENTINEL_PREFIX}1\n")
-                return False, lines
-            return True, lines
+    if not target_cluster:
+        if not resource_dir:
+            msg = "Error: No EKS Terraform instance directory found. Cannot configure kubectl for this workspace.\n"
         else:
-            lines.append(
+            msg = (
                 "Error: Could not resolve EKS cluster name from Terraform outputs. "
                 "Ensure the eks_cluster instance applied successfully and outputs exist, then retry.\n"
             )
-            lines.append(f"{EXIT_SENTINEL_PREFIX}1\n")
-            logger.warning("EKS kubeconfig setup aborted: missing cluster_name in terraform outputs")
-            return False, lines
-    else:
-        lines.append(
-            "Error: No EKS Terraform instance directory found. Cannot configure kubectl for this workspace.\n"
-        )
+        lines.append(msg)
         lines.append(f"{EXIT_SENTINEL_PREFIX}1\n")
-        logger.warning("EKS kubeconfig setup aborted: no EKS resource directory")
-        return False, lines
+        logger.warning("EKS kubeconfig setup aborted: could not determine cluster name")
+        return False, "", lines
+
+    if not force and _is_kubeconfig_fresh(target_cluster):
+        logger.debug("Reusing cached kubeconfig for cluster %s", target_cluster)
+        return True, target_cluster, lines
+
+    lines.append("Configuring kubeconfig...\n")
+    region = os.environ.get("AWS_REGION", "ap-northeast-2")
+    success, output = _configure_kubeconfig(target_cluster, region)
+    lines.append(output + "\n")
+    if not success:
+        lines.append("Error: Failed to configure kubeconfig\n")
+        lines.append(f"{EXIT_SENTINEL_PREFIX}1\n")
+        return False, "", lines
+    return True, target_cluster, lines
 
 
-async def _stream_shell(cmd_str: str, cwd: str = None) -> AsyncIterator[str]:
+async def _stream_shell(cmd_str: str, cwd: str = None, kubeconfig: str = None) -> AsyncIterator[str]:
     try:
+        env = None
+        if kubeconfig:
+            env = {**os.environ, "KUBECONFIG": kubeconfig}
         process = await asyncio.create_subprocess_shell(
             cmd_str,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
             cwd=cwd,
+            env=env,
         )
         while True:
             line = await process.stdout.readline()
@@ -336,16 +351,17 @@ async def _stream_shell(cmd_str: str, cwd: str = None) -> AsyncIterator[str]:
         yield f"{EXIT_SENTINEL_PREFIX}1\n"
 
 
-async def _execute_commands(commands: List[str], preset_dir: str) -> AsyncIterator[str]:
+async def _execute_commands(commands: List[str], preset_dir: str, kubeconfig: str = None,
+                           deployer_prefix: str = None) -> AsyncIterator[str]:
     for cmd_str in commands:
         cmd_str = cmd_str.strip()
         if not cmd_str or cmd_str.startswith("#"):
             continue
 
-        cmd_str = _resolve_template_vars(cmd_str)
+        cmd_str = _resolve_template_vars(cmd_str, deployer_prefix=deployer_prefix)
         yield f"\n$ {cmd_str}\n"
 
-        async for line in _stream_shell(cmd_str, cwd=preset_dir):
+        async for line in _stream_shell(cmd_str, cwd=preset_dir, kubeconfig=kubeconfig):
             if line.startswith(EXIT_SENTINEL_PREFIX):
                 if "1" in line:
                     yield f"Error: command failed (exit 1)\n"
@@ -398,7 +414,15 @@ async def list_presets():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+_owner_bucket_cache: Dict[str, str] = {}
+
+
 def _discover_owner_bucket(owner_prefix: str) -> str:
+    cached = _owner_bucket_cache.get(owner_prefix)
+    if cached:
+        logger.debug(f"Owner bucket cache hit: {cached} (prefix={owner_prefix})")
+        return cached
+
     from app.services.config_manager import ConfigManager
     cm = ConfigManager()
     safe_prefix = ''.join(c if c.isalnum() or c in '-_' else '-' for c in owner_prefix)[:64]
@@ -415,11 +439,13 @@ def _discover_owner_bucket(owner_prefix: str) -> str:
                 safe = ''.join(c if c.isalnum() or c == '-' else '-' for c in safe)[:32]
                 bucket = f"dogstac-{safe}-{owner_hash}"
                 logger.debug(f"Discovered owner bucket via SSM: {bucket} (prefix={owner_prefix})")
+                _owner_bucket_cache[owner_prefix] = bucket
                 return bucket
     except Exception as e:
         logger.warning(f"SSM discovery failed for {owner_prefix}: {e}")
     bucket = cm.generate_bucket_name(owner_prefix)
     logger.debug(f"Falling back to local hash for owner bucket: {bucket}")
+    _owner_bucket_cache[owner_prefix] = bucket
     return bucket
 
 
@@ -503,20 +529,30 @@ def _build_ownership_warnings(deployments: Dict, my_prefix: str) -> List[str]:
     ]
 
 
+_shared_deployments_cache: Dict[str, tuple] = {}
+SHARED_DEPLOYMENTS_TTL = 30
+
+
 @router.get("/shared-deployments")
-async def list_shared_deployments(owner_prefix: str = Query(...)):
+async def list_shared_deployments(owner_prefix: str = Query(...), force: bool = Query(False)):
     try:
         my_prefix = _get_my_prefix()
-        s3 = _get_owner_s3(owner_prefix)
-        content = s3.download_text(S3_PRESET_PREFIX + "/_deployments.json")
-        if content:
-            deployments = json.loads(content)
-            result = {"deployments": deployments}
-            warnings = _build_ownership_warnings(deployments, my_prefix)
-            if warnings:
-                result["warnings"] = warnings
-            return result
-        return {"deployments": {}}
+        now = time.time()
+        cached = _shared_deployments_cache.get(owner_prefix)
+        if not force and cached and (now - cached[0]) < SHARED_DEPLOYMENTS_TTL:
+            logger.debug(f"Shared deployments cache hit for {owner_prefix}")
+            deployments = cached[1]
+        else:
+            s3 = _get_owner_s3(owner_prefix)
+            content = s3.download_text(S3_PRESET_PREFIX + "/_deployments.json")
+            deployments = json.loads(content) if content else {}
+            _shared_deployments_cache[owner_prefix] = (now, deployments)
+
+        result: Dict = {"deployments": deployments}
+        warnings = _build_ownership_warnings(deployments, my_prefix)
+        if warnings:
+            result["warnings"] = warnings
+        return result
     except Exception as e:
         logger.warning(f"Failed to list shared deployments for {owner_prefix}: {e}")
         return {"deployments": {}}
@@ -684,7 +720,8 @@ async def _stream_action(action_label: str, name: str, commands: List[str],
                          resource_id: Optional[str], resource_dir: Optional[Path],
                          on_success=None,
                          explicit_cluster_name: Optional[str] = None,
-                         owner_prefix: Optional[str] = None) -> AsyncIterator[str]:
+                         owner_prefix: Optional[str] = None,
+                         deployer_prefix: Optional[str] = None) -> AsyncIterator[str]:
     cred_err = await _eks_aws_credentials_error_message()
     if cred_err:
         yield cred_err
@@ -706,12 +743,14 @@ async def _stream_action(action_label: str, name: str, commands: List[str],
         yield "Syncing preset cache from S3...\n"
         await asyncio.to_thread(preset_manager.initialize_local_cache)
 
-    ok, lines = await _setup_kubeconfig(resource_id, resource_dir,
-                                         explicit_cluster_name=explicit_cluster_name)
+    ok, target_cluster, lines = await _setup_kubeconfig(resource_id, resource_dir,
+                                                         explicit_cluster_name=explicit_cluster_name)
     for line in lines:
         yield line
     if not ok:
         return
+
+    kc_path = str(_kubeconfig_path_for(target_cluster))
 
     if owner_prefix:
         yield f"Syncing shared preset from {owner_prefix}...\n"
@@ -729,7 +768,8 @@ async def _stream_action(action_label: str, name: str, commands: List[str],
     yield f"\n{action_label} from: {preset_dir}\n"
 
     success = True
-    async for line in _execute_commands(commands, str(preset_dir)):
+    async for line in _execute_commands(commands, str(preset_dir), kubeconfig=kc_path,
+                                        deployer_prefix=deployer_prefix):
         if line.startswith(EXIT_SENTINEL_PREFIX) and "1" in line:
             success = False
         yield line
@@ -742,9 +782,9 @@ async def _stream_action(action_label: str, name: str, commands: List[str],
 
 
 @router.get("/deployments")
-async def get_deployments():
+async def get_deployments(force: bool = Query(False)):
     try:
-        deployments = preset_manager.get_deployments()
+        deployments = preset_manager.get_deployments(force=force)
         my_prefix = _get_my_prefix()
         result: Dict = {"deployments": deployments}
         warnings = _build_ownership_warnings(deployments, my_prefix)
@@ -767,8 +807,10 @@ def _resolve_preset(name: str, owner_prefix: Optional[str] = None) -> dict:
 
 @router.post("/presets/{name}/deploy")
 async def deploy_preset(name: str, cluster_name: Optional[str] = Query(None),
-                        owner_prefix: Optional[str] = Query(None)):
-    preset = _resolve_preset(name, owner_prefix)
+                        owner_prefix: Optional[str] = Query(None),
+                        preset_owner_prefix: Optional[str] = Query(None)):
+    source_prefix = preset_owner_prefix or owner_prefix
+    preset = _resolve_preset(name, source_prefix)
     if not preset:
         raise HTTPException(status_code=404, detail=f"Preset not found: {name}")
 
@@ -788,15 +830,18 @@ async def deploy_preset(name: str, cluster_name: Optional[str] = Query(None),
         _stream_action("Deploy", name, commands, resource_id, resource_dir,
                         on_success=on_success,
                         explicit_cluster_name=cluster_name,
-                        owner_prefix=owner_prefix),
+                        owner_prefix=source_prefix,
+                        deployer_prefix=my_prefix),
         media_type="text/plain",
     )
 
 
 @router.post("/presets/{name}/update")
 async def update_preset_deploy(name: str, cluster_name: Optional[str] = Query(None),
-                               owner_prefix: Optional[str] = Query(None)):
-    preset = _resolve_preset(name, owner_prefix)
+                               owner_prefix: Optional[str] = Query(None),
+                               preset_owner_prefix: Optional[str] = Query(None)):
+    source_prefix = preset_owner_prefix or owner_prefix
+    preset = _resolve_preset(name, source_prefix)
     if not preset:
         raise HTTPException(status_code=404, detail=f"Preset not found: {name}")
 
@@ -805,19 +850,23 @@ async def update_preset_deploy(name: str, cluster_name: Optional[str] = Query(No
         raise HTTPException(status_code=400, detail="No update commands defined for this preset")
 
     resource_id, resource_dir = _get_eks_resource_info()
+    my_prefix = _get_my_prefix()
 
     return StreamingResponse(
         _stream_action("Update", name, commands, resource_id, resource_dir,
                         explicit_cluster_name=cluster_name,
-                        owner_prefix=owner_prefix),
+                        owner_prefix=source_prefix,
+                        deployer_prefix=my_prefix),
         media_type="text/plain",
     )
 
 
 @router.post("/presets/{name}/undeploy")
 async def undeploy_preset(name: str, cluster_name: Optional[str] = Query(None),
-                          owner_prefix: Optional[str] = Query(None)):
-    preset = _resolve_preset(name, owner_prefix)
+                          owner_prefix: Optional[str] = Query(None),
+                          preset_owner_prefix: Optional[str] = Query(None)):
+    source_prefix = preset_owner_prefix or owner_prefix
+    preset = _resolve_preset(name, source_prefix)
     if not preset:
         raise HTTPException(status_code=404, detail=f"Preset not found: {name}")
 
@@ -826,6 +875,7 @@ async def undeploy_preset(name: str, cluster_name: Optional[str] = Query(None),
         raise HTTPException(status_code=400, detail="No undeploy commands defined for this preset")
 
     resource_id, resource_dir = _get_eks_resource_info()
+    my_prefix = _get_my_prefix()
 
     if owner_prefix and cluster_name:
         on_success = lambda: _owner_mark_undeployed(name, owner_prefix)
@@ -836,7 +886,8 @@ async def undeploy_preset(name: str, cluster_name: Optional[str] = Query(None),
         _stream_action("Undeploy", name, commands, resource_id, resource_dir,
                         on_success=on_success,
                         explicit_cluster_name=cluster_name,
-                        owner_prefix=owner_prefix),
+                        owner_prefix=source_prefix,
+                        deployer_prefix=my_prefix),
         media_type="text/plain",
     )
 
@@ -889,15 +940,16 @@ async def run_kubectl(body: dict = Body(...)):
             yield f"{EXIT_SENTINEL_PREFIX}1\n"
             return
 
-        ok, lines = await _setup_kubeconfig(resource_id, resource_dir,
-                                             explicit_cluster_name=cluster_name)
+        ok, target_cluster, lines = await _setup_kubeconfig(resource_id, resource_dir,
+                                                             explicit_cluster_name=cluster_name)
         for line in lines:
             yield line
         if not ok:
             return
 
+        kc_path = str(_kubeconfig_path_for(target_cluster))
         yield f"$ {command}\n"
-        async for line in _stream_shell(command):
+        async for line in _stream_shell(command, kubeconfig=kc_path):
             yield line
 
     return StreamingResponse(_stream(), media_type="text/plain")

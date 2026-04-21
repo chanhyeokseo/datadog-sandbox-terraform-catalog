@@ -13,6 +13,7 @@ class MockDogSTACClient(DogSTACClient):
         self.post = AsyncMock()
         self.stream_get = AsyncMock()
         self.stream_post = AsyncMock()
+        self.delete = AsyncMock()
 
 
 @pytest.fixture

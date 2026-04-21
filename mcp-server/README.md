@@ -2,47 +2,23 @@
 
 MCP (Model Context Protocol) server that exposes DogSTAC infrastructure management capabilities to AI clients such as Claude Desktop, Cursor, and other MCP-compatible tools.
 
-## Quick Start (Docker)
+## Quick Start
 
-The MCP server is bundled inside the `dogstac/dogstac` container. When you run `docker-compose up`, it automatically starts on port **7622** alongside the backend.
+The MCP server is bundled inside the `dogstac/dogstac` container. When you run `./dogstac.sh start`, it automatically starts on port **7622** alongside the backend.
 
-### Connecting to Cursor (Docker — recommended)
-
-```json
-{
-  "mcpServers": {
-    "dogstac": {
-      "type": "sse",
-      "url": "http://localhost:7622/sse"
-    }
-  }
-}
-```
-
-To use a custom port, set `MCP_PORT` in your `.env` or shell before `docker-compose up`:
+### Connecting to Claude Code or Cursor
 
 ```bash
-MCP_PORT=9090 docker-compose up -d
+./dogstac.sh mcp-init
 ```
 
-Then update the Cursor config accordingly: `"url": "http://localhost:9090/sse"`
+The interactive prompt lets you choose between:
+- **Claude Code** — registers via `claude mcp add`
+- **Cursor** — adds the server to `~/.cursor/mcp.json` (preserves existing entries)
 
-To disable the MCP server inside the container: `ENABLE_MCP=false docker-compose up -d`
+To use a custom port, set `MCP_PORT` in your `.env` before starting.
 
-### Connecting to Claude Desktop (Docker)
-
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
-
-```json
-{
-  "mcpServers": {
-    "dogstac": {
-      "type": "sse",
-      "url": "http://localhost:7622/sse"
-    }
-  }
-}
-```
+To disable the MCP server inside the container, set `ENABLE_MCP=false` in `.env`.
 
 ## Local Development Setup
 
@@ -51,7 +27,7 @@ If you prefer running the MCP server locally (e.g., for development):
 ### Prerequisites
 
 - Python 3.11+
-- DogSTAC backend running on `http://localhost:7621` (via `docker-compose up`)
+- DogSTAC backend running on `http://localhost:7621` (via `./dogstac.sh start`)
 
 ### Setup
 

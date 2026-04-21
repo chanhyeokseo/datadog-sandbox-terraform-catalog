@@ -16,7 +16,7 @@ Terraform infrastructure management through a visual web interface.
 
 | Requirement | Description |
 |:-----------:|-------------|
-| **Docker** | Container runtime & Docker Compose |
+| **Docker or Podman** | Container runtime |
 | **Git** | Used internally to clone instance templates |
 | **AWS CLI** | Configured with SSO or credentials (`~/.aws`) |
 
@@ -28,60 +28,69 @@ If you are trying to use SSO but haven't configured an AWS SSO profile yet:
 ```bash
 aws configure sso
 ```
-Follow the prompts to set SSO start URL, region, account, role, and profile name. Use the profile name when configuring `.env` file.
+Follow the prompts to set SSO start URL, region, account, role, and profile name. Use the profile name when running `dogstac.sh start`.
 
 ## Quick Start
 
-### 1. Download configuration files
+### 1. Download
 
 ```bash
 mkdir dogstac && cd dogstac
-curl -O https://raw.githubusercontent.com/chanhyeokseo/datadog-sandbox-terraform-catalog/main/docker-compose.yml
-curl -O https://raw.githubusercontent.com/chanhyeokseo/datadog-sandbox-terraform-catalog/main/.env.example
+curl -O https://raw.githubusercontent.com/chanhyeokseo/datadog-sandbox-terraform-catalog/main/dogstac.sh
+chmod +x dogstac.sh
 ```
 
-### 2. Configure environment
+### 2. Start
 
 ```bash
-cp .env.example .env
+./dogstac.sh start
 ```
 
-Edit `.env` and set the required values:
+On the first run, an interactive setup wizard will guide you through:
+1. **AWS authentication type** — SSO profile or IAM access key
+2. **AWS credentials** — profile name or key pair
+3. **DOGSTAC_SALT** — encryption salt for stored configurations
 
-```env
-# AWS authentication (choose one)
-AWS_PROFILE=my-sso-profile
+A `.env` file is generated automatically from your inputs.
 
-# Identity salt — unique per user, used for naming AWS resources (S3, DynamoDB, Parameter Store)
-# Once set, do not change it.
-DOGSTAC_SALT=my-unique-salt
-```
-
-<details>
-<summary>Alternative: explicit credentials (not recommended)</summary>
-
-```env
-AWS_ACCESS_KEY_ID=your-access-key-id
-AWS_SECRET_ACCESS_KEY=your-secret-access-key
-```
-</details>
-
-> [!IMPORTANT]
-> `DOGSTAC_SALT` is **required**. It must be unique per user and remain unchanged after initial setup. Changing it will disconnect you from previously created backend resources.
-
-### 3. Start services
+### 3. Connect your AI coding tool (optional)
 
 ```bash
-docker compose up -d
+./dogstac.sh mcp-init
 ```
 
-### 4. Open the UI
+Registers the DogSTAC MCP server with **Claude Code** or **Cursor** via an interactive prompt.
+
+### 4. Set up alias (optional)
+
+```bash
+./dogstac.sh alias
+```
+
+Adds `alias dogstac='./dogstac.sh'` to your shell config so you can use `dogstac start` instead of `./dogstac.sh start`.
+
+### 5. Open the UI
 
 ```
 http://localhost:7621
 ```
 
+## CLI Reference
+
+| Command | Description |
+|---------|-------------|
+| `./dogstac.sh start` | Pull latest image and start the container |
+| `./dogstac.sh start-no-update` | Start without pulling the latest image |
+| `./dogstac.sh stop` | Stop the running container |
+| `./dogstac.sh delete` | Stop and remove the container |
+| `./dogstac.sh status` | Show container status |
+| `./dogstac.sh logs` | Follow container logs (Ctrl+C to exit) |
+| `./dogstac.sh mcp-init` | Register MCP server with Claude Code or Cursor |
+| `./dogstac.sh alias` | Add `dogstac` alias to your shell config |
+
 ## Environment Variables
+
+These are configured in `.env` (created automatically on first `start`):
 
 | Variable | Required | Description |
 |----------|:--------:|-------------|
@@ -90,9 +99,14 @@ http://localhost:7621
 | `AWS_SECRET_ACCESS_KEY` | * | Explicit secret key (alternative to profile) |
 | `AWS_SESSION_TOKEN` | | For temporary credentials |
 | `DOGSTAC_SALT` | **Yes** | Stable identifier for naming backend resources. Must be unique per user. |
+| `TFRUNNER_PORT` | | Backend API port (default: `7621`) |
+| `MCP_PORT` | | MCP server port (default: `7622`) |
 | `TERRAFORM_DATA_PATH` | | Persistent storage path (default: `./terraform-data`) |
 
 \* One of `AWS_PROFILE` or `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` is required.
+
+> [!IMPORTANT]
+> `DOGSTAC_SALT` is **required**. It must be unique per user and remain unchanged after initial setup. Changing it will disconnect you from previously created backend resources.
 
 <div align="center">
 

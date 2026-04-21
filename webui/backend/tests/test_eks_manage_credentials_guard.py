@@ -128,14 +128,9 @@ async def test_setup_kubeconfig_fails_when_outputs_missing_cluster(monkeypatch, 
         return {}
 
     monkeypatch.setattr(eks_manage, "_get_cluster_info_async", empty_cluster)
-    fake_kc = tmp_path / "config"
-    fake_kc.parent.mkdir(parents=True, exist_ok=True)
-    fake_kc.write_text("{}")
-    monkeypatch.setattr(eks_manage, "KUBECONFIG_PATH", fake_kc)
-    mtime_old = fake_kc.stat().st_mtime - (eks_manage.TOKEN_EXPIRY_SECONDS + 10)
-    os.utime(fake_kc, (mtime_old, mtime_old))
+    monkeypatch.setattr(eks_manage, "_get_my_cluster_name", lambda: None)
 
-    ok, lines = await eks_manage._setup_kubeconfig("eks_cluster", tmp_path)
+    ok, _cluster, lines = await eks_manage._setup_kubeconfig("eks_cluster", tmp_path)
     assert ok is False
     joined = "".join(lines)
     assert "Could not resolve EKS cluster name" in joined
@@ -144,13 +139,8 @@ async def test_setup_kubeconfig_fails_when_outputs_missing_cluster(monkeypatch, 
 
 @pytest.mark.asyncio
 async def test_setup_kubeconfig_fails_without_eks_resource_dir(monkeypatch, tmp_path):
-    fake_kc = tmp_path / "config2"
-    fake_kc.parent.mkdir(parents=True, exist_ok=True)
-    fake_kc.write_text("{}")
-    monkeypatch.setattr(eks_manage, "KUBECONFIG_PATH", fake_kc)
-    mtime_old = fake_kc.stat().st_mtime - (eks_manage.TOKEN_EXPIRY_SECONDS + 10)
-    os.utime(fake_kc, (mtime_old, mtime_old))
+    monkeypatch.setattr(eks_manage, "_get_my_cluster_name", lambda: None)
 
-    ok, lines = await eks_manage._setup_kubeconfig(None, None)
+    ok, _cluster, lines = await eks_manage._setup_kubeconfig(None, None)
     assert ok is False
     assert "No EKS Terraform instance directory" in "".join(lines)

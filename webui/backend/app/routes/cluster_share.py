@@ -1,8 +1,7 @@
 import logging
 import os
 
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, Query
 
 from app.models.schemas import ClusterShareRequestCreate
 from app.services.cluster_share_manager import ClusterShareManager
@@ -17,25 +16,28 @@ share_manager = ClusterShareManager(TERRAFORM_DIR)
 @router.get("/clusters")
 async def list_eks_clusters():
     clusters = share_manager.list_eks_clusters()
+    outgoing = share_manager.get_outgoing_requests()
+    requested_arns = {
+        r.cluster_arn: r.status
+        for r in outgoing
+        if r.status in ("pending", "approved")
+    }
     return {
         "clusters": [c.model_dump() for c in clusters],
         "my_prefix": share_manager._get_my_prefix(),
+        "requested_arns": requested_arns,
     }
 
 
 @router.post("/requests")
 async def create_share_request(body: ClusterShareRequestCreate):
-    request = share_manager.create_request(
+    request, error = share_manager.create_request(
         cluster_name=body.cluster_name,
         cluster_arn=body.cluster_arn,
         owner_prefix=body.owner_prefix,
     )
     if not request:
-        raise HTTPException(
-            status_code=400,
-            detail="Failed to create share request. Check that name_prefix is configured, "
-                   "you are not sharing with yourself, and no duplicate pending request exists.",
-        )
+        raise HTTPException(status_code=400, detail=error)
     return request.model_dump()
 
 
@@ -77,6 +79,12 @@ async def get_shared_clusters():
 async def get_connected_users():
     users = share_manager.get_connected_users()
     return {"users": users}
+
+
+@router.get("/cluster-members")
+async def get_cluster_members(owner_prefix: str = Query(...)):
+    members = share_manager.get_cluster_members(owner_prefix)
+    return {"members": members}
 
 
 @router.delete("/requests/{request_id}")

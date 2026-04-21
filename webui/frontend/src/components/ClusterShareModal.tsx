@@ -15,6 +15,7 @@ const ClusterShareModal = ({ onClose, onSharedClustersChanged }: ClusterShareMod
   const [activeTab, setActiveTab] = useState<TabId>('request');
   const [clusters, setClusters] = useState<EKSClusterInfo[]>([]);
   const [myPrefix, setMyPrefix] = useState('');
+  const [requestedArns, setRequestedArns] = useState<Record<string, string>>({});
   const [clustersLoading, setClustersLoading] = useState(false);
   const [incoming, setIncoming] = useState<ClusterShareRequest[]>([]);
   const [outgoing, setOutgoing] = useState<ClusterShareRequest[]>([]);
@@ -30,6 +31,7 @@ const ClusterShareModal = ({ onClose, onSharedClustersChanged }: ClusterShareMod
       const data = await clusterShareApi.listClusters();
       setClusters(data.clusters);
       setMyPrefix(data.my_prefix);
+      setRequestedArns(data.requested_arns || {});
     } catch (err: any) {
       setError(err?.response?.data?.detail || 'Failed to load EKS clusters');
     } finally {
@@ -60,12 +62,23 @@ const ClusterShareModal = ({ onClose, onSharedClustersChanged }: ClusterShareMod
   }, [activeTab, loadClusters, loadRequests]);
 
   useEffect(() => {
+    if (activeTab !== 'manage') return;
+    const id = setInterval(loadRequests, 30000);
+    return () => clearInterval(id);
+  }, [activeTab, loadRequests]);
+
+  useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
     document.addEventListener('keydown', handleEsc);
     return () => document.removeEventListener('keydown', handleEsc);
   }, [onClose]);
+
+  const handleRefresh = () => {
+    if (activeTab === 'request') loadClusters();
+    else loadRequests();
+  };
 
   const handleRequestShare = async (cluster: EKSClusterInfo) => {
     if (!cluster.owner_prefix) {
@@ -77,6 +90,7 @@ const ClusterShareModal = ({ onClose, onSharedClustersChanged }: ClusterShareMod
     setSuccess(null);
     try {
       await clusterShareApi.createRequest(cluster.name, cluster.arn, cluster.owner_prefix);
+      await loadClusters();
       setSuccess(`Share request sent for ${cluster.name}`);
       setTimeout(() => setSuccess(null), 3000);
     } catch (err: any) {
@@ -141,12 +155,12 @@ const ClusterShareModal = ({ onClose, onSharedClustersChanged }: ClusterShareMod
   const renderRequestTab = () => (
     <div className="cs-tab-content">
       <p className="cs-description">
-        All EKS clusters in the current region are listed. Only clusters created by DogSTAC are available for sharing.
+        DogSTAC-managed EKS clusters available for sharing. You can share clusters within the same region.
       </p>
       {clustersLoading ? (
         <div className="cs-loading">Loading EKS clusters...</div>
       ) : clusters.length === 0 ? (
-        <div className="cs-empty">No EKS clusters found in this AWS account.</div>
+        <div className="cs-empty">No shareable EKS clusters found in this AWS account.</div>
       ) : (
         <div className="cs-cluster-list">
           {clusters.map(cluster => (
@@ -165,12 +179,16 @@ const ClusterShareModal = ({ onClose, onSharedClustersChanged }: ClusterShareMod
               </div>
               {cluster.owner_prefix === myPrefix ? (
                 <span className="cs-own-label">Your cluster</span>
+              ) : requestedArns[cluster.arn] ? (
+                <span className={`cs-own-label cs-requested-label ${requestedArns[cluster.arn]}`}>
+                  {requestedArns[cluster.arn] === 'pending' ? 'Pending' : 'Shared'}
+                </span>
               ) : (
                 <button
                   className="btn btn-deploy cs-request-btn"
                   onClick={() => handleRequestShare(cluster)}
-                  disabled={actionLoading === cluster.arn || !cluster.owner_prefix}
-                  title={!cluster.owner_prefix ? 'Cannot determine owner' : 'Request cluster share'}
+                  disabled={actionLoading === cluster.arn}
+                  title="Request cluster share"
                 >
                   {actionLoading === cluster.arn ? 'Sending...' : 'Request Share'}
                 </button>
@@ -265,14 +283,14 @@ const ClusterShareModal = ({ onClose, onSharedClustersChanged }: ClusterShareMod
                     {statusBadge(req.status)} &middot; {new Date(req.created_at).toLocaleDateString()}
                   </div>
                 </div>
-                {req.status === 'pending' && (
+                {(req.status === 'pending' || req.status === 'approved') && (
                   <button
                     className="btn cs-action-btn cs-delete-btn"
                     onClick={() => handleDelete(req.id)}
                     disabled={actionLoading === req.id}
-                    title="Cancel this request"
+                    title={req.status === 'pending' ? 'Cancel this request' : 'Leave this shared cluster'}
                   >
-                    {actionLoading === req.id ? '...' : 'Cancel'}
+                    {actionLoading === req.id ? '...' : req.status === 'pending' ? 'Cancel' : 'Leave'}
                   </button>
                 )}
               </div>
@@ -288,7 +306,17 @@ const ClusterShareModal = ({ onClose, onSharedClustersChanged }: ClusterShareMod
       <div className="modal-content cs-modal" onClick={e => e.stopPropagation()}>
         <div className="cs-header">
           <h2>Cluster Share</h2>
-          <button className="cs-close" onClick={onClose}>&times;</button>
+          <div className="cs-header-actions">
+            <button
+              className="modal-header-refresh"
+              onClick={handleRefresh}
+              disabled={clustersLoading || requestsLoading}
+              title="Refresh"
+            >
+              ↻
+            </button>
+            <button className="cs-close" onClick={onClose}>&times;</button>
+          </div>
         </div>
 
         <div className="cs-tabs">

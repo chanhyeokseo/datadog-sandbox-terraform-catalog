@@ -89,6 +89,8 @@ class ClusterShareManager:
                                 owner_prefix = cluster_name_tag[: -len("-eks-cluster")]
                             elif cluster_name_tag:
                                 owner_prefix = cluster_name_tag.split("-")[0]
+                        if not owner_prefix:
+                            continue
                         clusters.append(EKSClusterInfo(
                             name=name,
                             arn=cluster.get("arn", ""),
@@ -150,25 +152,25 @@ class ClusterShareManager:
         except ClientError:
             return None
 
-    def create_request(self, cluster_name: str, cluster_arn: str, owner_prefix: str) -> Optional[ClusterShareRequest]:
+    def create_request(self, cluster_name: str, cluster_arn: str, owner_prefix: str) -> tuple[Optional[ClusterShareRequest], str]:
         my_prefix = self._get_my_prefix()
         if not my_prefix:
             logger.error("Cannot create share request: name_prefix not configured")
-            return None
+            return None, "name_prefix not configured"
 
         if my_prefix == owner_prefix:
             logger.warning("Cannot share cluster with yourself")
-            return None
+            return None, "Cannot request share on your own cluster"
 
         existing = self._get_all_requests()
         for req in existing:
-            if (
-                req.requester_prefix == my_prefix
-                and req.cluster_arn == cluster_arn
-                and req.status == ClusterShareRequestStatus.PENDING
-            ):
-                logger.warning(f"Duplicate pending request for cluster {cluster_name}")
-                return None
+            if req.requester_prefix == my_prefix and req.cluster_arn == cluster_arn:
+                if req.status == ClusterShareRequestStatus.PENDING:
+                    logger.warning(f"Duplicate pending request for cluster {cluster_name}")
+                    return None, "A pending request already exists for this cluster"
+                if req.status == ClusterShareRequestStatus.APPROVED:
+                    logger.warning(f"Already approved share for cluster {cluster_name}")
+                    return None, "This cluster is already shared with you"
 
         now = datetime.now(timezone.utc).isoformat()
         request = ClusterShareRequest(
@@ -184,8 +186,8 @@ class ClusterShareManager:
 
         if self._put_request(request):
             logger.info(f"Created share request {request.id}: {my_prefix} -> {owner_prefix} for {cluster_name}")
-            return request
-        return None
+            return request, ""
+        return None, "Failed to save share request"
 
     def get_incoming_requests(self) -> List[ClusterShareRequest]:
         my_prefix = self._get_my_prefix()
@@ -271,6 +273,19 @@ class ClusterShareManager:
             if r.owner_prefix == my_prefix and r.status == ClusterShareRequestStatus.APPROVED:
                 users.add(r.requester_prefix)
         return sorted(users)
+
+    def get_cluster_members(self, owner_prefix: str) -> List[str]:
+        my_prefix = self._get_my_prefix()
+        if not my_prefix:
+            return []
+        all_requests = self._get_all_requests()
+        members = {owner_prefix}
+        for r in all_requests:
+            if r.owner_prefix == owner_prefix and r.status == ClusterShareRequestStatus.APPROVED:
+                members.add(r.requester_prefix)
+        members.discard(my_prefix)
+        logger.debug("Cluster members for owner '%s' (excluding self '%s'): %s", owner_prefix, my_prefix, members)
+        return sorted(members)
 
     def delete_request(self, request_id: str) -> bool:
         request = self._get_request_by_id(request_id)

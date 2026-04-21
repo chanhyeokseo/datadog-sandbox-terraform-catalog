@@ -136,9 +136,9 @@ const EKSManageModal = ({ onClose, connectInfo, sharedClusterName, sharedOwnerPr
   const [presetSource, setPresetSource] = useState<'my' | 'shared' | 'connected'>('my');
   const [editorIsShared, setEditorIsShared] = useState(false);
   const [connectedUsers, setConnectedUsers] = useState<string[]>([]);
-  const [selectedConnectedUser, setSelectedConnectedUser] = useState('');
-  const [connectedPresets, setConnectedPresets] = useState<EKSPreset[]>([]);
   const [connectedOwnerPrefix, setConnectedOwnerPrefix] = useState('');
+  const [clusterMembers, setClusterMembers] = useState<string[]>([]);
+  const [memberPresets, setMemberPresets] = useState<Record<string, EKSPreset[]>>({});
 
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [createName, setCreateName] = useState('');
@@ -150,18 +150,18 @@ const EKSManageModal = ({ onClose, connectInfo, sharedClusterName, sharedOwnerPr
   const presetsMap = useRef<Record<string, EKSPreset>>({});
   const dndSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
-  const loadDeployments = useCallback(async () => {
+  const cancelledRef = useRef(false);
+
+  const loadDeployments = useCallback(async (force = false) => {
     try {
       if (isShared && sharedOwnerPrefix) {
-        const [myResult, sharedResult] = await Promise.all([
-          eksManageApi.getDeployments(),
-          eksManageApi.listSharedDeployments(sharedOwnerPrefix),
-        ]);
-        setDeployedPresets({ ...sharedResult.deployments, ...myResult.deployments });
-        const allWarnings = [...(sharedResult.warnings || []), ...(myResult.warnings || [])];
-        setDeploymentWarnings(allWarnings);
+        const sharedResult = await eksManageApi.listSharedDeployments(sharedOwnerPrefix, force);
+        if (cancelledRef.current) return;
+        setDeployedPresets(sharedResult.deployments);
+        setDeploymentWarnings(sharedResult.warnings || []);
       } else {
-        const result = await eksManageApi.getDeployments();
+        const result = await eksManageApi.getDeployments(force);
+        if (cancelledRef.current) return;
         setDeployedPresets(result.deployments);
         setDeploymentWarnings(result.warnings || []);
       }
@@ -174,46 +174,79 @@ const EKSManageModal = ({ onClose, connectInfo, sharedClusterName, sharedOwnerPr
     setLoadingPresets(true);
     try {
       const { presets: list } = await eksManageApi.listPresets();
-      setPresets(list);
-      presetsMap.current = Object.fromEntries(list.map(p => [p.name, p]));
+      if (cancelledRef.current) return;
+      const safeList = Array.isArray(list) ? list : [];
+      setPresets(safeList);
+      presetsMap.current = Object.fromEntries(safeList.map(p => [p.name, p]));
       const saved = localStorage.getItem(STORAGE_KEY);
-      const fallback = saved && list.some(p => p.name === saved) ? saved : list[0]?.name || '';
+      const fallback = saved && safeList.some(p => p.name === saved) ? saved : safeList[0]?.name || '';
       if (!deployPresetRef.current) setDeployPreset(fallback);
       try {
         const layout = await eksManageApi.getLayout();
-        setTreeLayout(layout);
+        if (!cancelledRef.current && Array.isArray(layout)) setTreeLayout(layout);
       } catch { /* layout will be generated server-side on next call */ }
-      await loadDeployments();
     } catch (e) {
       console.error('Failed to load presets:', e);
     } finally {
-      setLoadingPresets(false);
+      if (!cancelledRef.current) setLoadingPresets(false);
     }
-  }, [loadDeployments]);
+  }, []);
+
+  const loadMemberPresets = useCallback(async (members: string[]) => {
+    const result: Record<string, EKSPreset[]> = {};
+    const allShared: EKSPreset[] = [];
+    await Promise.all(members.map(async (prefix) => {
+      try {
+        const data = await eksManageApi.listSharedPresets(prefix);
+        const tagged = Array.isArray(data.presets) ? data.presets.map(p => ({ ...p, owner_prefix: prefix })) : [];
+        result[prefix] = tagged;
+        allShared.push(...tagged);
+      } catch (e) {
+        console.error(`Failed to load presets for member ${prefix}:`, e);
+        result[prefix] = [];
+      }
+    }));
+    if (cancelledRef.current) return;
+    setMemberPresets(result);
+    setSharedPresets(allShared);
+  }, []);
 
   useEffect(() => {
+    cancelledRef.current = false;
     loadPresets();
+    loadDeployments();
     if (isShared && sharedOwnerPrefix) {
-      eksManageApi.listSharedPresets(sharedOwnerPrefix)
-        .then(data => setSharedPresets(data.presets))
-        .catch(e => console.error('Failed to load shared presets:', e));
+      clusterShareApi.getClusterMembers(sharedOwnerPrefix)
+        .then(members => {
+          if (cancelledRef.current) return;
+          setClusterMembers(members);
+          loadMemberPresets(members);
+        })
+        .catch(e => console.error('Failed to load cluster members:', e));
     }
     if (!isShared) {
       clusterShareApi.getConnectedUsers()
         .then(users => {
+          if (cancelledRef.current) return;
           setConnectedUsers(users);
-          if (users.length > 0) setSelectedConnectedUser(users[0]);
+          loadMemberPresets(users);
         })
         .catch(e => console.error('Failed to load connected users:', e));
     }
-  }, [loadPresets, isShared, sharedOwnerPrefix]);
+    return () => { cancelledRef.current = true; };
+  }, [loadPresets, loadDeployments, isShared, sharedOwnerPrefix, loadMemberPresets]);
+
 
   useEffect(() => {
-    if (!selectedConnectedUser) { setConnectedPresets([]); return; }
-    eksManageApi.listSharedPresets(selectedConnectedUser)
-      .then(data => setConnectedPresets(data.presets))
-      .catch(e => console.error('Failed to load connected user presets:', e));
-  }, [selectedConnectedUser]);
+    if (activeTab !== 'deploy') return;
+    const id = setInterval(loadDeployments, 15000);
+    return () => clearInterval(id);
+  }, [activeTab, loadDeployments]);
+
+  const handleHeaderRefresh = useCallback(() => {
+    if (activeTab === 'deploy') loadDeployments(true);
+    else if (activeTab === 'presets') loadPresets();
+  }, [activeTab, loadDeployments, loadPresets]);
 
   useEffect(() => {
     if (presets.length === 0) return;
@@ -256,14 +289,16 @@ const EKSManageModal = ({ onClose, connectInfo, sharedClusterName, sharedOwnerPr
     }
   };
 
-  const handleSelectSharedPreset = async (name: string) => {
-    if (!sharedOwnerPrefix) return;
+  const handleSelectSharedPreset = async (name: string, ownerPrefix?: string) => {
+    const prefix = ownerPrefix || sharedOwnerPrefix;
+    if (!prefix) return;
     if (editorDirty || cmdDirty || editorDescDirty) {
       if (!window.confirm('Unsaved changes will be lost. Continue?')) return;
     }
     setEditorPreset(name);
     setDeployPreset(name);
     setEditorIsShared(true);
+    setConnectedOwnerPrefix(prefix);
     localStorage.setItem(STORAGE_KEY, name);
     setEditorActiveFile('');
     setEditorContent('');
@@ -271,22 +306,22 @@ const EKSManageModal = ({ onClose, connectInfo, sharedClusterName, sharedOwnerPr
     setCmdDirty(false);
     setEditorDescDirty(false);
     try {
-      const preset = await eksManageApi.getSharedPreset(name, sharedOwnerPrefix);
+      const preset = await eksManageApi.getSharedPreset(name, prefix);
       setEditorDescription(preset.description || '');
       setEditorFiles(preset.files || []);
       setCmdDeploy((preset.deploy_commands || []).join('\n'));
       setCmdUpdate((preset.update_commands || []).join('\n'));
       setCmdUndeploy((preset.undeploy_commands || []).join('\n'));
       if (preset.files?.length > 0) {
-        await loadSharedFile(name, preset.files[0]);
+        await loadSharedFile(name, preset.files[0], prefix);
       }
     } catch (e) {
       console.error('Failed to load shared preset for editing:', e);
     }
   };
 
-  const loadSharedFile = async (preset: string, filename: string) => {
-    const prefix = sharedOwnerPrefix || connectedOwnerPrefix;
+  const loadSharedFile = async (preset: string, filename: string, explicitPrefix?: string) => {
+    const prefix = explicitPrefix || connectedOwnerPrefix || sharedOwnerPrefix;
     if (!prefix) return;
     try {
       const { content } = await eksManageApi.getSharedPresetFile(preset, filename, prefix);
@@ -295,47 +330,6 @@ const EKSManageModal = ({ onClose, connectInfo, sharedClusterName, sharedOwnerPr
       setEditorDirty(false);
     } catch (e) {
       console.error('Failed to load shared file:', e);
-      setEditorContent(`Error loading file: ${filename}`);
-    }
-  };
-
-  const handleSelectConnectedPreset = async (name: string, userPrefix: string) => {
-    if (editorDirty || cmdDirty || editorDescDirty) {
-      if (!window.confirm('Unsaved changes will be lost. Continue?')) return;
-    }
-    setEditorPreset(name);
-    setDeployPreset(name);
-    setEditorIsShared(true);
-    setConnectedOwnerPrefix(userPrefix);
-    localStorage.setItem(STORAGE_KEY, name);
-    setEditorActiveFile('');
-    setEditorContent('');
-    setEditorDirty(false);
-    setCmdDirty(false);
-    setEditorDescDirty(false);
-    try {
-      const preset = await eksManageApi.getSharedPreset(name, userPrefix);
-      setEditorDescription(preset.description || '');
-      setEditorFiles(preset.files || []);
-      setCmdDeploy((preset.deploy_commands || []).join('\n'));
-      setCmdUpdate((preset.update_commands || []).join('\n'));
-      setCmdUndeploy((preset.undeploy_commands || []).join('\n'));
-      if (preset.files?.length > 0) {
-        await loadConnectedFile(name, preset.files[0], userPrefix);
-      }
-    } catch (e) {
-      console.error('Failed to load connected user preset:', e);
-    }
-  };
-
-  const loadConnectedFile = async (preset: string, filename: string, userPrefix: string) => {
-    try {
-      const { content } = await eksManageApi.getSharedPresetFile(preset, filename, userPrefix);
-      setEditorActiveFile(filename);
-      setEditorContent(content);
-      setEditorDirty(false);
-    } catch (e) {
-      console.error('Failed to load connected user file:', e);
       setEditorContent(`Error loading file: ${filename}`);
     }
   };
@@ -480,9 +474,15 @@ const EKSManageModal = ({ onClose, connectInfo, sharedClusterName, sharedOwnerPr
     }
   };
 
-  const getOwnerPrefixForDeploy = (): string | undefined => {
+  const getClusterOwnerPrefix = (): string | undefined => {
     if (isShared) return sharedOwnerPrefix;
     if (connectedOwnerPrefix) return connectedOwnerPrefix;
+    return undefined;
+  };
+
+  const getPresetOwnerPrefix = (): string | undefined => {
+    if (connectedOwnerPrefix) return connectedOwnerPrefix;
+    if (isShared) return sharedOwnerPrefix;
     return undefined;
   };
 
@@ -493,13 +493,16 @@ const EKSManageModal = ({ onClose, connectInfo, sharedClusterName, sharedOwnerPr
     setDeployStatus('running');
     credErrorRef.current = false;
     abortRef.current = new AbortController();
+    const clusterOwner = getClusterOwnerPrefix();
+    const presetOwner = getPresetOwnerPrefix();
     try {
       await eksManageApi.streamDeploy(
         deployPreset, onStreamChunk,
         (success) => onStreamDone(success, { onSuccess: loadDeployments }),
         abortRef.current.signal,
         sharedClusterName,
-        getOwnerPrefixForDeploy(),
+        clusterOwner,
+        presetOwner !== clusterOwner ? presetOwner : undefined,
       );
     } catch (e) {
       setDeployStatus('error');
@@ -516,13 +519,16 @@ const EKSManageModal = ({ onClose, connectInfo, sharedClusterName, sharedOwnerPr
     setDeployStatus('running');
     credErrorRef.current = false;
     abortRef.current = new AbortController();
+    const clusterOwner = getClusterOwnerPrefix();
+    const presetOwner = getPresetOwnerPrefix();
     try {
       await eksManageApi.streamUndeploy(
         deployPreset, onStreamChunk,
         (success) => onStreamDone(success, { onSuccess: loadDeployments }),
         abortRef.current.signal,
         sharedClusterName,
-        getOwnerPrefixForDeploy(),
+        clusterOwner,
+        presetOwner !== clusterOwner ? presetOwner : undefined,
       );
     } catch (e) {
       setDeployStatus('error');
@@ -538,13 +544,16 @@ const EKSManageModal = ({ onClose, connectInfo, sharedClusterName, sharedOwnerPr
     setDeployStatus('running');
     credErrorRef.current = false;
     abortRef.current = new AbortController();
+    const clusterOwner = getClusterOwnerPrefix();
+    const presetOwner = getPresetOwnerPrefix();
     try {
       await eksManageApi.streamUpdate(
         deployPreset, onStreamChunk,
         (success) => onStreamDone(success),
         abortRef.current.signal,
         sharedClusterName,
-        getOwnerPrefixForDeploy(),
+        clusterOwner,
+        presetOwner !== clusterOwner ? presetOwner : undefined,
       );
     } catch (e) {
       setDeployStatus('error');
@@ -797,85 +806,56 @@ const EKSManageModal = ({ onClose, connectInfo, sharedClusterName, sharedOwnerPr
       return <div className="eks-manage-loading">Loading presets...</div>;
     }
 
-    if (isShared && presetSource === 'shared') {
+    if ((isShared && presetSource === 'shared') || (!isShared && connectedUsers.length > 0 && presetSource === 'connected')) {
+      const members = isShared ? clusterMembers : connectedUsers;
       return (
         <div>
           <div className="eks-presets-toolbar">
             <div className="eks-preset-source-toggle">
               <button className="" onClick={() => setPresetSource('my')}>My Presets</button>
-              <button className="active" onClick={() => setPresetSource('shared')}>Shared Presets</button>
+              <button className="active" onClick={() => setPresetSource(isShared ? 'shared' : 'connected')}>
+                {isShared ? 'Shared Presets' : 'Connected Presets'}
+              </button>
             </div>
           </div>
-          {sharedPresets.length === 0 ? (
-            <div className="eks-manage-loading">No shared presets from {sharedOwnerPrefix}.</div>
+          {members.length === 0 ? (
+            <div className="eks-manage-loading">No shared members found.</div>
           ) : (
             <div className="eks-tree">
-              {sharedPresets.map(p => (
-                <div
-                  key={p.name}
-                  className={`eks-tree-preset ${editorPreset === p.name && editorIsShared ? 'selected' : ''}`}
-                  onClick={() => { handleSelectSharedPreset(p.name); setActiveTab('editor'); }}
-                >
-                  <span className="eks-tree-preset-name">{p.name}</span>
-                  <span className={`eks-preset-badge ${p.built_in ? 'built-in' : 'custom'}`}>
-                    {p.built_in ? 'OOTB' : 'Custom'}
-                  </span>
-                  <span className="eks-tree-preset-desc">{p.description}</span>
-                  <span className="eks-tree-actions">
-                    <button onClick={(e) => { e.stopPropagation(); setDeployPreset(p.name); localStorage.setItem(STORAGE_KEY, p.name); setActiveTab('deploy'); }}>Deploy</button>
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      );
-    }
-
-    if (!isShared && connectedUsers.length > 0 && presetSource === 'connected') {
-      return (
-        <div>
-          <div className="eks-presets-toolbar">
-            <div className="eks-preset-source-toggle">
-              <button className="" onClick={() => setPresetSource('my')}>My Presets</button>
-              <button className="active" onClick={() => setPresetSource('connected')}>Connected Presets</button>
-            </div>
-            <select
-              className="eks-connected-user-select"
-              value={selectedConnectedUser}
-              onChange={e => setSelectedConnectedUser(e.target.value)}
-            >
-              {connectedUsers.map(u => (
-                <option key={u} value={u}>{u}</option>
-              ))}
-            </select>
-          </div>
-          {connectedPresets.length === 0 ? (
-            <div className="eks-manage-loading">No presets from {selectedConnectedUser}.</div>
-          ) : (
-            <div className="eks-tree">
-              {connectedPresets.map(p => (
-                <div
-                  key={p.name}
-                  className={`eks-tree-preset ${editorPreset === p.name && editorIsShared ? 'selected' : ''}`}
-                  onClick={() => { handleSelectConnectedPreset(p.name, selectedConnectedUser); setActiveTab('editor'); }}
-                >
-                  <span className="eks-tree-preset-name">{p.name}</span>
-                  <span className={`eks-preset-badge ${p.built_in ? 'built-in' : 'custom'}`}>
-                    {p.built_in ? 'OOTB' : 'Custom'}
-                  </span>
-                  <span className="eks-tree-preset-desc">{p.description}</span>
-                  <span className="eks-tree-actions">
-                    <button onClick={(e) => {
-                      e.stopPropagation();
-                      setDeployPreset(p.name);
-                      setConnectedOwnerPrefix(selectedConnectedUser);
-                      localStorage.setItem(STORAGE_KEY, p.name);
-                      setActiveTab('deploy');
-                    }}>Deploy</button>
-                  </span>
-                </div>
-              ))}
+              {members.map(prefix => {
+                const mp = memberPresets[prefix] || [];
+                return (
+                  <div key={prefix} className="eks-member-group">
+                    <div className="eks-member-group-header">{prefix}</div>
+                    {mp.length === 0 ? (
+                      <div className="eks-manage-loading">No presets</div>
+                    ) : mp.map(p => (
+                      <div
+                        key={`${prefix}/${p.name}`}
+                        className={`eks-tree-preset ${editorPreset === p.name && connectedOwnerPrefix === prefix && editorIsShared ? 'selected' : ''}`}
+                        onClick={() => { handleSelectSharedPreset(p.name, prefix); setActiveTab('editor'); }}
+                      >
+                        <span className="eks-tree-preset-name">{p.name}</span>
+                        <span className="eks-preset-badge member">{prefix}</span>
+                        <span className={`eks-preset-badge ${p.built_in ? 'built-in' : 'custom'}`}>
+                          {p.built_in ? 'OOTB' : 'Custom'}
+                        </span>
+                        <span className="eks-tree-preset-desc">{p.description}</span>
+                        <span className="eks-tree-actions">
+                          <button onClick={(e) => {
+                            e.stopPropagation();
+                            setDeployPreset(p.name);
+                            setConnectedOwnerPrefix(prefix);
+                            localStorage.setItem(STORAGE_KEY, p.name);
+                            setActiveTab('deploy');
+                          }}>Deploy</button>
+                          <button onClick={(e) => { e.stopPropagation(); handleClonePreset(p.name); }}>Clone</button>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -922,18 +902,19 @@ const EKSManageModal = ({ onClose, connectInfo, sharedClusterName, sharedOwnerPr
           </div>
         )}
 
-        <SortableContext items={treeLayout.filter(n => n.type === 'preset').map(n => n.id)} strategy={verticalListSortingStrategy}>
+        <SortableContext items={(Array.isArray(treeLayout) ? treeLayout : []).filter(n => n.type === 'preset').map(n => n.id)} strategy={verticalListSortingStrategy}>
           <div className="eks-tree">
-            {treeLayout.map(node => {
+            {(Array.isArray(treeLayout) ? treeLayout : []).map(node => {
               if (node.type === 'folder') {
                 const folder = node as TreeFolder;
                 const expanded = expandedFolders.has(folder.id);
+                const children = Array.isArray(folder.children) ? folder.children : [];
                 return (
                   <DroppableFolder key={folder.id} id={folder.id}>
                     <div className="eks-tree-folder-header" onClick={() => toggleFolder(folder.id)}>
                       <span className="eks-tree-folder-icon">{expanded ? '▼' : '▶'}</span>
                       <span className="eks-tree-folder-name">{folder.name}</span>
-                      <span className="eks-tree-folder-count">{folder.children.length}</span>
+                      <span className="eks-tree-folder-count">{children.length}</span>
                       <button
                         className="eks-tree-folder-delete"
                         onClick={(e) => { e.stopPropagation(); handleDeleteFolder(folder.id); }}
@@ -943,10 +924,10 @@ const EKSManageModal = ({ onClose, connectInfo, sharedClusterName, sharedOwnerPr
                       </button>
                     </div>
                     {expanded && (
-                      <SortableContext items={folder.children} strategy={verticalListSortingStrategy}>
+                      <SortableContext items={children} strategy={verticalListSortingStrategy}>
                         <div className="eks-tree-folder-children">
-                          {folder.children.map(cid => renderPresetNode(cid))}
-                          {folder.children.length === 0 && (
+                          {children.map(cid => renderPresetNode(cid))}
+                          {children.length === 0 && (
                             <div className="eks-tree-empty-folder">Drop presets here</div>
                           )}
                         </div>
@@ -1284,7 +1265,6 @@ const EKSManageModal = ({ onClose, connectInfo, sharedClusterName, sharedOwnerPr
           <div className="eks-deployed-list">
             <div className="eks-deployed-header">
               Deployed Presets
-              <button className="eks-deployed-refresh" onClick={loadDeployments} title="Refresh">↻</button>
             </div>
             <div className="eks-deployed-items">
               {deployedNames.map(name => (
@@ -1312,25 +1292,21 @@ const EKSManageModal = ({ onClose, connectInfo, sharedClusterName, sharedOwnerPr
           <select value={deployPreset} onChange={e => {
             const val = e.target.value;
             setDeployPreset(val);
-            setConnectedOwnerPrefix(connectedPresets.some(p => p.name === val) ? selectedConnectedUser : '');
+            const memberMatch = sharedPresets.find(p => p.name === val);
+            setConnectedOwnerPrefix(memberMatch?.owner_prefix || '');
             localStorage.setItem(STORAGE_KEY, val);
           }} disabled={deploying}>
             {presets.map(p => (
               <option key={p.name} value={p.name}>{p.name}</option>
             ))}
-            {isShared && sharedPresets.length > 0 && (
-              <optgroup label={`Shared (${sharedOwnerPrefix})`}>
-                {sharedPresets.map(p => (
-                  <option key={`shared-${p.name}`} value={p.name}>{p.name}</option>
-                ))}
-              </optgroup>
-            )}
-            {!isShared && connectedPresets.length > 0 && (
-              <optgroup label={`Connected (${selectedConnectedUser})`}>
-                {connectedPresets.map(p => (
-                  <option key={`conn-${p.name}`} value={p.name}>{p.name}</option>
-                ))}
-              </optgroup>
+            {(Object.entries(memberPresets) as [string, EKSPreset[]][]).map(([prefix, mp]) =>
+              mp.length > 0 ? (
+                <optgroup key={prefix} label={prefix}>
+                  {mp.map(p => (
+                    <option key={`${prefix}/${p.name}`} value={p.name}>{p.name}</option>
+                  ))}
+                </optgroup>
+              ) : null
             )}
           </select>
         </div>
@@ -1356,7 +1332,7 @@ const EKSManageModal = ({ onClose, connectInfo, sharedClusterName, sharedOwnerPr
               if (!deployPreset) return;
               if (!window.confirm(`Force remove "${deployPreset}" from deployed list?\n(No undeploy commands will be executed)`)) return;
               try {
-                await eksManageApi.forceDelete(deployPreset, getOwnerPrefixForDeploy(), sharedClusterName);
+                await eksManageApi.forceDelete(deployPreset, getClusterOwnerPrefix(), sharedClusterName);
                 loadDeployments();
               } catch {}
             }}
@@ -1386,7 +1362,19 @@ const EKSManageModal = ({ onClose, connectInfo, sharedClusterName, sharedOwnerPr
       <div className="eks-manage-modal" onClick={e => e.stopPropagation()}>
         <div className="eks-manage-header">
           <h2>{isShared ? `Shared EKS: ${sharedClusterName}` : 'EKS Connect & Manage'}</h2>
-          <button className="eks-manage-close" onClick={onClose}>&times;</button>
+          <div className="eks-manage-header-actions">
+            {(activeTab === 'deploy' || activeTab === 'presets') && (
+              <button
+                className="modal-header-refresh"
+                onClick={handleHeaderRefresh}
+                disabled={loadingPresets}
+                title="Refresh"
+              >
+                ↻
+              </button>
+            )}
+            <button className="eks-manage-close" onClick={onClose}>&times;</button>
+          </div>
         </div>
         <div className="eks-manage-tabs">
           {(['connection', 'presets', 'editor', 'deploy', 'run'] as TabId[]).map(tab => (
