@@ -71,7 +71,36 @@ select_option() {
     SELECTED_INDEX=${selected}
 }
 
+load_existing_env() {
+    PREV_AWS_PROFILE=$(grep -E '^AWS_PROFILE=.+' "${ENV_FILE}" 2>/dev/null | cut -d= -f2 || true)
+    PREV_AWS_ACCESS_KEY=$(grep -E '^AWS_ACCESS_KEY_ID=.+' "${ENV_FILE}" 2>/dev/null | cut -d= -f2 || true)
+    PREV_AWS_SECRET_KEY=$(grep -E '^AWS_SECRET_ACCESS_KEY=.+' "${ENV_FILE}" 2>/dev/null | cut -d= -f2 || true)
+    PREV_AWS_SESSION_TOKEN=$(grep -E '^AWS_SESSION_TOKEN=.+' "${ENV_FILE}" 2>/dev/null | cut -d= -f2 || true)
+    PREV_DOGSTAC_SALT=$(grep -E '^DOGSTAC_SALT=.+' "${ENV_FILE}" 2>/dev/null | cut -d= -f2 || true)
+}
+
+prompt_with_default() {
+    local prompt="$1" default="$2" result
+    if [[ -n "${default}" ]]; then
+        read -rp "${prompt} [${default}]: " result
+        echo "${result:-${default}}"
+    else
+        read -rp "${prompt}: " result
+        echo "${result}"
+    fi
+}
+
 setup_env() {
+    local prev_profile="" prev_access_key="" prev_secret_key="" prev_session_token="" prev_salt=""
+    if [[ -f "${ENV_FILE}" ]]; then
+        load_existing_env
+        prev_profile="${PREV_AWS_PROFILE}"
+        prev_access_key="${PREV_AWS_ACCESS_KEY}"
+        prev_secret_key="${PREV_AWS_SECRET_KEY}"
+        prev_session_token="${PREV_AWS_SESSION_TOKEN}"
+        prev_salt="${PREV_DOGSTAC_SALT}"
+    fi
+
     echo "============================================"
     echo "  DogSTAC Initial Setup"
     echo "============================================"
@@ -90,7 +119,7 @@ setup_env() {
         echo "  The profile name configured in ~/.aws/config via 'aws configure sso'."
         echo "  Run 'aws configure list-profiles' to see available profiles."
         echo ""
-        read -rp "AWS_PROFILE: " aws_profile
+        aws_profile=$(prompt_with_default "AWS_PROFILE" "${prev_profile}")
         if [[ -z "${aws_profile}" ]]; then
             echo "Error: AWS_PROFILE cannot be empty."
             exit 1
@@ -100,27 +129,37 @@ setup_env() {
         echo "  Static credentials for an IAM user with permissions for"
         echo "  EC2, EKS, ECS, SSM Parameter Store, and related services."
         echo ""
-        read -rp "AWS_ACCESS_KEY_ID: " aws_access_key
+        aws_access_key=$(prompt_with_default "AWS_ACCESS_KEY_ID" "${prev_access_key}")
         if [[ -z "${aws_access_key}" ]]; then
             echo "Error: AWS_ACCESS_KEY_ID cannot be empty."
             exit 1
         fi
-        read -rsp "AWS_SECRET_ACCESS_KEY (hidden): " aws_secret_key
-        echo ""
+        if [[ -n "${prev_secret_key}" ]]; then
+            local masked="${prev_secret_key:0:4}****"
+            read -rsp "AWS_SECRET_ACCESS_KEY [${masked}]: " aws_secret_key
+            echo ""
+            aws_secret_key="${aws_secret_key:-${prev_secret_key}}"
+        else
+            read -rsp "AWS_SECRET_ACCESS_KEY (hidden): " aws_secret_key
+            echo ""
+        fi
         if [[ -z "${aws_secret_key}" ]]; then
             echo "Error: AWS_SECRET_ACCESS_KEY cannot be empty."
             exit 1
         fi
-        read -rp "AWS_SESSION_TOKEN (optional, press Enter to skip): " aws_session_token
+        aws_session_token=$(prompt_with_default "AWS_SESSION_TOKEN (optional, press Enter to skip)" "${prev_session_token}")
     fi
     echo ""
 
     echo "Step 3: Enter DOGSTAC_SALT"
     echo "  A long random string used as encryption salt for stored configurations."
     echo "  This value must remain consistent across container restarts."
-    echo "  Example: $(openssl rand -hex 32 2>/dev/null || echo 'any-long-random-string-at-least-32-chars')"
+    if [[ -z "${prev_salt}" ]]; then
+        echo "  Example: $(openssl rand -hex 32 2>/dev/null || echo 'any-long-random-string-at-least-32-chars')"
+    fi
     echo ""
-    read -rp "DOGSTAC_SALT: " dogstac_salt
+    local dogstac_salt
+    dogstac_salt=$(prompt_with_default "DOGSTAC_SALT" "${prev_salt}")
     if [[ -z "${dogstac_salt}" ]]; then
         echo "Error: DOGSTAC_SALT cannot be empty."
         exit 1
@@ -150,7 +189,8 @@ ENVFILE
 
 validate_env() {
     if [[ ! -f "${ENV_FILE}" ]]; then
-        setup_env
+        echo "Error: .env file not found. Run './dogstac.sh init' first."
+        exit 1
     fi
 
     local has_profile has_access_key
@@ -159,7 +199,7 @@ validate_env() {
 
     if [[ -z "${has_profile}" && -z "${has_access_key}" ]]; then
         echo "Error: AWS credentials not configured in .env"
-        echo "Set either AWS_PROFILE or AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY."
+        echo "Run './dogstac.sh init' to reconfigure."
         exit 1
     fi
 }
@@ -195,6 +235,19 @@ run_container() {
     echo "Container ${CONTAINER_NAME} started successfully."
     echo "  TFRunner: http://localhost:${TFRUNNER_PORT}"
     echo "  MCP:      http://localhost:${MCP_PORT}"
+}
+
+cmd_init() {
+    if [[ -f "${ENV_FILE}" ]]; then
+        echo "Existing .env found at ${ENV_FILE}"
+        read -rp "Overwrite? [y/N]: " confirm
+        if [[ "${confirm}" != [yY] ]]; then
+            echo "Aborted."
+            return
+        fi
+    fi
+    setup_env
+    run_container true
 }
 
 cmd_start() { run_container true; }
@@ -331,6 +384,7 @@ usage() {
 Usage: $(basename "$0") <command>
 
 Commands:
+    init            Interactive setup (.env) and start the container
     start           Pull latest image and start the container
     start-no-update Start the container without pulling the latest image
     stop            Stop the running container
@@ -346,6 +400,7 @@ EOF
 detect_runtime
 
 case "${1:-help}" in
+    init)            cmd_init ;;
     start)           cmd_start ;;
     start-no-update) cmd_start_no_update ;;
     stop)            cmd_stop ;;

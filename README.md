@@ -28,7 +28,7 @@ If you are trying to use SSO but haven't configured an AWS SSO profile yet:
 ```bash
 aws configure sso
 ```
-Follow the prompts to set SSO start URL, region, account, role, and profile name. Use the profile name when running `dogstac.sh start`.
+Follow the prompts to set SSO start URL, region, account, role, and profile name. Use the profile name when running `./dogstac.sh init`.
 
 ## Quick Start
 
@@ -40,18 +40,20 @@ curl -O https://raw.githubusercontent.com/chanhyeokseo/datadog-sandbox-terraform
 chmod +x dogstac.sh
 ```
 
-### 2. Start
+### 2. Initialize and start
 
 ```bash
-./dogstac.sh start
+./dogstac.sh init
 ```
 
-On the first run, an interactive setup wizard will guide you through:
+An interactive setup wizard will guide you through:
 1. **AWS authentication type** — SSO profile or IAM access key
 2. **AWS credentials** — profile name or key pair
 3. **DOGSTAC_SALT** — encryption salt for stored configurations
 
-A `.env` file is generated automatically from your inputs.
+A `.env` file is generated automatically, then the container is pulled and started.
+
+To reconfigure later, run `./dogstac.sh init` again — existing values are shown as defaults so you can keep them by pressing Enter.
 
 ### 3. Connect your AI coding tool (optional)
 
@@ -79,6 +81,7 @@ http://localhost:7621
 
 | Command | Description |
 |---------|-------------|
+| `./dogstac.sh init` | Interactive setup (.env) and start the container |
 | `./dogstac.sh start` | Pull latest image and start the container |
 | `./dogstac.sh start-no-update` | Start without pulling the latest image |
 | `./dogstac.sh stop` | Stop the running container |
@@ -90,7 +93,7 @@ http://localhost:7621
 
 ## Environment Variables
 
-These are configured in `.env` (created automatically on first `start`):
+These are configured in `.env` (created via `./dogstac.sh init`):
 
 | Variable | Required | Description |
 |----------|:--------:|-------------|
