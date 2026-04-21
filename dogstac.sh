@@ -296,10 +296,20 @@ cmd_mcp_init() {
 
     echo "Setup MCP server connection"
     select_option "  Choose your AI coding tool:" \
-        "Claude Code  - Register via claude CLI" \
-        "Cursor       - Register via .cursor/mcp.json"
+        "Claude Code    - Register via claude CLI" \
+        "Claude Desktop - Register via claude_desktop_config.json" \
+        "Cursor         - Register via .cursor/mcp.json"
     local tool_choice=${SELECTED_INDEX}
     echo ""
+
+    local allow_all=1
+    if [[ ${tool_choice} -eq 0 ]]; then
+        select_option "  Allow all DogSTAC tool calls without confirmation? (recommended)" \
+            "Yes - Auto-approve all DogSTAC actions" \
+            "No  - Ask for confirmation each time"
+        allow_all=${SELECTED_INDEX}
+        echo ""
+    fi
 
     if [[ ${tool_choice} -eq 0 ]]; then
         if ! command -v claude &>/dev/null; then
@@ -308,8 +318,122 @@ cmd_mcp_init() {
             exit 1
         fi
         echo "Registering MCP server with Claude Code..."
-        claude mcp add dogstac --transport sse "${mcp_url}"
+        claude mcp add dogstac --transport sse --scope user "${mcp_url}"
+        if [[ ${allow_all} -eq 0 ]]; then
+            local settings_json="${HOME}/.claude/settings.json"
+            mkdir -p "${HOME}/.claude"
+            local dogstac_tools=(
+                "mcp__dogstac__*"
+            )
+            local tools_json
+            tools_json=$(printf '%s\n' "${dogstac_tools[@]}" | python3 -c "import sys,json; print(json.dumps([l.strip() for l in sys.stdin]))")
+
+            python3 -c "
+import json, os
+path = '${settings_json}'
+data = {}
+if os.path.exists(path):
+    with open(path) as f:
+        data = json.load(f)
+existing = set(data.get('permissions', {}).get('allow', []))
+existing.update(${tools_json})
+data.setdefault('permissions', {})['allow'] = sorted(existing)
+with open(path, 'w') as f:
+    json.dump(data, f, indent=2)
+    f.write('\n')
+"
+            echo "Auto-approve enabled for all DogSTAC tools in Claude Code."
+        fi
         echo "Done. MCP server 'dogstac' registered in Claude Code."
+    elif [[ ${tool_choice} -eq 1 ]]; then
+        # Find a Node.js >= 20.18.1 installation for mcp-remote compatibility
+        local npx_bin=""
+        local node_bin_dir=""
+
+        _find_node20() {
+            local candidate_node="$1"
+            local candidate_npx="$2"
+            if [[ -x "${candidate_node}" && -x "${candidate_npx}" ]]; then
+                local major
+                major=$("${candidate_node}" -e "process.stdout.write(process.versions.node.split('.')[0])" 2>/dev/null)
+                local minor
+                minor=$("${candidate_node}" -e "process.stdout.write(process.versions.node.split('.')[1])" 2>/dev/null)
+                if [[ "${major}" -gt 20 ]] || [[ "${major}" -eq 20 && "${minor}" -ge 18 ]]; then
+                    npx_bin="${candidate_npx}"
+                    node_bin_dir="$(dirname "${candidate_node}")"
+                    return 0
+                fi
+            fi
+            return 1
+        }
+
+        # 1. Check nvm versions (newest first)
+        if [[ -z "${npx_bin}" && -d "${HOME}/.nvm/versions/node" ]]; then
+            while IFS= read -r ver_dir; do
+                _find_node20 "${ver_dir}/bin/node" "${ver_dir}/bin/npx" && break
+            done < <(ls -d "${HOME}/.nvm/versions/node"/v* 2>/dev/null | sort -t. -k1,1V -k2,2n -k3,3n -r)
+        fi
+
+        # 2. Check common system paths
+        if [[ -z "${npx_bin}" ]]; then
+            for dir in /opt/homebrew/bin /usr/local/bin; do
+                _find_node20 "${dir}/node" "${dir}/npx" && break
+            done
+        fi
+
+        if [[ -z "${npx_bin}" ]]; then
+            echo "Error: Node.js >= 20.18.1 not found."
+            echo "Install it via nvm:  nvm install 20"
+            echo "Or via Homebrew:     brew install node"
+            exit 1
+        fi
+
+        local node_entry
+        node_entry=$(python3 -c "import json; print(json.dumps({
+            'command': '${npx_bin}',
+            'args': ['-y', 'mcp-remote', '${mcp_url}'],
+            'env': {'PATH': '${node_bin_dir}:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin'}
+        }))")
+
+        local desktop_config="${HOME}/Library/Application Support/Claude/claude_desktop_config.json"
+        mkdir -p "${HOME}/Library/Application Support/Claude"
+
+        if [[ -f "${desktop_config}" ]]; then
+            local has_dogstac
+            has_dogstac=$(grep -c '"dogstac"' "${desktop_config}" 2>/dev/null || true)
+            if [[ "${has_dogstac}" -gt 0 ]]; then
+                echo "MCP server 'dogstac' already configured in ${desktop_config}"
+                echo "Done."
+                return
+            fi
+
+            local tmp="${desktop_config}.tmp"
+            python3 -c "
+import json
+with open('${desktop_config}') as f:
+    data = json.load(f)
+data.setdefault('mcpServers', {})['dogstac'] = json.loads('''${node_entry}''')
+with open('${tmp}', 'w') as f:
+    json.dump(data, f, indent=2)
+    f.write('\n')
+"
+            mv "${tmp}" "${desktop_config}"
+            echo "Added 'dogstac' to existing ${desktop_config}"
+        else
+            python3 -c "
+import json
+data = {'mcpServers': {'dogstac': json.loads('''${node_entry}''')}}
+with open('${desktop_config}', 'w') as f:
+    json.dump(data, f, indent=2)
+    f.write('\n')
+"
+            echo "Created ${desktop_config}"
+        fi
+
+        echo ""
+        echo "Using Node.js: ${node_bin_dir}/node"
+        echo "Restart Claude Desktop to activate the DogSTAC MCP server."
+        echo "Done. MCP server 'dogstac' registered in Claude Desktop."
     else
         if ! command -v cursor &>/dev/null; then
             echo "Error: 'cursor' CLI not found."
@@ -352,6 +476,11 @@ with open('${tmp}', 'w') as f:
 MCPJSON
             echo "Created ${mcp_json}"
         fi
+
+        echo ""
+        printf "To auto-approve all DogSTAC tool calls (recommended):\n"
+        printf "  Cursor > Settings > Agents > MCP Allowlist > add \033[1mdogstac:*\033[0m\n"
+        echo ""
         echo "Restart Cursor or run 'Developer: Reload Window' to activate."
     fi
 
