@@ -152,25 +152,25 @@ class ClusterShareManager:
         except ClientError:
             return None
 
-    def create_request(self, cluster_name: str, cluster_arn: str, owner_prefix: str) -> Optional[ClusterShareRequest]:
+    def create_request(self, cluster_name: str, cluster_arn: str, owner_prefix: str) -> tuple[Optional[ClusterShareRequest], str]:
         my_prefix = self._get_my_prefix()
         if not my_prefix:
             logger.error("Cannot create share request: name_prefix not configured")
-            return None
+            return None, "name_prefix not configured"
 
         if my_prefix == owner_prefix:
             logger.warning("Cannot share cluster with yourself")
-            return None
+            return None, "Cannot request share on your own cluster"
 
         existing = self._get_all_requests()
         for req in existing:
-            if (
-                req.requester_prefix == my_prefix
-                and req.cluster_arn == cluster_arn
-                and req.status == ClusterShareRequestStatus.PENDING
-            ):
-                logger.warning(f"Duplicate pending request for cluster {cluster_name}")
-                return None
+            if req.requester_prefix == my_prefix and req.cluster_arn == cluster_arn:
+                if req.status == ClusterShareRequestStatus.PENDING:
+                    logger.warning(f"Duplicate pending request for cluster {cluster_name}")
+                    return None, "A pending request already exists for this cluster"
+                if req.status == ClusterShareRequestStatus.APPROVED:
+                    logger.warning(f"Already approved share for cluster {cluster_name}")
+                    return None, "This cluster is already shared with you"
 
         now = datetime.now(timezone.utc).isoformat()
         request = ClusterShareRequest(
@@ -186,8 +186,8 @@ class ClusterShareManager:
 
         if self._put_request(request):
             logger.info(f"Created share request {request.id}: {my_prefix} -> {owner_prefix} for {cluster_name}")
-            return request
-        return None
+            return request, ""
+        return None, "Failed to save share request"
 
     def get_incoming_requests(self) -> List[ClusterShareRequest]:
         my_prefix = self._get_my_prefix()

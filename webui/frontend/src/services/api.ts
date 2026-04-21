@@ -1118,8 +1118,8 @@ export const eksManageApi = {
 const CLUSTER_SHARE_BASE = '/api/cluster-share';
 
 export const clusterShareApi = {
-  listClusters: async (): Promise<{ clusters: EKSClusterInfo[]; my_prefix: string }> => {
-    const response = await axios.get<{ clusters: EKSClusterInfo[]; my_prefix: string }>(`${CLUSTER_SHARE_BASE}/clusters`);
+  listClusters: async (): Promise<{ clusters: EKSClusterInfo[]; my_prefix: string; requested_arns: Record<string, string> }> => {
+    const response = await axios.get<{ clusters: EKSClusterInfo[]; my_prefix: string; requested_arns: Record<string, string> }>(`${CLUSTER_SHARE_BASE}/clusters`);
     return response.data;
   },
 

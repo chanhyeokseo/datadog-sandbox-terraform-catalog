@@ -15,6 +15,7 @@ const ClusterShareModal = ({ onClose, onSharedClustersChanged }: ClusterShareMod
   const [activeTab, setActiveTab] = useState<TabId>('request');
   const [clusters, setClusters] = useState<EKSClusterInfo[]>([]);
   const [myPrefix, setMyPrefix] = useState('');
+  const [requestedArns, setRequestedArns] = useState<Record<string, string>>({});
   const [clustersLoading, setClustersLoading] = useState(false);
   const [incoming, setIncoming] = useState<ClusterShareRequest[]>([]);
   const [outgoing, setOutgoing] = useState<ClusterShareRequest[]>([]);
@@ -30,6 +31,7 @@ const ClusterShareModal = ({ onClose, onSharedClustersChanged }: ClusterShareMod
       const data = await clusterShareApi.listClusters();
       setClusters(data.clusters);
       setMyPrefix(data.my_prefix);
+      setRequestedArns(data.requested_arns || {});
     } catch (err: any) {
       setError(err?.response?.data?.detail || 'Failed to load EKS clusters');
     } finally {
@@ -88,6 +90,7 @@ const ClusterShareModal = ({ onClose, onSharedClustersChanged }: ClusterShareMod
     setSuccess(null);
     try {
       await clusterShareApi.createRequest(cluster.name, cluster.arn, cluster.owner_prefix);
+      await loadClusters();
       setSuccess(`Share request sent for ${cluster.name}`);
       setTimeout(() => setSuccess(null), 3000);
     } catch (err: any) {
@@ -176,6 +179,10 @@ const ClusterShareModal = ({ onClose, onSharedClustersChanged }: ClusterShareMod
               </div>
               {cluster.owner_prefix === myPrefix ? (
                 <span className="cs-own-label">Your cluster</span>
+              ) : requestedArns[cluster.arn] ? (
+                <span className={`cs-own-label cs-requested-label ${requestedArns[cluster.arn]}`}>
+                  {requestedArns[cluster.arn] === 'pending' ? 'Pending' : 'Shared'}
+                </span>
               ) : (
                 <button
                   className="btn btn-deploy cs-request-btn"
