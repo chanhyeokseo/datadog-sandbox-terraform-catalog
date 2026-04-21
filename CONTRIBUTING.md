@@ -39,25 +39,6 @@ Set up a shell alias for convenience:
 
 - UI + API docs: http://localhost:7621 (API docs at `/docs`)
 
-### Backend Only
-
-```bash
-cd webui/backend
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload --host 0.0.0.0 --port 7621
-```
-
-### Frontend Only
-
-```bash
-cd webui/frontend
-npm install
-npm run dev
-```
-
-Dev server proxies `/api` to `localhost:7621` (backend).
-
 ## Project Structure
 
 ```
@@ -111,15 +92,10 @@ Dev server proxies `/api` to `localhost:7621` (backend).
 
 ## Testing
 
-### Running Backend Tests
+### Running Tests
 
 ```bash
-cd webui/backend
-source .venv/bin/activate
-pip install -r requirements-test.txt
-
-python -m pytest tests/ -v              # all tests
-python -m pytest tests/ -v -k "keyword" # filtered
+./dogstac-build test
 ```
 
 ### Test Conventions
@@ -142,26 +118,14 @@ python -m pytest tests/ -v -k "keyword" # filtered
 2. Import the unit under test from `app.*`.
 3. Use shared fixtures from `conftest.py` or define local ones.
 4. Group related tests in a class: `class Test{Feature}:`.
-5. Run with `python -m pytest tests/test_{module}_{topic}.py -v`.
 
 ## Branching and Commits
 
 1. Create a feature branch from `main`:
    ```bash
-   git checkout -b feat/short-description
+   git checkout -b <firstname.lastname>/short-description
    ```
-2. Use concise commit messages that explain **why**, not just what.
-3. Keep commits atomic — one logical change per commit.
-
-### Branch Naming
-
-| Prefix | Purpose |
-|--------|---------|
-| `feat/` | New feature |
-| `fix/` | Bug fix |
-| `refactor/` | Code restructuring (no behavior change) |
-| `docs/` | Documentation only |
-| `chore/` | Build, CI, dependencies |
+2. Try to keep commits atomic — one logical change per commit.
 
 ## Pull Requests
 
@@ -197,13 +161,3 @@ Use the provided [issue templates](.github/ISSUE_TEMPLATE/):
 | `./dogstac-build.sh status` | Show container status |
 | `./dogstac-build.sh logs` | Follow container logs |
 | `./dogstac-build.sh alias` | Add `dogstac-build` alias to your shell config |
-
-## Releases
-
-> **Admin only.** The `publish` command requires push access to the repository. If you don't have write permission, `git push` will fail with a permission error — no tags will be published remotely.
-
-```bash
-./dogstac-build.sh publish
-```
-
-This prompts for a version number, creates a git tag `v{version}`, and pushes it to origin. The [docker-publish](.github/workflows/docker-publish.yml) workflow then builds multi-platform images (`linux/amd64` + `linux/arm64`) and pushes to Docker Hub as `dogstac/dogstac:{version}` and `dogstac/dogstac:latest`.
