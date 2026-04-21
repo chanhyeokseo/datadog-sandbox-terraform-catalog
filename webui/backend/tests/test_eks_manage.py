@@ -178,21 +178,21 @@ def test_build_default_layout(manager):
     all_presets = {p["name"]: p for p in manager.list_presets()}
     layout = manager._build_default_layout(all_presets)
     assert len(layout) >= 1
-    ootb_folder = next((n for n in layout if n["type"] == "folder" and n["id"] == "ootb"), None)
-    assert ootb_folder is not None
-    assert "agent-helm" in ootb_folder["children"]
-    assert "agent-datadog-operator" in ootb_folder["children"]
+    agent_folder = next((n for n in layout if n["type"] == "folder" and n["id"] == "ootb-agent"), None)
+    assert agent_folder is not None
+    assert "agent-helm" in agent_folder["children"]
+    assert "agent-datadog-operator" in agent_folder["children"]
 
 
 def test_sync_layout_removes_deleted(manager):
     layout = [
-        {"id": "ootb", "type": "folder", "name": "ootb", "children": ["agent-helm", "deleted-preset"]},
+        {"id": "ootb-agent", "type": "folder", "name": "OOTB-Agent", "children": ["agent-helm", "deleted-preset"]},
         {"id": "also-deleted", "type": "preset"},
     ]
     all_presets = {p["name"]: p for p in manager.list_presets()}
     synced = manager._sync_layout(layout, all_presets)
-    ootb_folder = next(n for n in synced if n["id"] == "ootb")
-    assert "deleted-preset" not in ootb_folder["children"]
+    agent_folder = next(n for n in synced if n["id"] == "ootb-agent")
+    assert "deleted-preset" not in agent_folder["children"]
     assert not any(n.get("id") == "also-deleted" for n in synced)
     assert any(n.get("id") == "agent-datadog-operator" or
                ("children" in n and "agent-datadog-operator" in n["children"]) for n in synced)
