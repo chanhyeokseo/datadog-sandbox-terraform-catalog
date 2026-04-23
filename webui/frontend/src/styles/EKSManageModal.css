@@ -652,13 +652,26 @@
   font-size: 11px !important;
 }
 
+.eks-file-list-drop-zone {
+  min-height: 40px;
+  transition: background 0.2s;
+}
+
+.eks-file-list-drop-zone:hover {
+  background: rgba(139, 127, 199, 0.03);
+}
+
 .eks-file-item {
-  padding: 8px 12px;
+  padding: 6px 12px;
   cursor: pointer;
   font-size: 13px;
   color: var(--text-secondary);
   transition: all 0.15s;
   border: 1px solid transparent;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
 }
 
 .eks-file-item:hover {
@@ -671,6 +684,51 @@
   color: var(--primary-color);
   border-color: rgba(139, 127, 199, 0.3);
   font-weight: 500;
+}
+
+.eks-file-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.eks-file-item-actions {
+  display: none;
+  flex-shrink: 0;
+  gap: 2px;
+}
+
+.eks-file-item:hover .eks-file-item-actions {
+  display: flex;
+}
+
+.eks-file-action-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  opacity: 0.6;
+  transition: opacity 0.15s, color 0.15s;
+  line-height: 1;
+}
+
+.eks-file-action-btn:hover {
+  opacity: 1;
+  color: var(--primary-color);
+}
+
+.eks-file-action-delete:hover {
+  color: #f44336;
+}
+
+.eks-editor-layout.drag-over {
+  outline: 2px dashed var(--primary-color);
+  outline-offset: -2px;
+  background: rgba(139, 127, 199, 0.04);
 }
 
 .eks-editor-main {

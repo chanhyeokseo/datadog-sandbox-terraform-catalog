@@ -672,6 +672,21 @@ export const ecsManageApi = {
     return response.data;
   },
 
+  deletePresetFile: async (name: string, filename: string): Promise<{ success: boolean }> => {
+    const response = await axios.delete(
+      `${ECS_MANAGE_BASE}/presets/${name}/files/${encodeURIComponent(filename)}`
+    );
+    return response.data;
+  },
+
+  renamePresetFile: async (name: string, filename: string, newFilename: string): Promise<{ success: boolean; new_filename: string }> => {
+    const response = await axios.post(
+      `${ECS_MANAGE_BASE}/presets/${name}/files/${encodeURIComponent(filename)}/rename`,
+      { new_filename: newFilename }
+    );
+    return response.data;
+  },
+
   updatePresetManifest: async (name: string, data: Partial<EKSPreset>): Promise<{ success: boolean }> => {
     const response = await axios.put(`${ECS_MANAGE_BASE}/presets/${name}`, data);
     return response.data;
@@ -885,6 +900,21 @@ export const eksManageApi = {
     const response = await axios.put(
       `${EKS_MANAGE_BASE}/presets/${name}/files/${encodeURIComponent(filename)}`,
       { content }
+    );
+    return response.data;
+  },
+
+  deletePresetFile: async (name: string, filename: string): Promise<{ success: boolean }> => {
+    const response = await axios.delete(
+      `${EKS_MANAGE_BASE}/presets/${name}/files/${encodeURIComponent(filename)}`
+    );
+    return response.data;
+  },
+
+  renamePresetFile: async (name: string, filename: string, newFilename: string): Promise<{ success: boolean; new_filename: string }> => {
+    const response = await axios.post(
+      `${EKS_MANAGE_BASE}/presets/${name}/files/${encodeURIComponent(filename)}/rename`,
+      { new_filename: newFilename }
     );
     return response.data;
   },

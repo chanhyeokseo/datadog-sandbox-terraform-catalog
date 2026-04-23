@@ -172,6 +172,49 @@ class TestUpdateECSPreset:
         )
 
 
+class TestUpdateECSPresetDeleteFile:
+
+    async def test_delete_file_mode(self, mcp_with_tools):
+        mcp, client = mcp_with_tools
+        client.delete.return_value = {"success": True}
+        tool = mcp._tool_manager._tools["update_ecs_preset"]
+        result = json.loads(await tool.run({
+            "preset_name": "my-preset",
+            "delete_file": "old-file.json",
+        }))
+        assert result["success"] is True
+        client.delete.assert_called_once_with(
+            "/api/terraform/ecs/manage/presets/my-preset/files/old-file.json",
+        )
+
+
+class TestUpdateECSPresetRenameFile:
+
+    async def test_rename_file_mode(self, mcp_with_tools):
+        mcp, client = mcp_with_tools
+        client.post.return_value = {"success": True, "new_filename": "new-file.json"}
+        tool = mcp._tool_manager._tools["update_ecs_preset"]
+        result = json.loads(await tool.run({
+            "preset_name": "my-preset",
+            "rename_file": "old-file.json",
+            "new_filename": "new-file.json",
+        }))
+        assert result["success"] is True
+        client.post.assert_called_once_with(
+            "/api/terraform/ecs/manage/presets/my-preset/files/old-file.json/rename",
+            {"new_filename": "new-file.json"},
+        )
+
+    async def test_rename_file_missing_new_filename(self, mcp_with_tools):
+        mcp, _ = mcp_with_tools
+        tool = mcp._tool_manager._tools["update_ecs_preset"]
+        result = json.loads(await tool.run({
+            "preset_name": "my-preset",
+            "rename_file": "old-file.json",
+        }))
+        assert "error" in result
+
+
 class TestDeleteECSPreset:
 
     async def test_deletes_preset(self, mcp_with_tools):
