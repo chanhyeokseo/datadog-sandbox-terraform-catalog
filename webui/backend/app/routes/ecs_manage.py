@@ -702,11 +702,21 @@ ECS_API_ACTIONS = {
     "describe-container-instances": lambda c, p: c.describe_container_instances(**p),
     "describe-task-definition": lambda c, p: c.describe_task_definition(**p),
     "list-clusters": lambda c, p: c.list_clusters(**p),
+    "run-task": lambda c, p: c.run_task(**p),
+    "stop-task": lambda c, p: c.stop_task(**p),
+    "update-service": lambda c, p: c.update_service(**p),
+    "delete-service": lambda c, p: c.delete_service(**p),
+    "deregister-task-definition": lambda c, p: c.deregister_task_definition(**p),
 }
 
 
 def _parse_ecs_command(command: str) -> tuple[str, Dict]:
-    tokens = command.split()
+    import shlex
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        tokens = command.split()
+
     if len(tokens) < 3 or tokens[0] != "aws" or tokens[1] != "ecs":
         raise ValueError("Command must start with 'aws ecs <action>'")
 
@@ -725,6 +735,11 @@ def _parse_ecs_command(command: str) -> tuple[str, Dict]:
             if i + 1 < len(tokens) and not tokens[i + 1].startswith("--"):
                 i += 1
                 val = tokens[i]
+                if val.startswith(("{", "[")):
+                    try:
+                        val = json.loads(val)
+                    except json.JSONDecodeError:
+                        pass
                 if camel in params:
                     existing = params[camel]
                     if isinstance(existing, list):
@@ -941,4 +956,87 @@ async def get_container_instances():
         return {"cluster_name": cluster_name, "region": region, "instances": instances}
     except Exception as e:
         logger.error(f"Failed to list container instances: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def _query_cloudwatch_logs(log_group: str, filter_pattern: str,
+                           start_ms: int, end_ms: int, limit: int,
+                           region: str) -> Dict:
+    import boto3
+    client = boto3.client("logs", region_name=region)
+
+    log_groups = []
+    try:
+        resp = client.describe_log_groups(logGroupNamePrefix=log_group, limit=5)
+        log_groups = [g["logGroupName"] for g in resp.get("logGroups", [])]
+    except Exception as e:
+        logger.debug(f"describe_log_groups failed: {e}")
+
+    params = {
+        "logGroupName": log_group,
+        "startTime": start_ms,
+        "endTime": end_ms,
+        "limit": limit,
+        "interleaved": True,
+    }
+    if filter_pattern:
+        params["filterPattern"] = filter_pattern
+
+    events = []
+    try:
+        resp = client.filter_log_events(**params)
+        for ev in resp.get("events", []):
+            events.append({
+                "timestamp": ev.get("timestamp"),
+                "message": ev.get("message", ""),
+                "logStreamName": ev.get("logStreamName", ""),
+            })
+    except Exception as e:
+        return {"error": str(e), "log_groups_found": log_groups}
+
+    return {
+        "log_group": log_group,
+        "event_count": len(events),
+        "events": events,
+        "log_groups_found": log_groups,
+    }
+
+
+@router.post("/cloudwatch-logs")
+async def cloudwatch_logs(body: dict = Body(...)):
+    log_group = body.get("log_group", "").strip()
+    if not log_group:
+        raise HTTPException(status_code=400, detail="log_group is required")
+
+    filter_pattern = body.get("filter_pattern", "")
+    limit = min(body.get("limit", 100), 1000)
+
+    from datetime import datetime, timezone, timedelta
+    now = datetime.now(timezone.utc)
+    default_start = now - timedelta(hours=1)
+
+    start_time_str = body.get("start_time", "")
+    end_time_str = body.get("end_time", "")
+
+    try:
+        start_ms = int(datetime.fromisoformat(start_time_str.replace("Z", "+00:00")).timestamp() * 1000) if start_time_str else int(default_start.timestamp() * 1000)
+        end_ms = int(datetime.fromisoformat(end_time_str.replace("Z", "+00:00")).timestamp() * 1000) if end_time_str else int(now.timestamp() * 1000)
+    except (ValueError, TypeError) as e:
+        raise HTTPException(status_code=400, detail=f"Invalid time format: {e}")
+
+    resource_id, resource_dir = _get_ecs_resource_info()
+    region = os.environ.get("AWS_REGION", "ap-northeast-2")
+    if resource_dir and resource_id:
+        cluster_info = await _get_cluster_info_async(resource_id, resource_dir)
+        region = cluster_info.get("region", region)
+
+    try:
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None, _query_cloudwatch_logs,
+            log_group, filter_pattern, start_ms, end_ms, limit, region,
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Failed to query CloudWatch logs: {e}")
         raise HTTPException(status_code=500, detail=str(e))
