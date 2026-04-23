@@ -129,20 +129,43 @@ def register(mcp: FastMCP, client: DogSTACClient):
         preset_name: str,
         filename: str = "",
         content: str = "",
+        delete_file: str = "",
+        rename_file: str = "",
+        new_filename: str = "",
         description: str | None = None,
     ) -> str:
         """Update an ECS preset file or manifest (non built-in only).
 
-        Two modes:
+        Modes:
         - File mode (filename + content): Create or update a file in the preset.
+        - Delete file mode (delete_file): Remove a file from the preset.
+        - Rename file mode (rename_file + new_filename): Rename a file in the preset.
         - Manifest mode (no filename): Update preset description.
 
         Args:
             preset_name: The preset to update.
             filename: File to create/update (e.g. "task-definition.json"). Triggers file mode.
             content: Full file content. Required when filename is provided.
+            delete_file: Filename to delete from the preset.
+            rename_file: Filename to rename.
+            new_filename: New name for the file (required with rename_file).
             description: New description (manifest mode only).
         """
+        if delete_file:
+            data = await client.delete(
+                f"/api/terraform/ecs/manage/presets/{preset_name}/files/{delete_file}",
+            )
+            return json.dumps(data, indent=2)
+
+        if rename_file:
+            if not new_filename:
+                return json.dumps({"error": "new_filename is required for rename_file"})
+            data = await client.post(
+                f"/api/terraform/ecs/manage/presets/{preset_name}/files/{rename_file}/rename",
+                {"new_filename": new_filename},
+            )
+            return json.dumps(data, indent=2)
+
         if filename:
             data = await client.put(
                 f"/api/terraform/ecs/manage/presets/{preset_name}/files/{filename}",

@@ -136,6 +136,41 @@ class TestClonePreset:
         assert manager.clone_preset("datadog-linux", "nginx") is False
 
 
+class TestDeletePresetFile:
+
+    def test_deletes_file_and_updates_manifest(self, manager):
+        manager.create_preset(
+            name="file-ops",
+            description="test",
+            files={"a.json": '{"a":1}', "b.json": '{"b":2}'},
+        )
+        assert manager.delete_preset_file("file-ops", "a.json") is True
+        assert manager.get_preset_file("file-ops", "a.json") is None
+        preset = manager.get_preset("file-ops")
+        assert "a.json" not in preset["files"]
+        assert "b.json" in preset["files"]
+
+
+class TestRenamePresetFile:
+
+    def test_renames_file_and_updates_manifest(self, manager):
+        manager.create_preset(
+            name="rename-ops",
+            description="test",
+            files={"old.json": '{"old":1}'},
+        )
+        assert manager.rename_preset_file("rename-ops", "old.json", "new.json") is True
+        assert manager.get_preset_file("rename-ops", "old.json") is None
+        assert manager.get_preset_file("rename-ops", "new.json") == '{"old":1}'
+        preset = manager.get_preset("rename-ops")
+        assert "old.json" not in preset["files"]
+        assert "new.json" in preset["files"]
+
+    def test_returns_false_for_missing_source(self, manager):
+        manager.create_preset(name="rename-miss", description="test")
+        assert manager.rename_preset_file("rename-miss", "nope.json", "new.json") is False
+
+
 class TestDeletePreset:
 
     def test_blocks_built_in(self, manager):

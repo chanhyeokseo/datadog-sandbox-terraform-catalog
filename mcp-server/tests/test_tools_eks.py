@@ -145,6 +145,70 @@ class TestManageEKSDeployment:
         assert "error" in result
 
 
+class TestUpdateEKSPreset:
+
+    async def test_file_mode(self, mcp_with_tools):
+        mcp, client = mcp_with_tools
+        client.put.return_value = {"success": True}
+        result = json.loads(await _tool(mcp, "update_eks_preset").run({
+            "preset_name": "my-preset",
+            "filename": "deploy.yaml",
+            "content": "apiVersion: v1",
+        }))
+        assert result["success"] is True
+        client.put.assert_called_once_with(
+            "/api/terraform/eks/manage/presets/my-preset/files/deploy.yaml",
+            {"content": "apiVersion: v1"},
+        )
+
+    async def test_delete_file_mode(self, mcp_with_tools):
+        mcp, client = mcp_with_tools
+        client.delete.return_value = {"success": True}
+        result = json.loads(await _tool(mcp, "update_eks_preset").run({
+            "preset_name": "my-preset",
+            "delete_file": "old.yaml",
+        }))
+        assert result["success"] is True
+        client.delete.assert_called_once_with(
+            "/api/terraform/eks/manage/presets/my-preset/files/old.yaml",
+        )
+
+    async def test_rename_file_mode(self, mcp_with_tools):
+        mcp, client = mcp_with_tools
+        client.post.return_value = {"success": True, "new_filename": "new.yaml"}
+        result = json.loads(await _tool(mcp, "update_eks_preset").run({
+            "preset_name": "my-preset",
+            "rename_file": "old.yaml",
+            "new_filename": "new.yaml",
+        }))
+        assert result["success"] is True
+        client.post.assert_called_once_with(
+            "/api/terraform/eks/manage/presets/my-preset/files/old.yaml/rename",
+            {"new_filename": "new.yaml"},
+        )
+
+    async def test_rename_file_missing_new_filename(self, mcp_with_tools):
+        mcp, _ = mcp_with_tools
+        result = json.loads(await _tool(mcp, "update_eks_preset").run({
+            "preset_name": "my-preset",
+            "rename_file": "old.yaml",
+        }))
+        assert "error" in result
+
+    async def test_manifest_mode(self, mcp_with_tools):
+        mcp, client = mcp_with_tools
+        client.put.return_value = {"success": True}
+        result = json.loads(await _tool(mcp, "update_eks_preset").run({
+            "preset_name": "my-preset",
+            "description": "Updated desc",
+        }))
+        assert result["success"] is True
+        client.put.assert_called_once_with(
+            "/api/terraform/eks/manage/presets/my-preset",
+            {"description": "Updated desc"},
+        )
+
+
 class TestRunKubectl:
 
     async def test_returns_command_output(self, mcp_with_tools):

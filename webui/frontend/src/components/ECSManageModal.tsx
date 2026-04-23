@@ -256,6 +256,82 @@ const ECSManageModal = ({ onClose, connectInfo }: ECSManageModalProps) => {
     await loadFile(editorPreset, filename);
   };
 
+  const handleDeleteFile = async (filename: string) => {
+    if (!editorPreset) return;
+    if (!window.confirm(`Delete "${filename}"?`)) return;
+    try {
+      await ecsManageApi.deletePresetFile(editorPreset, filename);
+      const preset = await ecsManageApi.getPreset(editorPreset);
+      setEditorFiles(preset.files || []);
+      if (editorActiveFile === filename) {
+        setEditorActiveFile('');
+        setEditorContent('');
+        setEditorDirty(false);
+      }
+    } catch (e: any) {
+      alert(e.response?.data?.detail || 'Failed to delete file');
+    }
+  };
+
+  const handleRenameFile = async (filename: string) => {
+    if (!editorPreset) return;
+    const newName = window.prompt('New file name:', filename);
+    if (!newName?.trim() || newName.trim() === filename) return;
+    try {
+      await ecsManageApi.renamePresetFile(editorPreset, filename, newName.trim());
+      const preset = await ecsManageApi.getPreset(editorPreset);
+      setEditorFiles(preset.files || []);
+      if (editorActiveFile === filename) {
+        setEditorActiveFile(newName.trim());
+      }
+    } catch (e: any) {
+      alert(e.response?.data?.detail || 'Failed to rename file');
+    }
+  };
+
+  const dragCounter = useRef(0);
+
+  const handleFileDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current = 0;
+    e.currentTarget.classList.remove('drag-over');
+    if (!editorPreset || isOotb(editorPreset)) return;
+    const files = Array.from(e.dataTransfer.files);
+    for (const file of files) {
+      const content = await file.text();
+      try {
+        await ecsManageApi.updatePresetFile(editorPreset, file.name, content);
+      } catch (err: any) {
+        alert(err.response?.data?.detail || `Failed to upload ${file.name}`);
+      }
+    }
+    const preset = await ecsManageApi.getPreset(editorPreset);
+    setEditorFiles(preset.files || []);
+    if (files.length === 1) {
+      await loadFile(editorPreset, files[0].name);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current++;
+    if (dragCounter.current === 1) e.currentTarget.classList.add('drag-over');
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current--;
+    if (dragCounter.current === 0) e.currentTarget.classList.remove('drag-over');
+  };
+
   const linesToCmds = (text: string): string[] =>
     text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
@@ -686,7 +762,7 @@ const ECSManageModal = ({ onClose, connectInfo }: ECSManageModalProps) => {
     }
     const readonly = isOotb(editorPreset);
     return (
-      <div className="eks-editor-layout">
+      <div className="eks-editor-layout" onDrop={handleFileDrop} onDragOver={handleDragOver} onDragEnter={handleDragEnter} onDragLeave={handleDragLeave}>
         <div className="eks-editor-sidebar">
           <div className="eks-editor-sidebar-title">
             {editorPreset}
@@ -711,11 +787,39 @@ const ECSManageModal = ({ onClose, connectInfo }: ECSManageModalProps) => {
             <button className={`eks-mode-btn ${editorMode === 'files' ? 'active' : ''}`} onClick={() => setEditorMode('files')}>Files</button>
             <button className={`eks-mode-btn ${editorMode === 'commands' ? 'active' : ''}`} onClick={() => setEditorMode('commands')}>Commands</button>
           </div>
-          {editorMode === 'files' && editorFiles.map(f => (
-            <div key={f} className={`eks-file-item ${editorActiveFile === f ? 'active' : ''}`} onClick={() => handleFileSelect(f)}>{f}</div>
-          ))}
-          {editorMode === 'files' && !readonly && (
-            <button className="eks-btn-add-file" onClick={handleAddFile}>+ Add File</button>
+          {editorMode === 'files' && (
+            <div className="eks-file-list-drop-zone">
+              {editorFiles.map(f => (
+                <div
+                  key={f}
+                  className={`eks-file-item ${editorActiveFile === f ? 'active' : ''}`}
+                  onClick={() => handleFileSelect(f)}
+                >
+                  <span className="eks-file-item-name">{f}</span>
+                  {!readonly && (
+                    <span className="eks-file-item-actions">
+                      <button
+                        className="eks-file-action-btn"
+                        title="Rename"
+                        onClick={(e) => { e.stopPropagation(); handleRenameFile(f); }}
+                      >
+                        ✏
+                      </button>
+                      <button
+                        className="eks-file-action-btn eks-file-action-delete"
+                        title="Delete"
+                        onClick={(e) => { e.stopPropagation(); handleDeleteFile(f); }}
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  )}
+                </div>
+              ))}
+              {!readonly && (
+                <button className="eks-btn-add-file" onClick={handleAddFile}>+ Add File</button>
+              )}
+            </div>
           )}
           {readonly && (
             <button className="eks-btn-clone sidebar-clone" onClick={() => handleClonePreset(editorPreset)}>Clone to Edit</button>

@@ -203,6 +203,52 @@ class ECSPresetManager:
 
         return True
 
+    def delete_preset_file(self, name: str, filename: str) -> bool:
+        preset_dir = self.ecs_dir / name
+        local_path = preset_dir / filename
+        if local_path.exists():
+            try:
+                local_path.unlink()
+                logger.debug(f"Deleted local preset file: {local_path}")
+            except Exception as e:
+                logger.error(f"Failed to delete preset file {local_path}: {e}")
+                return False
+
+        s3 = self._get_s3_manager()
+        if s3:
+            s3_key = f"{S3_PRESET_PREFIX}/{name}/{filename}"
+            try:
+                s3.s3_client.delete_object(Bucket=s3.bucket_name, Key=s3_key)
+                logger.debug(f"Deleted S3 key: {s3_key}")
+            except Exception as e:
+                logger.warning(f"Failed to delete S3 key {s3_key}: {e}")
+
+        preset = self.get_preset(name)
+        if preset and filename in preset.get("files", []):
+            preset["files"] = [f for f in preset["files"] if f != filename]
+            self.save_preset(name, preset)
+
+        return True
+
+    def rename_preset_file(self, name: str, old_filename: str, new_filename: str) -> bool:
+        content = self.get_preset_file(name, old_filename)
+        if content is None:
+            return False
+        if not self.save_preset_file(name, new_filename, content):
+            return False
+        self.delete_preset_file(name, old_filename)
+
+        preset = self.get_preset(name)
+        if preset:
+            files = preset.get("files", [])
+            files = [new_filename if f == old_filename else f for f in files]
+            if new_filename not in files:
+                files.append(new_filename)
+            preset["files"] = sorted(set(files))
+            self.save_preset(name, preset)
+
+        return True
+
     def save_preset(self, name: str, manifest: Dict) -> bool:
         preset_dir = self.ecs_dir / name
         preset_dir.mkdir(parents=True, exist_ok=True)

@@ -274,6 +274,9 @@ def register(mcp: FastMCP, client: DogSTACClient):
         preset_name: str,
         filename: str = "",
         content: str = "",
+        delete_file: str = "",
+        rename_file: str = "",
+        new_filename: str = "",
         description: str | None = None,
         preset_type: str | None = None,
         deploy_commands: list[str] | None = None,
@@ -282,20 +285,40 @@ def register(mcp: FastMCP, client: DogSTACClient):
     ) -> str:
         """Update an EKS preset manifest or file (non built-in only).
 
-        Two modes:
+        Modes:
         - File mode (filename + content): Create or update a specific file in the preset.
+        - Delete file mode (delete_file): Remove a file from the preset.
+        - Rename file mode (rename_file + new_filename): Rename a file in the preset.
         - Manifest mode (no filename): Update preset metadata. Only provided fields are changed.
 
         Args:
             preset_name: The preset to update.
             filename: File to create/update (e.g. "deployment.yaml"). Triggers file mode.
             content: Full file content. Required when filename is provided.
+            delete_file: Filename to delete from the preset.
+            rename_file: Filename to rename.
+            new_filename: New name for the file (required with rename_file).
             description: New description (manifest mode only).
             preset_type: New type (manifest mode only).
             deploy_commands: New deploy commands (manifest mode only).
             update_commands: New update commands (manifest mode only).
             undeploy_commands: New undeploy commands (manifest mode only).
         """
+        if delete_file:
+            data = await client.delete(
+                f"/api/terraform/eks/manage/presets/{preset_name}/files/{delete_file}",
+            )
+            return json.dumps(data, indent=2)
+
+        if rename_file:
+            if not new_filename:
+                return json.dumps({"error": "new_filename is required for rename_file"})
+            data = await client.post(
+                f"/api/terraform/eks/manage/presets/{preset_name}/files/{rename_file}/rename",
+                {"new_filename": new_filename},
+            )
+            return json.dumps(data, indent=2)
+
         if filename:
             data = await client.put(
                 f"/api/terraform/eks/manage/presets/{preset_name}/files/{filename}",

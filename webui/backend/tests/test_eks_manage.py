@@ -131,6 +131,38 @@ def test_save_preset_file(manager):
     assert "us5.datadoghq.com" in content
 
 
+def test_delete_preset_file(manager):
+    manager.create_preset(
+        name="file-ops",
+        description="test",
+        files={"a.yaml": "data-a", "b.yaml": "data-b"},
+    )
+    assert manager.delete_preset_file("file-ops", "a.yaml") is True
+    assert manager.get_preset_file("file-ops", "a.yaml") is None
+    preset = manager.get_preset("file-ops")
+    assert "a.yaml" not in preset["files"]
+    assert "b.yaml" in preset["files"]
+
+
+def test_rename_preset_file(manager):
+    manager.create_preset(
+        name="rename-ops",
+        description="test",
+        files={"old.yaml": "content-here"},
+    )
+    assert manager.rename_preset_file("rename-ops", "old.yaml", "new.yaml") is True
+    assert manager.get_preset_file("rename-ops", "old.yaml") is None
+    assert manager.get_preset_file("rename-ops", "new.yaml") == "content-here"
+    preset = manager.get_preset("rename-ops")
+    assert "old.yaml" not in preset["files"]
+    assert "new.yaml" in preset["files"]
+
+
+def test_rename_preset_file_missing_source(manager):
+    manager.create_preset(name="rename-miss", description="test")
+    assert manager.rename_preset_file("rename-miss", "nope.yaml", "new.yaml") is False
+
+
 def test_delete_preset_blocks_built_in(manager):
     assert manager.delete_preset("agent-helm") is False
 

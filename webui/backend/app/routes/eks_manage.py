@@ -648,6 +648,38 @@ async def update_preset_file(name: str, filename: str, body: dict = Body(...)):
     return {"success": True}
 
 
+@router.delete("/presets/{name}/files/{filename:path}")
+async def delete_preset_file(name: str, filename: str):
+    preset = preset_manager.get_preset(name)
+    if not preset:
+        raise HTTPException(status_code=404, detail=f"Preset not found: {name}")
+    if preset.get("built_in"):
+        raise HTTPException(status_code=403, detail="OOTB presets are read-only. Clone it first.")
+
+    success = preset_manager.delete_preset_file(name, filename)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to delete file")
+    return {"success": True}
+
+
+@router.post("/presets/{name}/files/{filename:path}/rename")
+async def rename_preset_file(name: str, filename: str, body: dict = Body(...)):
+    new_filename = body.get("new_filename", "").strip()
+    if not new_filename:
+        raise HTTPException(status_code=400, detail="new_filename is required")
+
+    preset = preset_manager.get_preset(name)
+    if not preset:
+        raise HTTPException(status_code=404, detail=f"Preset not found: {name}")
+    if preset.get("built_in"):
+        raise HTTPException(status_code=403, detail="OOTB presets are read-only. Clone it first.")
+
+    success = preset_manager.rename_preset_file(name, filename, new_filename)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to rename file")
+    return {"success": True, "new_filename": new_filename}
+
+
 @router.put("/presets/{name}")
 async def update_preset_manifest(name: str, body: dict = Body(...)):
     preset = preset_manager.get_preset(name)
