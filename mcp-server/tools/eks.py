@@ -345,3 +345,90 @@ def register(mcp: FastMCP, client: DogSTACClient):
         """Delete an EKS preset (non built-in only). Removes the preset and all its files."""
         data = await client.delete(f"/api/terraform/eks/manage/presets/{preset_name}")
         return json.dumps(data, indent=2)
+
+    @mcp.tool()
+    async def configure_eks_cluster(
+        enable_node_group: bool | None = None,
+        node_instance_types: list[str] | None = None,
+        node_desired_size: int | None = None,
+        node_min_size: int | None = None,
+        node_max_size: int | None = None,
+        node_disk_size: int | None = None,
+        node_capacity_type: str | None = None,
+        enable_windows_node_group: bool | None = None,
+        windows_node_instance_types: list[str] | None = None,
+        windows_node_ami_type: str | None = None,
+        windows_node_desired_size: int | None = None,
+        windows_node_min_size: int | None = None,
+        windows_node_max_size: int | None = None,
+        windows_node_disk_size: int | None = None,
+        windows_node_capacity_type: str | None = None,
+        enable_fargate: bool | None = None,
+        fargate_namespaces: list[str] | None = None,
+        endpoint_public_access: bool | None = None,
+        endpoint_private_access: bool | None = None,
+    ) -> str:
+        """Configure EKS cluster infrastructure settings.
+
+        Call with no arguments to get the current configuration.
+        Provide only the fields you want to change; unspecified fields keep their current values.
+        After updating, run terraform(action="plan") then terraform(action="apply") on the
+        EKS resource to apply the changes.
+
+        Args:
+            enable_node_group: Enable Linux managed node group.
+            node_instance_types: EC2 instance types for Linux workers (e.g. ["t3.medium"]).
+            node_desired_size: Desired number of Linux nodes.
+            node_min_size: Minimum number of Linux nodes.
+            node_max_size: Maximum number of Linux nodes.
+            node_disk_size: Disk size in GB for Linux worker nodes.
+            node_capacity_type: "ON_DEMAND" or "SPOT".
+            enable_windows_node_group: Enable Windows managed node group.
+            windows_node_instance_types: EC2 instance types for Windows workers.
+            windows_node_ami_type: Windows AMI type (e.g. "WINDOWS_FULL_2022_x86_64").
+            windows_node_desired_size: Desired number of Windows nodes.
+            windows_node_min_size: Minimum number of Windows nodes.
+            windows_node_max_size: Maximum number of Windows nodes.
+            windows_node_disk_size: Disk size in GB for Windows worker nodes.
+            windows_node_capacity_type: "ON_DEMAND" or "SPOT".
+            enable_fargate: Enable Fargate profile for serverless pods.
+            fargate_namespaces: Kubernetes namespaces scheduled on Fargate (e.g. ["default", "kube-system"]).
+            endpoint_public_access: Enable public access to EKS API endpoint.
+            endpoint_private_access: Enable private access to EKS API endpoint.
+        """
+        updates = {
+            k: v for k, v in {
+                "enable_node_group": enable_node_group,
+                "node_instance_types": node_instance_types,
+                "node_desired_size": node_desired_size,
+                "node_min_size": node_min_size,
+                "node_max_size": node_max_size,
+                "node_disk_size": node_disk_size,
+                "node_capacity_type": node_capacity_type,
+                "enable_windows_node_group": enable_windows_node_group,
+                "windows_node_instance_types": windows_node_instance_types,
+                "windows_node_ami_type": windows_node_ami_type,
+                "windows_node_desired_size": windows_node_desired_size,
+                "windows_node_min_size": windows_node_min_size,
+                "windows_node_max_size": windows_node_max_size,
+                "windows_node_disk_size": windows_node_disk_size,
+                "windows_node_capacity_type": windows_node_capacity_type,
+                "enable_fargate": enable_fargate,
+                "fargate_namespaces": fargate_namespaces,
+                "endpoint_public_access": endpoint_public_access,
+                "endpoint_private_access": endpoint_private_access,
+            }.items() if v is not None
+        }
+
+        current = await client.get("/api/terraform/eks/config")
+        if "error" in current:
+            return json.dumps(current, indent=2)
+
+        if not updates:
+            return json.dumps(current, indent=2)
+
+        current.update(updates)
+        result = await client.post("/api/terraform/eks/config", current)
+        result["updated_fields"] = list(updates.keys())
+        result["note"] = "Run terraform plan/apply on the EKS resource to apply these changes."
+        return json.dumps(result, indent=2)

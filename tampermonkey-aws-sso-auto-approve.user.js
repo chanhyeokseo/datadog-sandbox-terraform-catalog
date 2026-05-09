@@ -1,11 +1,13 @@
 // ==UserScript==
 // @name         AWS SSO Auto-Approve for DogSTAC
 // @namespace    https://github.com/dogstac
-// @version      1.1.0
+// @version      1.2.0
 // @description  Auto-clicks "Confirm and continue" and "Allow access" on AWS SSO device authorization pages
 // @match        https://*.awsapps.com/*
-// @grant        none
+// @grant        window.close
 // @run-at       document-start
+// @updateURL    https://github.com/chanhyeokseo/dogstac/raw/refs/heads/main/tampermonkey-aws-sso-auto-approve.user.js
+// @downloadURL  https://github.com/chanhyeokseo/dogstac/raw/refs/heads/main/tampermonkey-aws-sso-auto-approve.user.js
 // ==/UserScript==
 
 (function () {
@@ -13,11 +15,17 @@
 
   const MAX_WAIT_MS = 10000;
   const POLL_INTERVAL_MS = 500;
+  const CLOSE_DELAY_MS = 3000;
   const TAG = "[AWS SSO Auto-Approve]";
 
   function clickButton(button) {
     console.log(TAG, "Clicking:", button.textContent.trim());
     button.click();
+  }
+
+  function closeTab() {
+    console.log(TAG, "Closing tab in", CLOSE_DELAY_MS, "ms");
+    setTimeout(function () { window.close(); }, CLOSE_DELAY_MS);
   }
 
   function findButtonByText(text) {
@@ -26,14 +34,15 @@
     );
   }
 
-  function pollForButton(text, startTime) {
+  function pollForButton(text, startTime, autoClose) {
     var btn = findButtonByText(text);
     if (btn && !btn.disabled) {
       clickButton(btn);
+      if (autoClose) closeTab();
       return;
     }
     if (Date.now() - startTime < MAX_WAIT_MS) {
-      setTimeout(function () { pollForButton(text, startTime); }, POLL_INTERVAL_MS);
+      setTimeout(function () { pollForButton(text, startTime, autoClose); }, POLL_INTERVAL_MS);
     } else {
       console.warn(TAG, "Timed out waiting for button:", text);
     }
@@ -48,7 +57,7 @@
       pollForButton("Confirm and continue", Date.now());
     } else if (hash.includes("clientId=") || href.includes("clientId=")) {
       console.log(TAG, "Access grant page detected:", href);
-      pollForButton("Allow access", Date.now());
+      pollForButton("Allow access", Date.now(), true);
     }
   }
 

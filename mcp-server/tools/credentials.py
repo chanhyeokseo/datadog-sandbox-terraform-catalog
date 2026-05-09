@@ -26,7 +26,9 @@ def register(mcp: FastMCP, client: DogSTACClient):
     async def sso_login(session_id: str = "") -> str:
         """AWS SSO login. Two modes:
         - No session_id: Start SSO login, returns verification URL, user code, and session_id.
-          Present the URL and code to the user, then call again with session_id.
+          You MUST open the verification_uri in the user's browser by running
+          `open <verification_uri>` via shell, then IMMEDIATELY call sso_login again
+          with the returned session_id to start polling. Do NOT wait for user confirmation.
         - With session_id: Poll for completion (up to 5 min). Returns only after
           authentication AND backend initialization are complete."""
         if not session_id:
@@ -36,9 +38,11 @@ def register(mcp: FastMCP, client: DogSTACClient):
                 "verification_uri": data.get("verification_uri", ""),
                 "user_code": data.get("user_code"),
                 "instruction": (
-                    "Present the verification URL and user code to the user. "
-                    "Ask the user to open the URL, enter the code, and approve. "
-                    "Then call sso_login again with the session_id."
+                    "1. Run `open <verification_uri>` via shell to open the URL in the browser. "
+                    "2. Show the verification URL and user code to the user as fallback. "
+                    "3. IMMEDIATELY call sso_login again with the session_id to start polling. "
+                    "Do NOT wait for the user to confirm completion; the polling call will block "
+                    "until authentication finishes automatically."
                 ),
             }, indent=2)
 

@@ -209,6 +209,54 @@ def register(mcp: FastMCP, client: DogSTACClient):
         return result.get("output", json.dumps(result, indent=2))
 
     @mcp.tool()
+    async def configure_ecs_cluster(
+        enable_fargate: bool | None = None,
+        enable_ec2: bool | None = None,
+        ec2_instance_type: str | None = None,
+        ec2_min_size: int | None = None,
+        ec2_max_size: int | None = None,
+        ec2_desired_capacity: int | None = None,
+    ) -> str:
+        """Configure ECS cluster infrastructure settings.
+
+        Call with no arguments to get the current configuration.
+        Provide only the fields you want to change; unspecified fields keep their current values.
+        After updating, run terraform(action="plan") then terraform(action="apply") on the
+        ECS resource to apply the changes.
+
+        Args:
+            enable_fargate: Enable Fargate capacity provider for serverless tasks.
+            enable_ec2: Enable EC2 capacity provider for container instances.
+            ec2_instance_type: EC2 instance type (e.g. "t3.medium").
+            ec2_min_size: Minimum number of EC2 instances in Auto Scaling Group.
+            ec2_max_size: Maximum number of EC2 instances in Auto Scaling Group.
+            ec2_desired_capacity: Desired number of EC2 instances in Auto Scaling Group.
+        """
+        updates = {
+            k: v for k, v in {
+                "enable_fargate": enable_fargate,
+                "enable_ec2": enable_ec2,
+                "ec2_instance_type": ec2_instance_type,
+                "ec2_min_size": ec2_min_size,
+                "ec2_max_size": ec2_max_size,
+                "ec2_desired_capacity": ec2_desired_capacity,
+            }.items() if v is not None
+        }
+
+        current = await client.get("/api/terraform/ecs/config")
+        if "error" in current:
+            return json.dumps(current, indent=2)
+
+        if not updates:
+            return json.dumps(current, indent=2)
+
+        current.update(updates)
+        result = await client.post("/api/terraform/ecs/config", current)
+        result["updated_fields"] = list(updates.keys())
+        result["note"] = "Run terraform plan/apply on the ECS resource to apply these changes."
+        return json.dumps(result, indent=2)
+
+    @mcp.tool()
     async def query_cloudwatch_logs(
         log_group: str,
         filter_pattern: str = "",
