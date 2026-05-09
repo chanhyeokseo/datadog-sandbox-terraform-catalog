@@ -58,8 +58,8 @@ select_option() {
         fi
 
         case "${key}" in
-            $'\x1b[A') ((selected > 0)) && ((selected--)) ;;
-            $'\x1b[B') ((selected < count - 1)) && ((selected++)) ;;
+            $'\x1b[A') ((selected > 0)) && ((selected--)) || true ;;
+            $'\x1b[B') ((selected < count - 1)) && ((selected++)) || true ;;
             "") break ;;
         esac
 

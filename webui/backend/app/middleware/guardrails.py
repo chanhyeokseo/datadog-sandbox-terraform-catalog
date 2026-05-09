@@ -35,6 +35,17 @@ MCP_READONLY_VARIABLES = {
 }
 
 SG_RULES_PATH = "/api/terraform/security-group/rules"
+EKS_CONFIG_PATH = "/api/terraform/eks/config"
+ECS_CONFIG_PATH = "/api/terraform/ecs/config"
+
+CONFIG_NODE_COUNT_FIELDS = {
+    "node_desired_size",
+    "node_max_size",
+    "windows_node_desired_size",
+    "windows_node_max_size",
+    "ec2_desired_capacity",
+    "ec2_max_size",
+}
 
 VARIABLE_PATH_RE = re.compile(
     r"^/api/terraform(?:/resources/[^/]+)?/variables/(?P<var_name>[^/]+)$"
@@ -65,6 +76,9 @@ class GuardrailMiddleware(BaseHTTPMiddleware):
                 "MCP clients cannot modify security group rules directly. "
                 "Use the add_my_ip_ssh_rule tool instead."
             )
+
+        if request.method == "POST" and path in (EKS_CONFIG_PATH, ECS_CONFIG_PATH):
+            return await self._check_config(request)
 
         if request.method == "PUT":
             m = VARIABLE_PATH_RE.match(path)
@@ -107,6 +121,36 @@ class GuardrailMiddleware(BaseHTTPMiddleware):
             if count > MAX_NODE_COUNT:
                 return (
                     f"{var_name}={count} exceeds maximum of {MAX_NODE_COUNT} "
+                    f"allowed via MCP."
+                )
+
+        return None
+
+    async def _check_config(self, request: Request) -> str | None:
+        try:
+            body = await request.body()
+            data = json.loads(body) if body else {}
+        except (json.JSONDecodeError, Exception):
+            return None
+
+        instance_type = data.get("ec2_instance_type")
+        if instance_type is not None and str(instance_type) not in ALLOWED_INSTANCE_TYPES:
+            return (
+                f"Instance type '{instance_type}' is not allowed via MCP. "
+                f"Allowed types: {sorted(ALLOWED_INSTANCE_TYPES)}"
+            )
+
+        for field in CONFIG_NODE_COUNT_FIELDS:
+            value = data.get(field)
+            if value is None:
+                continue
+            try:
+                count = int(value)
+            except (ValueError, TypeError):
+                return f"Invalid integer value for {field}: {value}"
+            if count > MAX_NODE_COUNT:
+                return (
+                    f"{field}={count} exceeds maximum of {MAX_NODE_COUNT} "
                     f"allowed via MCP."
                 )
 

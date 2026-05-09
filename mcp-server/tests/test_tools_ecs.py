@@ -276,3 +276,60 @@ class TestQueryCloudwatchLogs:
         await tool.run({"log_group": "/ecs/test", "limit": 9999})
         call_body = client.post.call_args[0][1]
         assert call_body["limit"] == 1000
+
+
+class TestConfigureECSCluster:
+
+    _CURRENT_CONFIG = {
+        "enable_fargate": True,
+        "enable_ec2": False,
+        "ec2_instance_type": "t3.medium",
+        "ec2_min_size": 1,
+        "ec2_max_size": 3,
+        "ec2_desired_capacity": 1,
+    }
+
+    async def test_get_current_config(self, mcp_with_tools):
+        mcp, client = mcp_with_tools
+        client.get.return_value = dict(self._CURRENT_CONFIG)
+        tool = mcp._tool_manager._tools["configure_ecs_cluster"]
+        result = json.loads(await tool.run({}))
+        assert result["enable_fargate"] is True
+        assert result["enable_ec2"] is False
+        client.get.assert_called_once_with("/api/terraform/ecs/config")
+        client.post.assert_not_called()
+
+    async def test_partial_update_merges_and_posts(self, mcp_with_tools):
+        mcp, client = mcp_with_tools
+        client.get.return_value = dict(self._CURRENT_CONFIG)
+        client.post.return_value = {"success": True, "message": "ECS configuration updated successfully"}
+        tool = mcp._tool_manager._tools["configure_ecs_cluster"]
+        result = json.loads(await tool.run({
+            "enable_ec2": True,
+            "ec2_instance_type": "t3.micro",
+        }))
+        assert result["success"] is True
+        assert "enable_ec2" in result["updated_fields"]
+        assert "ec2_instance_type" in result["updated_fields"]
+        posted_config = client.post.call_args[0][1]
+        assert posted_config["enable_ec2"] is True
+        assert posted_config["ec2_instance_type"] == "t3.micro"
+        assert posted_config["enable_fargate"] is True
+
+    async def test_returns_error_when_config_unavailable(self, mcp_with_tools):
+        mcp, client = mcp_with_tools
+        client.get.return_value = {"error": "ECS resource not found"}
+        tool = mcp._tool_manager._tools["configure_ecs_cluster"]
+        result = json.loads(await tool.run({"enable_ec2": True}))
+        assert "error" in result
+        client.post.assert_not_called()
+
+    async def test_single_field_update(self, mcp_with_tools):
+        mcp, client = mcp_with_tools
+        client.get.return_value = dict(self._CURRENT_CONFIG)
+        client.post.return_value = {"success": True, "message": "ECS configuration updated successfully"}
+        tool = mcp._tool_manager._tools["configure_ecs_cluster"]
+        result = json.loads(await tool.run({"enable_fargate": False}))
+        assert result["updated_fields"] == ["enable_fargate"]
+        posted_config = client.post.call_args[0][1]
+        assert posted_config["enable_fargate"] is False

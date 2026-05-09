@@ -338,3 +338,73 @@ class TestManageClusterShare:
         assert len(result["clusters"]) == 1
         assert result["clusters"][0]["owner_prefix"] == "other-user"
         client.get.assert_called_once_with("/api/cluster-share/shared")
+
+
+class TestConfigureEKSCluster:
+
+    _CURRENT_CONFIG = {
+        "enable_node_group": True,
+        "node_instance_types": ["t3.medium"],
+        "node_desired_size": 2,
+        "node_min_size": 1,
+        "node_max_size": 4,
+        "node_disk_size": 20,
+        "node_capacity_type": "ON_DEMAND",
+        "enable_windows_node_group": False,
+        "windows_node_instance_types": ["t3.medium"],
+        "windows_node_ami_type": "WINDOWS_FULL_2022_x86_64",
+        "windows_node_desired_size": 2,
+        "windows_node_min_size": 1,
+        "windows_node_max_size": 4,
+        "windows_node_disk_size": 50,
+        "windows_node_capacity_type": "ON_DEMAND",
+        "enable_fargate": False,
+        "fargate_namespaces": ["default", "kube-system"],
+        "endpoint_public_access": True,
+        "endpoint_private_access": True,
+    }
+
+    async def test_get_current_config(self, mcp_with_tools):
+        mcp, client = mcp_with_tools
+        client.get.return_value = dict(self._CURRENT_CONFIG)
+        result = json.loads(await _tool(mcp, "configure_eks_cluster").run({}))
+        assert result["enable_fargate"] is False
+        assert result["node_desired_size"] == 2
+        client.get.assert_called_once_with("/api/terraform/eks/config")
+        client.post.assert_not_called()
+
+    async def test_partial_update_merges_and_posts(self, mcp_with_tools):
+        mcp, client = mcp_with_tools
+        client.get.return_value = dict(self._CURRENT_CONFIG)
+        client.post.return_value = {"success": True, "message": "EKS configuration updated successfully"}
+        result = json.loads(await _tool(mcp, "configure_eks_cluster").run({
+            "enable_fargate": True,
+            "fargate_namespaces": ["default"],
+        }))
+        assert result["success"] is True
+        assert "enable_fargate" in result["updated_fields"]
+        assert "fargate_namespaces" in result["updated_fields"]
+        posted_config = client.post.call_args[0][1]
+        assert posted_config["enable_fargate"] is True
+        assert posted_config["fargate_namespaces"] == ["default"]
+        assert posted_config["node_desired_size"] == 2
+
+    async def test_returns_error_when_config_unavailable(self, mcp_with_tools):
+        mcp, client = mcp_with_tools
+        client.get.return_value = {"error": "EKS resource not found"}
+        result = json.loads(await _tool(mcp, "configure_eks_cluster").run({
+            "enable_fargate": True,
+        }))
+        assert "error" in result
+        client.post.assert_not_called()
+
+    async def test_single_field_update(self, mcp_with_tools):
+        mcp, client = mcp_with_tools
+        client.get.return_value = dict(self._CURRENT_CONFIG)
+        client.post.return_value = {"success": True, "message": "EKS configuration updated successfully"}
+        result = json.loads(await _tool(mcp, "configure_eks_cluster").run({
+            "node_capacity_type": "SPOT",
+        }))
+        assert result["updated_fields"] == ["node_capacity_type"]
+        posted_config = client.post.call_args[0][1]
+        assert posted_config["node_capacity_type"] == "SPOT"
