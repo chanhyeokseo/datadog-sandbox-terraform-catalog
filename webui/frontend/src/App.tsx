@@ -12,8 +12,9 @@ import IdleOverlay from './components/IdleOverlay';
 import FeedbackFab from './components/FeedbackFab';
 import ClusterShareModal from './components/ClusterShareModal';
 import Tutorial, { TutorialStep } from './components/Tutorial';
+import AuditLog from './components/AuditLog';
 import { TerraformResource, ResourceType } from './types';
-import { terraformApi as api, OnboardingStatus } from './services/api';
+import { terraformApi as api, OnboardingStatus, connectAuditSSE } from './services/api';
 
 const TUTORIAL_STEPS: TutorialStep[] = [
   {
@@ -167,7 +168,10 @@ function App() {
   const [selectedResource, setSelectedResource] = useState<TerraformResource | null>(null);
   const [resources, setResources] = useState<TerraformResource[]>([]);
   const [results, setResults] = useState<Result[]>([]);
-  const [isDarkMode, setIsDarkMode] = useState(true);
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    const saved = localStorage.getItem('theme');
+    return saved === 'dark';
+  });
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [showConnectionsModal, setShowConnectionsModal] = useState(false);
   const [showOnboardingModal, setShowOnboardingModal] = useState(false);
@@ -194,15 +198,20 @@ function App() {
   const [showMcpGuide, setShowMcpGuide] = useState(false);
   const [tutorialActionEvent, setTutorialActionEvent] = useState<string | undefined>(undefined);
   const [initTrigger, setInitTrigger] = useState(0);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [activeView, setActiveView] = useState<'resource' | 'audit-log'>('resource');
+  const [auditRefreshTrigger, setAuditRefreshTrigger] = useState(0);
 
   useEffect(() => { showTutorialRef.current = showTutorial; }, [showTutorial]);
 
   useEffect(() => {
-    const savedTheme = localStorage.getItem('theme');
-    if (savedTheme === 'light') {
-      setIsDarkMode(false);
-      document.body.classList.add('light-mode');
-    }
+    document.body.classList.toggle('dark-mode', isDarkMode);
+    localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
+  }, [isDarkMode]);
+
+  const toggleTheme = () => setIsDarkMode(prev => !prev);
+
+  useEffect(() => {
     let cancelled = false;
     const run = async () => {
       const extractCredentialError = (err: any): CredentialError => {
@@ -448,6 +457,19 @@ function App() {
 
   useEffect(() => {
     if (initialLoadPhase !== 'ready') return;
+    const cleanup = connectAuditSSE({
+      onAuditEntry: () => {
+        setAuditRefreshTrigger(prev => prev + 1);
+      },
+      onResourceChanged: () => {
+        setResourceRefreshTrigger(prev => prev + 1);
+      },
+    });
+    return cleanup;
+  }, [initialLoadPhase]);
+
+  useEffect(() => {
+    if (initialLoadPhase !== 'ready') return;
     let cancelled = false;
     const resumeActiveOps = async () => {
       try {
@@ -534,19 +556,6 @@ function App() {
       }
     } catch (error) {
       console.error('Failed to check onboarding status:', error);
-    }
-  };
-
-  const toggleTheme = () => {
-    const newMode = !isDarkMode;
-    setIsDarkMode(newMode);
-    
-    if (newMode) {
-      document.body.classList.remove('light-mode');
-      localStorage.setItem('theme', 'dark');
-    } else {
-      document.body.classList.add('light-mode');
-      localStorage.setItem('theme', 'light');
     }
   };
 
@@ -773,7 +782,7 @@ function App() {
   }
 
   return (
-    <div className="app">
+    <div className={`app ${sidebarOpen ? 'sidebar-open' : ''}`}>
       {providerReady !== true && (
         providerReady === false
           ? <ProviderLoadingScreen progress={providerProgress.progress} message={providerProgress.message} />
@@ -788,54 +797,51 @@ function App() {
             </div>
           )
       )}
-      <header className="app-header">
-        <div className="header-content">
-          <img src="/logo.png" alt="DogSTAC" className="app-logo-header" />
-          <h1>DogSTAC</h1>
-        </div>
-        <div className="header-actions">
-          <button onClick={() => setShowMcpGuide(true)} className="config-button">
-            🤖 MCP Server
-          </button>
-          <button onClick={handleOpenConnections} className="config-button">
-            🔗 Connections
-          </button>
-          <button onClick={handleUpdateIP} className="config-button">
-            🌐 Security Group
-          </button>
-          <button onClick={() => setShowConfigModal(true)} className="config-button">
-            ⚙️ Config
-          </button>
-          <button onClick={toggleTheme} className="theme-toggle">
-            {isDarkMode ? '☀️ Light Mode' : '🌙 Dark Mode'}
-          </button>
-        </div>
-      </header>
+      <button
+        className="mobile-menu-btn"
+        onClick={() => setSidebarOpen(prev => !prev)}
+        aria-label="Toggle sidebar"
+      >
+        {sidebarOpen ? '✕' : '☰'}
+      </button>
+      {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
+      <ResourceSidebar
+        onResourceSelect={(r) => { setSelectedResource(r); setActiveView('resource'); setSidebarOpen(false); }}
+        selectedResourceId={selectedResource?.id || null}
+        refreshTrigger={resourceRefreshTrigger}
+        runningResources={runningResources}
+        onResourcesLoaded={setResources}
+        onRequestClusterShare={() => setShowClusterShareModal(true)}
+        sharedClusterRefreshTrigger={sharedClusterRefreshTrigger}
+        onOpenConfig={() => setShowConfigModal(true)}
+        onOpenConnections={handleOpenConnections}
+        onOpenMcpGuide={() => setShowMcpGuide(true)}
+        onOpenAuditLog={() => setActiveView('audit-log')}
+        onUpdateIP={handleUpdateIP}
+        isDarkMode={isDarkMode}
+        onToggleTheme={toggleTheme}
+        activeView={activeView}
+      />
 
       <main className="app-main">
-        <div className="three-panel-layout">
-          <ResourceSidebar
-            onResourceSelect={setSelectedResource}
-            selectedResourceId={selectedResource?.id || null}
-            refreshTrigger={resourceRefreshTrigger}
-            runningResources={runningResources}
-            onResourcesLoaded={setResources}
-            onRequestClusterShare={() => setShowClusterShareModal(true)}
-            sharedClusterRefreshTrigger={sharedClusterRefreshTrigger}
-          />
-          <ActionPanel
-            selectedResource={selectedResource}
-            onActionStart={handleActionStart}
-            onActionUpdate={handleActionUpdate}
-            onActionComplete={handleActionComplete}
-            onResourcesNeedRefresh={handleResourcesNeedRefresh}
-            runningAction={selectedResource ? runningResources.get(selectedResource.id) : undefined}
-          />
-          <ResultsPanel
-            results={results}
-            onClear={handleClearResults}
-          />
-        </div>
+        {activeView === 'audit-log' ? (
+          <AuditLog refreshTrigger={auditRefreshTrigger} />
+        ) : (
+          <>
+            <ActionPanel
+              selectedResource={selectedResource}
+              onActionStart={handleActionStart}
+              onActionUpdate={handleActionUpdate}
+              onActionComplete={handleActionComplete}
+              onResourcesNeedRefresh={handleResourcesNeedRefresh}
+              runningAction={selectedResource ? runningResources.get(selectedResource.id) : undefined}
+            />
+            <ResultsPanel
+              results={results}
+              onClear={handleClearResults}
+            />
+          </>
+        )}
       </main>
 
       {showConfigModal && (

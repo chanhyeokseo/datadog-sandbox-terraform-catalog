@@ -1,6 +1,6 @@
 .eks-editor {
   background: var(--bg-primary);
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   width: 90%;
   max-width: 900px;
   max-height: 90vh;
@@ -8,6 +8,15 @@
   display: flex;
   flex-direction: column;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+}
+
+.eks-editor.eks-editor-inline {
+  width: 100%;
+  max-width: none;
+  max-height: none;
+  box-shadow: none;
+  border: 1px solid var(--border-color);
+  overflow: visible;
 }
 
 .eks-editor.loading {
@@ -50,7 +59,7 @@
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   font-size: 14px;
   font-weight: 500;
   transition: all 0.2s;
@@ -83,7 +92,7 @@
 .section-toggle {
   padding: 16px;
   background: rgba(139, 127, 199, 0.1);
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   border: 1px solid rgba(139, 127, 199, 0.2);
 }
 
@@ -119,7 +128,7 @@
 .form-group select {
   padding: 10px 12px;
   border: 1px solid var(--border-color);
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   background: var(--bg-secondary);
   color: var(--text-primary);
   font-size: 14px;
@@ -140,7 +149,7 @@
   padding: 12px 16px;
   background: rgba(255, 193, 7, 0.1);
   border: 1px solid rgba(255, 193, 7, 0.3);
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
   font-size: 14px;
 }
@@ -149,7 +158,7 @@
   padding: 12px 16px;
   background: rgba(33, 150, 243, 0.1);
   border: 1px solid rgba(33, 150, 243, 0.3);
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
   font-size: 14px;
 }
@@ -175,7 +184,7 @@
   background: rgba(220, 53, 69, 0.2);
   color: #dc3545;
   border: 1px solid rgba(220, 53, 69, 0.3);
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 12px;
 }
@@ -191,7 +200,7 @@
   background: rgba(76, 175, 80, 0.2);
   color: #4caf50;
   border: 1px solid rgba(76, 175, 80, 0.3);
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
@@ -228,7 +237,7 @@
   border: 1px solid var(--border-color);
   background: transparent;
   color: var(--text-secondary);
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 14px;
   font-weight: 500;
@@ -246,7 +255,7 @@
   border: none;
   background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
   color: white;
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-size: 14px;
   font-weight: 600;
@@ -270,31 +279,15 @@
 
 .editor-content::-webkit-scrollbar-track {
   background: var(--bg-secondary);
-  border-radius: 0;
+  border-radius: var(--radius-sm);
 }
 
 .editor-content::-webkit-scrollbar-thumb {
   background: var(--text-tertiary);
-  border-radius: 0;
+  border-radius: var(--radius-sm);
 }
 
 .editor-content::-webkit-scrollbar-thumb:hover {
   background: var(--text-secondary);
 }
 
-/* Light mode adjustments */
-.light-mode .warning-box {
-  background: rgba(255, 193, 7, 0.15);
-}
-
-.light-mode .info-box {
-  background: rgba(33, 150, 243, 0.15);
-}
-
-.light-mode .section-toggle {
-  background: rgba(139, 127, 199, 0.08);
-}
-
-.light-mode .cost-estimate {
-  background: rgba(255, 193, 7, 0.12);
-}

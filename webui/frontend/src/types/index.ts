@@ -78,3 +78,32 @@ export interface SharedCluster {
   owner_prefix: string;
   shared_at: string;
 }
+
+export interface AuditEntry {
+  id: string;
+  timestamp: string;
+  actor: string;
+  tool_action: string;
+  resource: string;
+  status: 'success' | 'failed';
+  duration_ms: number;
+  method: string;
+  path: string;
+  status_code: number;
+}
+
+export interface AuditSummary {
+  total: number;
+  successful: number;
+  failed: number;
+  success_rate: number;
+  avg_duration_ms: number;
+}
+
+export interface AuditLogsResponse {
+  entries: AuditEntry[];
+  total: number;
+  page: number;
+  per_page: number;
+  total_pages: number;
+}

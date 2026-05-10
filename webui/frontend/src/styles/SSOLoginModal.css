@@ -1,26 +1,14 @@
 .sso-modal {
-  background: var(--panel-bg);
-  backdrop-filter: blur(20px) saturate(1.4);
-  -webkit-backdrop-filter: blur(20px) saturate(1.4);
-  border: 1px solid var(--panel-border);
-  box-shadow: var(--glass-shadow-strong),
-              0 0 80px rgba(139, 127, 199, 0.2),
-              inset 0 1px 0 rgba(255, 255, 255, 0.1);
-  border-radius: 0;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+  border-radius: var(--radius-lg);
   padding: 28px 32px;
   min-width: 420px;
   max-width: 520px;
   display: flex;
   flex-direction: column;
   gap: 20px;
-}
-
-body.light-mode .sso-modal {
-  background: rgba(255, 255, 255, 0.92);
-  border-color: rgba(139, 127, 199, 0.2);
-  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.1),
-              0 0 60px rgba(139, 127, 199, 0.1),
-              inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 .sso-modal-header {
@@ -48,12 +36,9 @@ body.light-mode .sso-modal {
   flex-direction: column;
   gap: 10px;
   padding: 16px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
-}
-
-body.light-mode .sso-modal-section {
-  background: rgba(0, 0, 0, 0.02);
+  border-radius: var(--radius-sm);
 }
 
 .sso-section-label {
@@ -66,20 +51,19 @@ body.light-mode .sso-modal-section {
 
 .sso-start-btn {
   padding: 10px 24px;
-  background: linear-gradient(135deg, rgba(139, 127, 199, 0.5) 0%, rgba(139, 127, 199, 0.3) 100%);
-  border: 2px solid rgba(139, 127, 199, 0.6);
-  color: var(--text-primary);
+  background: var(--primary-color);
+  border: 1px solid var(--primary-dark);
+  color: #ffffff;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
-  border-radius: 0;
+  border-radius: var(--radius-sm);
 }
 
 .sso-start-btn:hover {
-  background: linear-gradient(135deg, rgba(139, 127, 199, 0.6) 0%, rgba(139, 127, 199, 0.4) 100%);
-  border-color: rgba(139, 127, 199, 0.8);
-  box-shadow: 0 4px 15px rgba(139, 127, 199, 0.4);
+  background: var(--primary-dark);
+  box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
 }
 
 .sso-status-row {
@@ -98,8 +82,8 @@ body.light-mode .sso-modal-section {
 .sso-spinner {
   width: 16px;
   height: 16px;
-  border: 2px solid rgba(139, 127, 199, 0.3);
-  border-top-color: rgba(139, 127, 199, 0.8);
+  border: 2px solid var(--border-color);
+  border-top-color: var(--primary-color);
   border-radius: 50%;
   animation: sso-spin 0.8s linear infinite;
 }
@@ -124,9 +108,10 @@ body.light-mode .sso-modal-section {
 .sso-auth-link {
   display: block;
   padding: 8px 12px;
-  background: rgba(74, 158, 255, 0.08);
-  border: 1px solid rgba(74, 158, 255, 0.25);
-  color: #4a9eff;
+  background: rgba(25, 118, 210, 0.06);
+  border: 1px solid rgba(25, 118, 210, 0.2);
+  border-radius: var(--radius-sm);
+  color: #1976d2;
   font-size: 13px;
   font-family: 'SF Mono', 'Fira Code', monospace;
   word-break: break-all;
@@ -135,17 +120,6 @@ body.light-mode .sso-modal-section {
 }
 
 .sso-auth-link:hover {
-  background: rgba(74, 158, 255, 0.15);
-  border-color: rgba(74, 158, 255, 0.4);
-}
-
-body.light-mode .sso-auth-link {
-  color: #1976d2;
-  background: rgba(25, 118, 210, 0.06);
-  border-color: rgba(25, 118, 210, 0.2);
-}
-
-body.light-mode .sso-auth-link:hover {
   background: rgba(25, 118, 210, 0.1);
   border-color: rgba(25, 118, 210, 0.35);
 }
@@ -169,12 +143,9 @@ body.light-mode .sso-auth-link:hover {
   font-family: 'SF Mono', 'Fira Code', monospace;
   letter-spacing: 2px;
   color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
-}
-
-body.light-mode .sso-user-code-value {
-  background: rgba(0, 0, 0, 0.04);
+  border-radius: var(--radius-sm);
 }
 
 .sso-error-block {
@@ -202,14 +173,11 @@ body.light-mode .sso-user-code-value {
   font-size: 13px;
   font-family: 'SF Mono', 'Fira Code', monospace;
   color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
   word-break: break-all;
   user-select: all;
-}
-
-body.light-mode .sso-command-value {
-  background: rgba(0, 0, 0, 0.03);
 }
 
 .sso-copy-btn {
@@ -220,13 +188,13 @@ body.light-mode .sso-command-value {
   background: transparent;
   color: var(--text-secondary);
   border: 1px solid var(--border-color);
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   white-space: nowrap;
   transition: all 0.15s ease;
 }
 
 .sso-copy-btn:hover {
-  background: var(--glass-bg);
+  background: var(--bg-hover);
   color: var(--text-primary);
   border-color: var(--border-color-strong);
 }
@@ -239,18 +207,17 @@ body.light-mode .sso-command-value {
 
 .sso-retry-btn {
   padding: 10px 32px;
-  background: linear-gradient(135deg, rgba(139, 127, 199, 0.5) 0%, rgba(139, 127, 199, 0.3) 100%);
-  border: 2px solid rgba(139, 127, 199, 0.6);
-  color: var(--text-primary);
+  background: var(--primary-color);
+  border: 1px solid var(--primary-dark);
+  color: #ffffff;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
-  border-radius: 0;
+  border-radius: var(--radius-sm);
 }
 
 .sso-retry-btn:hover {
-  background: linear-gradient(135deg, rgba(139, 127, 199, 0.6) 0%, rgba(139, 127, 199, 0.4) 100%);
-  border-color: rgba(139, 127, 199, 0.8);
-  box-shadow: 0 4px 15px rgba(139, 127, 199, 0.4);
+  background: var(--primary-dark);
+  box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
 }

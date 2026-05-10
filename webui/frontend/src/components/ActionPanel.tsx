@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { TerraformResource, TerraformVariable, ResourceType } from '../types';
 import { terraformApi, ecsManageApi } from '../services/api';
@@ -38,7 +38,6 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
   const [editingVar, setEditingVar] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<string>('');
   const [showSGEditor, setShowSGEditor] = useState(false);
-  const [showEKSEditor, setShowEKSEditor] = useState(false);
   const [showDockerAgentEditor, setShowDockerAgentEditor] = useState(false);
   const [showDebugModal, setShowDebugModal] = useState(false);
   const [showDescriptionModal, setShowDescriptionModal] = useState(false);
@@ -46,7 +45,6 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
   const [rdpInfo, setRdpInfo] = useState<{ ip: string; username: string; password: string } | null>(null);
   const [eksConnectInfo, setEksConnectInfo] = useState<{ kubeconfigCommand: string; clusterName: string; ssoCommand: string } | null>(null);
   const [showEKSManageModal, setShowEKSManageModal] = useState(false);
-  const [showECSEditor, setShowECSEditor] = useState(false);
   const [showECSManageModal, setShowECSManageModal] = useState(false);
   const [ecsConnectInfo, setEcsConnectInfo] = useState<{ clusterName: string; clusterArn: string; region: string } | null>(null);
   const [showECSConnectModal, setShowECSConnectModal] = useState(false);
@@ -70,6 +68,9 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
     if (selectedResource) {
       setVariables([]);
       loadVariables(selectedResource.id);
+      if (selectedResource.status === 'enabled') {
+        loadOutputsSilently(selectedResource.id, selectedResource.name);
+      }
     } else {
       setVariables([]);
     }
@@ -85,6 +86,17 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
       setVariables([]);
     } finally {
       setVariablesLoading(false);
+    }
+  };
+
+  const loadOutputsSilently = async (resourceId: string, resourceName: string) => {
+    try {
+      const result = await terraformApi.output(resourceId);
+      if (result.success && result.output) {
+        saveOutput(resourceId, resourceName, result.output);
+      }
+    } catch (err) {
+      console.debug('Silent output load failed:', err);
     }
   };
 
@@ -541,279 +553,249 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
   };
 
 
-  return (
-    <div className="action-panel">
-      <div className="action-header">
-        <div className="action-header-left">
-          <h2>Actions</h2>
+  const [activeTab, setActiveTab] = useState<'variables' | 'configuration' | 'outputs'>('variables');
+
+  const resourceTypeIcon = useMemo(() => {
+    if (!selectedResource) return '';
+    switch (selectedResource.type) {
+      case ResourceType.EC2: return 'EC2';
+      case ResourceType.EKS: return 'EKS';
+      case ResourceType.ECS: return 'ECS';
+      case ResourceType.RDS: return 'RDS';
+      case ResourceType.ECR: return 'ECR';
+      case ResourceType.LAMBDA: return 'Lambda';
+      case ResourceType.SECURITY_GROUP: return 'SG';
+      default: return selectedResource.type.toUpperCase();
+    }
+  }, [selectedResource?.type]);
+
+  const hasConfigTab = selectedResource && !selectedResource.is_shared && (
+    selectedResource.type === ResourceType.SECURITY_GROUP ||
+    selectedResource.type === ResourceType.EKS ||
+    selectedResource.type === ResourceType.ECS ||
+    (selectedResource.type === ResourceType.EC2 && selectedResource.id === 'ec2_datadog_docker')
+  );
+
+  const showVariablesTab = !selectedResource?.is_shared &&
+    selectedResource?.type !== ResourceType.EKS &&
+    selectedResource?.type !== ResourceType.ECS;
+
+  const availableTabs = useMemo(() => {
+    const tabs: Array<'variables' | 'configuration' | 'outputs'> = [];
+    if (showVariablesTab) tabs.push('variables');
+    if (hasConfigTab) tabs.push('configuration');
+    tabs.push('outputs');
+    return tabs;
+  }, [showVariablesTab, hasConfigTab]);
+
+  useEffect(() => {
+    if (!availableTabs.includes(activeTab)) {
+      setActiveTab(availableTabs[0] || 'outputs');
+    }
+  }, [availableTabs, activeTab]);
+
+  const renderActionButtons = () => {
+    if (!selectedResource) return null;
+
+    if (selectedResource.is_shared) {
+      return (
+        <button onClick={handleEKSConnect} className="header-action-btn btn-manage" title="Manage shared EKS cluster workloads and presets">
+          Manage
+        </button>
+      );
+    }
+
+    if (runningAction) {
+      return (
+        <button disabled className="header-action-btn btn-stop" title={`${runningAction} is in progress for this resource`}>
+          {runningAction === 'plan' ? 'Planning...' : runningAction === 'deploy' ? (selectedResource.status === 'enabled' ? 'Updating...' : 'Deploying...') : 'Destroying...'}
+        </button>
+      );
+    }
+
+    return (
+      <>
+        <button
+          data-tutorial="btn-plan"
+          onClick={handlePlan}
+          disabled={!selectedResource || !!runningAction}
+          className="header-action-btn btn-plan"
+          title="Preview changes"
+        >
+          Plan
+        </button>
+        <button
+          data-tutorial="btn-deploy"
+          onClick={handleDeploy}
+          disabled={!selectedResource || !!runningAction}
+          className={`header-action-btn ${selectedResource.status === 'enabled' ? 'btn-update' : 'btn-deploy'}`}
+          title={selectedResource.status === 'enabled' ? 'Update deployed resource' : 'Deploy resource'}
+        >
+          {selectedResource.status === 'enabled' ? 'Update' : 'Deploy'}
+        </button>
+        <button
+          data-tutorial="btn-destroy"
+          onClick={handleDestroy}
+          disabled={!selectedResource || selectedResource.status === 'disabled' || !!runningAction || checkingWorkloads}
+          className="header-action-btn btn-destroy"
+          title={selectedResource.status === 'disabled' ? 'Not deployed yet' : 'Destroy resource'}
+        >
+          {checkingWorkloads ? 'Checking...' : 'Destroy'}
+        </button>
+        {selectedResource.status === 'enabled' && selectedResource.type === ResourceType.EC2 && (
+          <button
+            data-tutorial="btn-connect"
+            onClick={handleConnect}
+            className="header-action-btn btn-connect"
+            disabled={!!runningAction}
+            title={isWindowsInstance(selectedResource.id) ? 'Show RDP connection info' : 'Connect via SSH'}
+          >
+            Connect
+          </button>
+        )}
+        {selectedResource.status === 'enabled' && selectedResource.type === ResourceType.LAMBDA && (
+          <button onClick={handleLambdaConnect} className="header-action-btn btn-connect" disabled={!!runningAction} title="Open Lambda function URL">
+            Connect
+          </button>
+        )}
+        {selectedResource.status === 'enabled' && selectedResource.type === ResourceType.EKS && (
+          <button onClick={handleEKSConnect} className="header-action-btn btn-manage" disabled={!!runningAction} title="Manage EKS cluster">
+            Manage
+          </button>
+        )}
+        {selectedResource.status === 'enabled' && selectedResource.type === ResourceType.ECS && (
+          <>
+            <button onClick={() => setShowECSConnectModal(true)} className="header-action-btn btn-connect" disabled={!!runningAction} title="Connect to ECS instances">
+              Connect
+            </button>
+            <button onClick={handleECSConnect} className="header-action-btn btn-manage" disabled={!!runningAction} title="Manage ECS cluster">
+              Manage
+            </button>
+          </>
+        )}
+      </>
+    );
+  };
+
+  const renderVariablesContent = () => (
+    <div className="tab-content-inner">
+      {selectedResource?.is_shared && (
+        <div className="ip-update-hint">
+          <div className="hint-icon">🔗</div>
+          <div className="hint-text">
+            Shared cluster from <strong>{selectedResource.shared_from}</strong>. You can manage workloads but cannot modify infrastructure.
+          </div>
+        </div>
+      )}
+      {selectedResource?.type === ResourceType.SECURITY_GROUP && selectedResource?.status === 'enabled' && !runningAction && (
+        <div className="ip-update-hint">
+          <div className="hint-icon">💡</div>
+          <div className="hint-text">
+            Click <strong>Update</strong> in the header to allow inbound access from your current IP address!
+          </div>
+        </div>
+      )}
+      <div className="variables-section">
+        <div className="section-header-flex">
+          <h3>Resource Variables</h3>
           {selectedResource && (
-            <div className="selected-resource-info">
-              <span className="selected-label">Selected:</span>
-              <span className="selected-name">{selectedResource.description || selectedResource.name}</span>
+            <div className="variables-header-actions">
+              <button onClick={() => loadVariables(selectedResource.id)} className="btn-refresh-small">Refresh</button>
+              <button onClick={handleRestoreVariables} className="btn-restore-small" title="Clear instance variables and use global/defaults">Restore variables</button>
             </div>
           )}
         </div>
-        {selectedResource && (
-          <div className="action-header-buttons">
-            <button
-              onClick={() => setShowDescriptionModal(true)}
-              disabled={!!runningAction}
-              className="btn-init"
-              title="View resource description"
-            >
-              DESCRIPTION
-            </button>
-            <button
-              onClick={() => setShowDebugModal(true)}
-              disabled={!!runningAction}
-              className="btn-init"
-              title="Debug & maintenance tools"
-            >
-              DEBUG
-            </button>
-          </div>
-        )}
-      </div>
-
-      <div className="action-buttons-container">
-        <div className="action-section">
-          <div className="action-section-header">
-            <h3>Resource Actions</h3>
-            <button className="btn-help" onClick={() => setShowHelpModal(true)} title="What do these buttons do?">?</button>
-          </div>
-          
-          {selectedResource?.is_shared && (
-            <div className="ip-update-hint">
-              <div className="hint-icon">🔗</div>
-              <div className="hint-text">
-                Shared cluster from <strong>{selectedResource.shared_from}</strong>. You can manage workloads but cannot modify infrastructure.
-              </div>
-            </div>
-          )}
-
-          {selectedResource?.type === ResourceType.SECURITY_GROUP && selectedResource?.status === 'enabled' && !runningAction && (
-            <div className="ip-update-hint">
-              <div className="hint-icon">💡</div>
-              <div className="hint-text">
-                Click <strong>Update</strong> below to allow inbound access from your current IP address!
-              </div>
-            </div>
-          )}
-          
-          <div className="action-buttons-grid">
-            {selectedResource?.is_shared ? (
-              <button
-                onClick={handleEKSConnect}
-                className="btn btn-manage"
-                title="Manage shared EKS cluster workloads and presets"
-              >
-                Manage
-              </button>
-            ) : runningAction ? (
-              <button
-                disabled
-                className="btn btn-stop"
-                title={`${runningAction} is in progress for this resource`}
-              >
-                {runningAction === 'plan'
-                  ? 'Planning...'
-                  : runningAction === 'deploy'
-                    ? (selectedResource?.status === 'enabled' ? 'Updating...' : 'Deploying...')
-                    : 'Destroying...'}
-              </button>
-            ) : (
-              <>
-                <button
-                  data-tutorial="btn-deploy"
-                  onClick={handleDeploy}
-                  disabled={!selectedResource || !!runningAction}
-                  className={`btn ${selectedResource?.status === 'enabled' ? 'btn-update' : 'btn-deploy'}`}
-                  title={!selectedResource ? 'Select a resource first' : runningAction ? `${runningAction} is running for this resource` : selectedResource.status === 'enabled' ? 'Update deployed resource' : 'Deploy resource'}
-                >
-                  {selectedResource?.status === 'enabled' ? 'Update' : 'Deploy'}
-                </button>
-                <button
-                  data-tutorial="btn-plan"
-                  onClick={handlePlan}
-                  disabled={!selectedResource || !!runningAction}
-                  className="btn btn-plan"
-                  title={!selectedResource ? 'Select a resource first' : runningAction ? `${runningAction} is running for this resource` : 'Preview changes before deploying/destroying'}
-                >
-                  Plan
-                </button>
-                <button
-                  data-tutorial="btn-destroy"
-                  onClick={handleDestroy}
-                  disabled={!selectedResource || selectedResource.status === 'disabled' || !!runningAction || checkingWorkloads}
-                  className="btn btn-destroy"
-                  title={!selectedResource ? 'Select a resource first' : runningAction ? `${runningAction} is running for this resource` : checkingWorkloads ? 'Checking active workloads...' : selectedResource.status === 'disabled' ? 'Not deployed yet' : 'Destroy resource'}
-                >
-                  {checkingWorkloads ? 'Checking...' : 'Destroy'}
-                </button>
-                {selectedResource && selectedResource.status === 'enabled' && selectedResource.type === ResourceType.EC2 && (
-                  <button
-                    data-tutorial="btn-connect"
-                    onClick={handleConnect}
-                    className="btn btn-connect"
-                    disabled={!!runningAction}
-                    title={runningAction ? `${runningAction} is running for this resource` : isWindowsInstance(selectedResource.id) ? 'Show RDP connection info' : 'Open terminal and connect via SSH'}
-                  >
-                    Connect
-                  </button>
-                )}
-                {selectedResource && selectedResource.status === 'enabled' && selectedResource.type === ResourceType.LAMBDA && (
-                  <button
-                    onClick={handleLambdaConnect}
-                    className="btn btn-connect"
-                    disabled={!!runningAction}
-                    title="Open Lambda function URL in new tab"
-                  >
-                    Connect
-                  </button>
-                )}
-                {selectedResource && selectedResource.status === 'enabled' && selectedResource.type === ResourceType.EKS && (
-                  <button
-                    onClick={handleEKSConnect}
-                    className="btn btn-manage"
-                    disabled={!!runningAction}
-                    title="Manage EKS cluster workloads and presets"
-                  >
-                    Manage
-                  </button>
-                )}
-                {selectedResource && selectedResource.status === 'enabled' && selectedResource.type === ResourceType.ECS && (
-                  <div className="action-buttons-pair">
+        <div className="variables-list">
+          {!selectedResource ? (
+            <p className="no-variables">Select a resource to view its variables</p>
+          ) : variablesLoading ? (
+            <p className="loading-text"><span className="spinner">⟳</span> Loading variables...</p>
+          ) : !Array.isArray(variables) || variables.length === 0 ? (
+            <p className="no-variables">No variables for this resource</p>
+          ) : (
+            variables.map((variable) => (
+              <div key={variable.name} className="variable-item">
+                <div className="variable-name">{variable.name}</div>
+                {editingVar === variable.name ? (
+                  <div className="variable-edit">
+                    <input
+                      type={variable.sensitive ? 'password' : 'text'}
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      className="variable-input"
+                      autoFocus
+                    />
+                    <div className="variable-actions">
+                      <button onClick={() => handleSaveVariable(variable.name)} className="btn-save-small">Save</button>
+                      <button onClick={handleCancelEdit} className="btn-cancel-small">Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="variable-view">
+                    <span className="variable-value">
+                      {variable.sensitive ? (variable.value ? '***' : '(empty)') : variable.value || '(empty)'}
+                    </span>
                     <button
-                      onClick={() => setShowECSConnectModal(true)}
-                      className="btn btn-connect"
-                      disabled={!!runningAction}
-                      title="Connect to ECS container instances via SSH (EC2 only)"
+                      onClick={() => handleEditVariable(variable.name, variable.value || '')}
+                      className="btn-edit-small"
+                      title="Edit variable"
                     >
-                      Connect
-                    </button>
-                    <button
-                      onClick={handleECSConnect}
-                      className="btn btn-manage"
-                      disabled={!!runningAction}
-                      title="Manage ECS cluster services and presets"
-                    >
-                      Manage
+                      Edit
                     </button>
                   </div>
                 )}
-              </>
-            )}
-
-            {selectedResource && !selectedResource.is_shared && selectedResource.type === ResourceType.SECURITY_GROUP && (
-              <button
-                onClick={() => setShowSGEditor(true)}
-                className="btn btn-configure"
-                title="Customize Security Group rules"
-              >
-                Customize Rules
-              </button>
-            )}
-
-            {selectedResource && !selectedResource.is_shared && selectedResource.type === ResourceType.EKS && (
-              <button
-                onClick={() => setShowEKSEditor(true)}
-                className="btn btn-configure"
-                title="Configure EKS cluster settings"
-              >
-                Configure Cluster
-              </button>
-            )}
-
-            {selectedResource && !selectedResource.is_shared && selectedResource.type === ResourceType.ECS && (
-              <button
-                onClick={() => setShowECSEditor(true)}
-                className="btn btn-configure"
-                title="Configure ECS cluster settings"
-              >
-                Configure Cluster
-              </button>
-            )}
-
-            {selectedResource && !selectedResource.is_shared && selectedResource.type === ResourceType.EC2 && selectedResource.id === 'ec2_datadog_docker' && (
-              <button
-                onClick={() => setShowDockerAgentEditor(true)}
-                className="btn btn-configure"
-                title="Configure Docker Agent container"
-              >
-                Configure Container
-              </button>
-            )}
-          </div>
+              </div>
+            ))
+          )}
         </div>
+      </div>
+    </div>
+  );
 
-        {!selectedResource?.is_shared && selectedResource?.type !== ResourceType.EKS && selectedResource?.type !== ResourceType.ECS && (
-          <div className="action-section variables-section">
-            <div className="section-header-flex">
-              <h3>Resource Variables</h3>
-              {selectedResource && (
-                <div className="variables-header-actions">
-                  <button onClick={() => loadVariables(selectedResource.id)} className="btn-refresh-small">Refresh</button>
-                  <button onClick={handleRestoreVariables} className="btn-restore-small" title="Clear instance variables and use global/defaults">Restore variables</button>
-                </div>
-              )}
-            </div>
-            <div className="variables-list">
-              {!selectedResource ? (
-                <p className="no-variables">Select a resource to view its variables</p>
-              ) : variablesLoading ? (
-                <p className="loading-text"><span className="spinner">⟳</span> Loading variables...</p>
-              ) : !Array.isArray(variables) || variables.length === 0 ? (
-                <p className="no-variables">No variables for this resource</p>
-              ) : (
-                variables.map((variable) => (
-                  <div key={variable.name} className="variable-item">
-                    <div className="variable-name">{variable.name}</div>
-                    {editingVar === variable.name ? (
-                      <div className="variable-edit">
-                        <input
-                          type={variable.sensitive ? 'password' : 'text'}
-                          value={editValue}
-                          onChange={(e) => setEditValue(e.target.value)}
-                          className="variable-input"
-                          autoFocus
-                        />
-                        <div className="variable-actions">
-                          <button onClick={() => handleSaveVariable(variable.name)} className="btn-save-small">Save</button>
-                          <button onClick={handleCancelEdit} className="btn-cancel-small">Cancel</button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="variable-view">
-                        <span className="variable-value">
-                          {variable.sensitive ? (variable.value ? '***' : '(empty)') : variable.value || '(empty)'}
-                        </span>
-                        <button 
-                          onClick={() => handleEditVariable(variable.name, variable.value || '')} 
-                          className="btn-edit-small"
-                          title="Edit variable"
-                        >
-                          Edit
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
+  const renderConfigurationContent = () => {
+    if (!selectedResource || selectedResource.is_shared) return null;
+    return (
+      <div className="tab-content-inner">
+        {selectedResource.type === ResourceType.SECURITY_GROUP && (
+          <div className="inline-config-card">
+            <h3>Security Group Rules</h3>
+            <p>Customize inbound and outbound rules for this Security Group.</p>
+            <button onClick={() => setShowSGEditor(true)} className="btn btn-configure">Customize Rules</button>
+          </div>
+        )}
+        {selectedResource.type === ResourceType.EKS && (
+          <EKSEditor
+            inline
+            onClose={() => {}}
+            onSave={() => {}}
+          />
+        )}
+        {selectedResource.type === ResourceType.ECS && (
+          <ECSEditor
+            inline
+            onClose={() => {}}
+            onSave={() => {}}
+          />
+        )}
+        {selectedResource.type === ResourceType.EC2 && selectedResource.id === 'ec2_datadog_docker' && (
+          <div className="inline-config-card">
+            <h3>Docker Agent Configuration</h3>
+            <p>Configure Docker Agent container settings.</p>
+            <button onClick={() => setShowDockerAgentEditor(true)} className="btn btn-configure">Configure Container</button>
           </div>
         )}
       </div>
+    );
+  };
 
-      {selectedResource && selectedResource.status === 'enabled' && (
+  const renderOutputsContent = () => (
+    <div className="tab-content-inner">
+      {selectedResource && selectedResource.status === 'enabled' ? (
         <div className="saved-outputs">
           <div className="outputs-header">
             <h3>Resource Outputs</h3>
             <div className="outputs-header-actions">
-              <button
-                onClick={handleGetOutputs}
-                className="btn-outputs-small"
-                title="Fetch latest outputs"
-              >
+              <button onClick={handleGetOutputs} className="btn-outputs-small" title="Fetch latest outputs">
                 Get Outputs
               </button>
               {outputs.filter(o => o.resourceId === selectedResource.id).length > 0 && (
@@ -824,49 +806,93 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
           <div className="outputs-list">
             {(() => {
               const resourceOutputs = outputs.filter(output => output.resourceId === selectedResource.id);
-              
               if (resourceOutputs.length === 0) {
                 return (
                   <div className="no-outputs">
                     <p>No outputs yet</p>
-                    <p className="hint">Click "Outputs" button to fetch resource outputs</p>
+                    <p className="hint">Click "Get Outputs" to fetch resource outputs</p>
                   </div>
                 );
               }
-              
               const latestOutput = resourceOutputs[0];
               const index = 0;
               const isCollapsed = collapsedOutputs.has(index);
-              
               return (
-                <div 
-                  key={index} 
-                  className="output-item"
-                >
-                  <div 
-                    className="output-header-item clickable"
-                    onClick={() => toggleOutputCollapse(index)}
-                    title="Click to collapse/expand"
-                  >
+                <div key={index} className="output-item">
+                  <div className="output-header-item clickable" onClick={() => toggleOutputCollapse(index)} title="Click to collapse/expand">
                     <span className="expand-icon">{isCollapsed ? '▶' : '▼'}</span>
                     <span className="output-resource">{latestOutput.resourceName}</span>
                     <span className="output-time">{new Date(latestOutput.timestamp).toLocaleString()}</span>
                   </div>
                   {!isCollapsed && (
-                    <pre className="output-content expanded">
-                      {latestOutput.output}
-                    </pre>
+                    <pre className="output-content expanded">{latestOutput.output}</pre>
                   )}
                 </div>
               );
             })()}
           </div>
         </div>
+      ) : (
+        <div className="no-outputs">
+          <p>{selectedResource ? 'Resource not deployed yet' : 'Select a resource to view outputs'}</p>
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="action-panel">
+      <div className="resource-header-bar">
+        {selectedResource ? (
+          <>
+            <div className="resource-header-info">
+              <span className="resource-type-badge">{resourceTypeIcon}</span>
+              <span className="resource-header-name">{selectedResource.description || selectedResource.name}</span>
+              <span className={`resource-status-badge status-${selectedResource.status}`}>
+                {selectedResource.status === 'enabled' ? 'Deployed' : 'Not Deployed'}
+              </span>
+            </div>
+            <div className="resource-header-actions">
+              <button onClick={() => setShowDescriptionModal(true)} disabled={!!runningAction} className="header-action-btn btn-secondary" title="View resource description">
+                Description
+              </button>
+              <button onClick={() => setShowDebugModal(true)} disabled={!!runningAction} className="header-action-btn btn-secondary" title="Debug & maintenance tools">
+                Debug
+              </button>
+              <div className="header-action-divider" />
+              {renderActionButtons()}
+            </div>
+          </>
+        ) : (
+          <div className="resource-header-empty">Select a resource from the sidebar</div>
+        )}
+      </div>
+
+      {selectedResource && (
+        <>
+          <div className="content-tabs">
+            {availableTabs.map(tab => (
+              <button
+                key={tab}
+                className={`content-tab ${activeTab === tab ? 'active' : ''}`}
+                onClick={() => setActiveTab(tab)}
+              >
+                {tab === 'variables' ? 'Variables' : tab === 'configuration' ? 'Configuration' : 'Outputs'}
+              </button>
+            ))}
+            <button className="btn-help" onClick={() => setShowHelpModal(true)} title="What do these buttons do?">?</button>
+          </div>
+          <div className="tab-content-area">
+            {activeTab === 'variables' && showVariablesTab && renderVariablesContent()}
+            {activeTab === 'configuration' && hasConfigTab && renderConfigurationContent()}
+            {activeTab === 'outputs' && renderOutputsContent()}
+          </div>
+        </>
       )}
 
       {!selectedResource && (
         <div className="no-selection">
-          <p>👈 Select a resource from the left panel to perform actions</p>
+          <p>Select a resource from the left panel to perform actions</p>
         </div>
       )}
       
@@ -880,16 +906,6 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
         document.body
       )}
       
-      {showEKSEditor && createPortal(
-        <EKSEditor
-          onClose={() => setShowEKSEditor(false)}
-          onSave={() => {
-            setShowEKSEditor(false);
-          }}
-        />,
-        document.body
-      )}
-
       {showDockerAgentEditor && createPortal(
         <DockerAgentEditor
           onClose={() => setShowDockerAgentEditor(false)}
@@ -981,15 +997,6 @@ const ActionPanel = ({ selectedResource, onActionStart, onActionUpdate, onAction
           sharedClusterName={selectedResource?.is_shared ? selectedResource.name : undefined}
           sharedOwnerPrefix={selectedResource?.is_shared ? selectedResource.shared_from : undefined}
         />
-      )}
-      {showECSEditor && createPortal(
-        <ECSEditor
-          onClose={() => setShowECSEditor(false)}
-          onSave={() => {
-            setShowECSEditor(false);
-          }}
-        />,
-        document.body
       )}
       {showECSManageModal && (
         <ECSManageModal

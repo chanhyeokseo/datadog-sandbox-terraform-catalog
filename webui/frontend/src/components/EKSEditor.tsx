@@ -29,6 +29,7 @@ interface EKSConfig {
 interface EKSEditorProps {
   onClose: () => void;
   onSave: () => void;
+  inline?: boolean;
 }
 
 const INSTANCE_TYPES = [
@@ -45,7 +46,7 @@ const WINDOWS_AMI_TYPES = [
   'WINDOWS_FULL_2022_x86_64',
 ];
 
-const EKSEditor = ({ onClose, onSave }: EKSEditorProps) => {
+const EKSEditor = ({ onClose, onSave, inline }: EKSEditorProps) => {
   const [config, setConfig] = useState<EKSConfig>({
     enable_node_group: true,
     node_instance_types: ['t3.medium'],
@@ -77,13 +78,10 @@ const EKSEditor = ({ onClose, onSave }: EKSEditorProps) => {
 
   useEffect(() => {
     fetchConfig();
-    
+    if (inline) return;
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onClose();
-      }
+      if (e.key === 'Escape') onClose();
     };
-    
     document.addEventListener('keydown', handleEscape);
     return () => document.removeEventListener('keydown', handleEscape);
   }, []);
@@ -119,9 +117,9 @@ const EKSEditor = ({ onClose, onSave }: EKSEditorProps) => {
         throw new Error('Failed to save EKS configuration');
       }
       
-      alert('✅ EKS configuration saved successfully!\n\nClick APPLY to deploy with the new settings.');
+      alert('EKS configuration saved successfully!\n\nClick Update to deploy with the new settings.');
       onSave();
-      onClose();
+      if (!inline) onClose();
     } catch (error) {
       alert(`❌ Failed to save: ${(error as Error).message}`);
     } finally {
@@ -154,43 +152,38 @@ const EKSEditor = ({ onClose, onSave }: EKSEditorProps) => {
     setConfig(prev => ({ ...prev, ...updates }));
   };
 
-  if (loading) {
-    return (
-      <div className="modal-overlay" onClick={onClose}>
-        <div className="eks-editor loading">Loading EKS configuration...</div>
-      </div>
-    );
-  }
+  const renderLoading = () => (
+    <div className={`eks-editor loading ${inline ? 'eks-editor-inline' : ''}`}>Loading EKS configuration...</div>
+  );
 
-  if (configError) {
-    return (
-      <div className="modal-overlay" onClick={onClose}>
-        <div className="eks-editor" onClick={(e) => e.stopPropagation()}>
-          <div className="editor-header">
-            <h2>EKS Configuration</h2>
-            <button onClick={onClose} className="close-button">&times;</button>
-          </div>
-          <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-            <p style={{ marginBottom: '12px' }}>No EKS configuration found.</p>
-            <p style={{ fontSize: '13px' }}>Deploy the EKS resource first, or click Save to create a default configuration.</p>
-            <button className="btn-primary" style={{ marginTop: '20px' }} onClick={handleCreateDefault} disabled={saving}>
-              {saving ? 'Creating...' : 'Create Default Config'}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="eks-editor" onClick={(e) => e.stopPropagation()}>
+  const renderError = () => (
+    <div className={`eks-editor ${inline ? 'eks-editor-inline' : ''}`}>
+      {!inline && (
         <div className="editor-header">
-          <h2>⚙️ EKS Cluster Configuration</h2>
+          <h2>EKS Configuration</h2>
           <button onClick={onClose} className="close-button">&times;</button>
         </div>
+      )}
+      <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+        <p style={{ marginBottom: '12px' }}>No EKS configuration found.</p>
+        <p style={{ fontSize: '13px' }}>Deploy the EKS resource first, or click Save to create a default configuration.</p>
+        <button className="btn-primary" style={{ marginTop: '20px' }} onClick={handleCreateDefault} disabled={saving}>
+          {saving ? 'Creating...' : 'Create Default Config'}
+        </button>
+      </div>
+    </div>
+  );
 
-        <div className="editor-tabs">
+  const renderContent = () => (
+    <div className={`eks-editor ${inline ? 'eks-editor-inline' : ''}`} onClick={(e) => e.stopPropagation()}>
+      {!inline && (
+        <div className="editor-header">
+          <h2>EKS Cluster Configuration</h2>
+          <button onClick={onClose} className="close-button">&times;</button>
+        </div>
+      )}
+
+      <div className="editor-tabs">
           <button
             className={`tab ${activeTab === 'linux' ? 'active' : ''}`}
             onClick={() => setActiveTab('linux')}
@@ -498,18 +491,30 @@ const EKSEditor = ({ onClose, onSave }: EKSEditorProps) => {
 
         <div className="editor-footer">
           <div className="footer-info">
-            <span>💡 Changes require APPLY to take effect</span>
+            <span>Changes require Update to take effect</span>
           </div>
           <div className="footer-actions">
-            <button onClick={onClose} className="btn-cancel">Cancel</button>
+            {!inline && <button onClick={onClose} className="btn-cancel">Cancel</button>}
             <button onClick={handleSave} className="btn-save" disabled={saving}>
               {saving ? 'Saving...' : 'Save Configuration'}
             </button>
           </div>
         </div>
       </div>
-    </div>
   );
+
+  if (loading) {
+    if (inline) return renderLoading();
+    return <div className="modal-overlay" onClick={onClose}>{renderLoading()}</div>;
+  }
+
+  if (configError) {
+    if (inline) return renderError();
+    return <div className="modal-overlay" onClick={onClose}>{renderError()}</div>;
+  }
+
+  if (inline) return renderContent();
+  return <div className="modal-overlay" onClick={onClose}>{renderContent()}</div>;
 };
 
 export default EKSEditor;

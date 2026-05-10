@@ -1,6 +1,6 @@
 .docker-agent-editor {
   background: var(--bg-primary);
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   width: 90%;
   max-width: 800px;
   max-height: 90vh;
@@ -28,7 +28,7 @@
   padding: 4px 12px;
   font-size: 12px;
   font-weight: 600;
-  border-radius: 0;
+  border-radius: var(--radius-sm);
 }
 
 .da-status-badge.deployed {
@@ -53,7 +53,7 @@
   min-height: 200px;
   padding: 14px;
   border: 1px solid var(--border-color);
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   background: var(--bg-secondary);
   color: var(--text-primary);
   font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
@@ -91,7 +91,7 @@
   padding: 12px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);
-  border-radius: 0;
+  border-radius: var(--radius-sm);
 }
 
 .da-placeholder-item {
@@ -104,7 +104,7 @@
 .da-placeholder-item code {
   background: rgba(139, 127, 199, 0.15);
   padding: 2px 8px;
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   color: var(--primary-color);
   font-size: 12px;
   white-space: nowrap;
@@ -118,7 +118,7 @@
 
 .da-result {
   padding: 12px 16px;
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   font-size: 14px;
 }
 
