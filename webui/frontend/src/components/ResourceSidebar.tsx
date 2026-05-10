@@ -13,9 +13,11 @@ interface ResourceSidebarProps {
   onOpenConfig?: () => void;
   onOpenConnections?: () => void;
   onOpenMcpGuide?: () => void;
+  onOpenAuditLog?: () => void;
   onUpdateIP?: () => void;
   isDarkMode?: boolean;
   onToggleTheme?: () => void;
+  activeView?: string;
 }
 
 const ResourceSidebar = ({
@@ -29,9 +31,11 @@ const ResourceSidebar = ({
   onOpenConfig,
   onOpenConnections,
   onOpenMcpGuide,
+  onOpenAuditLog,
   onUpdateIP,
   isDarkMode,
   onToggleTheme,
+  activeView,
 }: ResourceSidebarProps) => {
   const [resources, setResources] = useState<TerraformResource[]>([]);
   const [sharedClusters, setSharedClusters] = useState<SharedCluster[]>([]);
@@ -166,6 +170,13 @@ const ResourceSidebar = ({
           >
             <span className="sidebar-nav-item-icon">🤖</span>
             <span className="sidebar-nav-item-text">MCP Server</span>
+          </div>
+          <div
+            className={`sidebar-nav-item ${activeView === 'audit-log' ? 'active' : ''}`}
+            onClick={onOpenAuditLog}
+          >
+            <span className="sidebar-nav-item-icon">📋</span>
+            <span className="sidebar-nav-item-text">Audit Log</span>
           </div>
           <div
             className="sidebar-nav-item"

@@ -84,6 +84,34 @@
   transform: translateY(-2px);
 }
 
+body.dark-mode .confirm-modal-btn.danger {
+  background: rgba(239, 83, 80, 0.15);
+  color: #f87171;
+  border-color: rgba(239, 83, 80, 0.4);
+}
+
+body.dark-mode .confirm-modal-btn.danger:hover {
+  background: rgba(239, 83, 80, 0.25);
+  border-color: rgba(239, 83, 80, 0.6);
+}
+
+body.dark-mode .confirm-modal-btn.primary {
+  background: rgba(76, 175, 80, 0.15);
+  color: #66bb6a;
+  border-color: rgba(76, 175, 80, 0.4);
+}
+
+body.dark-mode .confirm-modal-btn.primary:hover {
+  background: rgba(76, 175, 80, 0.25);
+  border-color: rgba(76, 175, 80, 0.6);
+}
+
+body.dark-mode .rdp-field-hint {
+  color: #fdd835;
+  background: rgba(255, 193, 7, 0.1);
+  border-color: rgba(255, 193, 7, 0.25);
+}
+
 .rdp-modal {
   background: var(--bg-primary);
   border: 1px solid var(--border-color);

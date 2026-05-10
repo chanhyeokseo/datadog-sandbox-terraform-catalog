@@ -6,6 +6,9 @@ import {
   EKSClusterInfo,
   ClusterShareRequest,
   SharedCluster,
+  AuditLogsResponse,
+  AuditSummary,
+  AuditEntry,
 } from '../types';
 
 const API_BASE_URL = '/api/terraform';
@@ -1208,3 +1211,56 @@ export const clusterShareApi = {
     return response.data.members;
   },
 };
+
+const AUDIT_BASE = '/api/audit';
+
+export const auditApi = {
+  getLogs: async (
+    page: number = 1,
+    perPage: number = 25,
+    status?: string,
+    dateFrom?: string,
+    dateTo?: string,
+  ): Promise<AuditLogsResponse> => {
+    const params: Record<string, string | number> = { page, per_page: perPage };
+    if (status) params.status = status;
+    if (dateFrom) params.date_from = dateFrom;
+    if (dateTo) params.date_to = dateTo;
+    const response = await axios.get<AuditLogsResponse>(`${AUDIT_BASE}/logs`, { params });
+    return response.data;
+  },
+
+  getSummary: async (): Promise<AuditSummary> => {
+    const response = await axios.get<AuditSummary>(`${AUDIT_BASE}/summary`);
+    return response.data;
+  },
+};
+
+export interface AuditSSECallbacks {
+  onAuditEntry?: (entry: AuditEntry) => void;
+  onResourceChanged?: (data: { action: string; resource: string }) => void;
+}
+
+export function connectAuditSSE(callbacks: AuditSSECallbacks): () => void {
+  const eventSource = new EventSource(`${AUDIT_BASE}/events`);
+
+  eventSource.onmessage = (event) => {
+    try {
+      const parsed = JSON.parse(event.data);
+      if (parsed.type === 'audit_entry' && callbacks.onAuditEntry) {
+        callbacks.onAuditEntry(parsed.data);
+      }
+      if (parsed.type === 'resource_changed' && callbacks.onResourceChanged) {
+        callbacks.onResourceChanged(parsed.data);
+      }
+    } catch {
+      // ignore malformed messages
+    }
+  };
+
+  eventSource.onerror = () => {
+    // EventSource auto-reconnects
+  };
+
+  return () => eventSource.close();
+}

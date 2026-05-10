@@ -257,3 +257,49 @@
   border-radius: var(--radius-sm);
   user-select: all;
 }
+
+body.dark-mode .danger-zone-fab {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 83, 80, 0.4);
+  color: #f87171;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.2);
+}
+
+body.dark-mode .danger-zone-fab:hover {
+  background: rgba(239, 68, 68, 0.25);
+  border-color: rgba(239, 83, 80, 0.6);
+  color: #fca5a5;
+  box-shadow: 0 6px 28px rgba(239, 83, 80, 0.25);
+}
+
+body.dark-mode .danger-zone-btn.destroy-all {
+  background: rgba(239, 83, 80, 0.15);
+  color: #f87171;
+  border-color: rgba(239, 83, 80, 0.4);
+}
+
+body.dark-mode .danger-zone-btn.destroy-all:hover:not(:disabled) {
+  background: rgba(239, 83, 80, 0.25);
+  border-color: rgba(239, 83, 80, 0.6);
+}
+
+body.dark-mode .danger-zone-btn.hard-reset {
+  background: rgba(183, 28, 28, 0.15);
+  color: #f87171;
+  border-color: rgba(183, 28, 28, 0.4);
+}
+
+body.dark-mode .danger-zone-btn.hard-reset:hover:not(:disabled) {
+  background: rgba(183, 28, 28, 0.25);
+  border-color: rgba(183, 28, 28, 0.6);
+}
+
+body.dark-mode .danger-zone-warning {
+  background: rgba(239, 83, 80, 0.08);
+  border-color: rgba(239, 83, 80, 0.2);
+}
+
+body.dark-mode .danger-zone-restart-notice {
+  background: rgba(255, 193, 7, 0.1);
+  border-color: rgba(255, 193, 7, 0.25);
+}

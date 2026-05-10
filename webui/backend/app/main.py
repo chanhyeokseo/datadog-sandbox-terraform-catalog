@@ -12,9 +12,11 @@ import logging
 if not os.environ.get("AWS_PROFILE", "").strip():
     os.environ.pop("AWS_PROFILE", None)
 
-from app.routes import terraform, ssh, backend, keys, danger_zone, eks_manage, ecs_manage, cluster_share
+from app.routes import terraform, ssh, backend, keys, danger_zone, eks_manage, ecs_manage, cluster_share, audit
 from app.services.credential_manager import credential_manager
+from app.services.audit_service import audit_service
 from app.middleware.guardrails import GuardrailMiddleware
+from app.middleware.audit import AuditMiddleware
 
 log_level = os.environ.get('LOG_LEVEL', 'INFO').upper()
 logging.basicConfig(
@@ -33,6 +35,7 @@ async def lifespan(app: FastAPI):
     ecs_manage.preset_manager.initialize_local_cache()
     asyncio.create_task(terraform.runner.warmup_provider_cache())
     asyncio.create_task(credential_manager.background_refresh_loop())
+    audit_service.load_from_s3()
     yield
 
 
@@ -43,6 +46,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_middleware(AuditMiddleware)
 app.add_middleware(GuardrailMiddleware)
 app.add_middleware(
     CORSMiddleware,
@@ -60,6 +64,7 @@ app.include_router(danger_zone.router)
 app.include_router(eks_manage.router)
 app.include_router(ecs_manage.router)
 app.include_router(cluster_share.router)
+app.include_router(audit.router)
 
 
 @app.get("/health")

@@ -12,8 +12,9 @@ import IdleOverlay from './components/IdleOverlay';
 import FeedbackFab from './components/FeedbackFab';
 import ClusterShareModal from './components/ClusterShareModal';
 import Tutorial, { TutorialStep } from './components/Tutorial';
+import AuditLog from './components/AuditLog';
 import { TerraformResource, ResourceType } from './types';
-import { terraformApi as api, OnboardingStatus } from './services/api';
+import { terraformApi as api, OnboardingStatus, connectAuditSSE } from './services/api';
 
 const TUTORIAL_STEPS: TutorialStep[] = [
   {
@@ -198,6 +199,8 @@ function App() {
   const [tutorialActionEvent, setTutorialActionEvent] = useState<string | undefined>(undefined);
   const [initTrigger, setInitTrigger] = useState(0);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [activeView, setActiveView] = useState<'resource' | 'audit-log'>('resource');
+  const [auditRefreshTrigger, setAuditRefreshTrigger] = useState(0);
 
   useEffect(() => { showTutorialRef.current = showTutorial; }, [showTutorial]);
 
@@ -451,6 +454,19 @@ function App() {
     window.addEventListener('sso-credential-expired', handleCredExpired);
     return () => window.removeEventListener('sso-credential-expired', handleCredExpired);
   }, []);
+
+  useEffect(() => {
+    if (initialLoadPhase !== 'ready') return;
+    const cleanup = connectAuditSSE({
+      onAuditEntry: () => {
+        setAuditRefreshTrigger(prev => prev + 1);
+      },
+      onResourceChanged: () => {
+        setResourceRefreshTrigger(prev => prev + 1);
+      },
+    });
+    return cleanup;
+  }, [initialLoadPhase]);
 
   useEffect(() => {
     if (initialLoadPhase !== 'ready') return;
@@ -790,7 +806,7 @@ function App() {
       </button>
       {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
       <ResourceSidebar
-        onResourceSelect={(r) => { setSelectedResource(r); setSidebarOpen(false); }}
+        onResourceSelect={(r) => { setSelectedResource(r); setActiveView('resource'); setSidebarOpen(false); }}
         selectedResourceId={selectedResource?.id || null}
         refreshTrigger={resourceRefreshTrigger}
         runningResources={runningResources}
@@ -800,24 +816,32 @@ function App() {
         onOpenConfig={() => setShowConfigModal(true)}
         onOpenConnections={handleOpenConnections}
         onOpenMcpGuide={() => setShowMcpGuide(true)}
+        onOpenAuditLog={() => setActiveView('audit-log')}
         onUpdateIP={handleUpdateIP}
         isDarkMode={isDarkMode}
         onToggleTheme={toggleTheme}
+        activeView={activeView}
       />
 
       <main className="app-main">
-        <ActionPanel
-          selectedResource={selectedResource}
-          onActionStart={handleActionStart}
-          onActionUpdate={handleActionUpdate}
-          onActionComplete={handleActionComplete}
-          onResourcesNeedRefresh={handleResourcesNeedRefresh}
-          runningAction={selectedResource ? runningResources.get(selectedResource.id) : undefined}
-        />
-        <ResultsPanel
-          results={results}
-          onClear={handleClearResults}
-        />
+        {activeView === 'audit-log' ? (
+          <AuditLog refreshTrigger={auditRefreshTrigger} />
+        ) : (
+          <>
+            <ActionPanel
+              selectedResource={selectedResource}
+              onActionStart={handleActionStart}
+              onActionUpdate={handleActionUpdate}
+              onActionComplete={handleActionComplete}
+              onResourcesNeedRefresh={handleResourcesNeedRefresh}
+              runningAction={selectedResource ? runningResources.get(selectedResource.id) : undefined}
+            />
+            <ResultsPanel
+              results={results}
+              onClear={handleClearResults}
+            />
+          </>
+        )}
       </main>
 
       {showConfigModal && (

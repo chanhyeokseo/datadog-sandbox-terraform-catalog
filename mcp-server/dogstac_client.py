@@ -6,7 +6,7 @@ import httpx
 logger = logging.getLogger(__name__)
 
 DOGSTAC_API_URL = os.environ.get("DOGSTAC_API_URL", "http://localhost:7621")
-MCP_HEADERS = {"X-DogSTAC-Source": "mcp"}
+_actor_name: str = os.environ.get("DOGSTAC_ACTOR", "")
 STREAM_TIMEOUT = 1800.0
 _CRED_CACHE_TTL = 300
 _CRED_CHECK_PATH = "/api/terraform/credentials/check"
@@ -27,6 +27,16 @@ class CredentialsExpiredError(Exception):
 
 class BackendNotReadyError(Exception):
     pass
+
+
+def set_actor(name: str) -> None:
+    global _actor_name
+    _actor_name = name
+    logger.info("MCP actor set to: %s", name)
+
+
+def _mcp_headers() -> dict[str, str]:
+    return {"X-DogSTAC-Source": "mcp", "X-DogSTAC-Actor": _actor_name or "mcp-client"}
 
 
 class DogSTACClient:
@@ -67,7 +77,7 @@ class DogSTACClient:
         try:
             async with httpx.AsyncClient(timeout=10.0) as c:
                 resp = await c.get(
-                    self._url(_CRED_CHECK_PATH), headers=MCP_HEADERS
+                    self._url(_CRED_CHECK_PATH), headers=_mcp_headers()
                 )
                 if resp.status_code == 401 or not resp.json().get("valid"):
                     self._cred_valid_until = 0.0
@@ -84,21 +94,21 @@ class DogSTACClient:
     async def get(self, path: str, **params) -> dict:
         await self._ensure_credentials(path)
         async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.get(self._url(path), headers=MCP_HEADERS, params=params)
+            resp = await client.get(self._url(path), headers=_mcp_headers(), params=params)
             self._raise_for_status(resp)
             return resp.json()
 
     async def put(self, path: str, json_body: dict) -> dict:
         await self._ensure_credentials(path)
         async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.put(self._url(path), headers=MCP_HEADERS, json=json_body)
+            resp = await client.put(self._url(path), headers=_mcp_headers(), json=json_body)
             self._raise_for_status(resp)
             return resp.json()
 
     async def post(self, path: str, json_body: dict | None = None) -> dict:
         await self._ensure_credentials(path)
         async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(self._url(path), headers=MCP_HEADERS, json=json_body)
+            resp = await client.post(self._url(path), headers=_mcp_headers(), json=json_body)
             self._raise_for_status(resp)
             return resp.json()
 
@@ -109,7 +119,7 @@ class DogSTACClient:
             output_lines: list[str] = []
             exit_code = -1
             async with client.stream(
-                method, self._url(path), headers=MCP_HEADERS, **kwargs
+                method, self._url(path), headers=_mcp_headers(), **kwargs
             ) as response:
                 self._raise_for_status(response)
                 async for line in response.aiter_lines():
@@ -129,7 +139,7 @@ class DogSTACClient:
     async def delete(self, path: str) -> dict:
         await self._ensure_credentials(path)
         async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.delete(self._url(path), headers=MCP_HEADERS)
+            resp = await client.delete(self._url(path), headers=_mcp_headers())
             self._raise_for_status(resp)
             return resp.json()
 

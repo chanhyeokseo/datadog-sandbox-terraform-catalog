@@ -1,16 +1,28 @@
 import asyncio
 import json
 import logging
-from mcp.server.fastmcp import FastMCP
-from dogstac_client import DogSTACClient, CredentialsExpiredError
+from mcp.server.fastmcp import FastMCP, Context
+from dogstac_client import DogSTACClient, CredentialsExpiredError, set_actor, _actor_name
 
 logger = logging.getLogger(__name__)
 
 
+def _detect_actor(ctx: Context) -> None:
+    if _actor_name:
+        return
+    try:
+        info = ctx.session.client_params.clientInfo
+        if info and info.name:
+            set_actor(info.name)
+    except Exception as e:
+        logger.debug("Could not detect MCP client name: %s", e)
+
+
 def register(mcp: FastMCP, client: DogSTACClient):
     @mcp.tool()
-    async def check_credentials() -> str:
+    async def check_credentials(ctx: Context) -> str:
         """Check if AWS credentials are valid. Call this when any operation fails with an authentication error."""
+        _detect_actor(ctx)
         try:
             data = await client.get("/api/terraform/credentials/check")
             return json.dumps(data, indent=2)

@@ -1738,6 +1738,19 @@ body {
   opacity: 1;
 }
 
+body.dark-mode .danger-zone-fab {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 83, 80, 0.4);
+  color: #f87171;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.2);
+}
+
+body.dark-mode .danger-zone-fab:hover {
+  background: rgba(239, 68, 68, 0.25);
+  border-color: rgba(239, 83, 80, 0.6);
+  color: #fca5a5;
+}
+
 .sidebar-nav {
   background: var(--sidebar-bg);
   border-right: 1px solid var(--border-color);
@@ -1806,6 +1819,11 @@ body {
 .sidebar-nav-item:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
+}
+
+.sidebar-nav-item.active {
+  background: rgba(99, 102, 241, 0.1);
+  color: var(--primary-color);
 }
 
 .sidebar-nav-item-icon {
