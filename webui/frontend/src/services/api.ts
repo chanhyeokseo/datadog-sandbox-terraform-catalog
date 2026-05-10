@@ -104,6 +104,10 @@ export interface SharedVpcResult {
 }
 
 export const terraformApi = {
+  checkHealth: async (): Promise<void> => {
+    await axios.get('/health');
+  },
+
   checkCredentials: async (): Promise<{ valid: boolean; account: string; arn: string }> => {
     const response = await api.get<{ valid: boolean; account: string; arn: string }>('/credentials/check');
     return response.data;

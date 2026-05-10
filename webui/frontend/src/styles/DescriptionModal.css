@@ -10,7 +10,7 @@
 
 .description-modal {
   background: var(--bg-primary);
-  border-radius: 0;
+  border-radius: var(--radius-lg);
   width: 90%;
   max-width: 560px;
   max-height: 85vh;

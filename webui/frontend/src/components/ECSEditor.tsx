@@ -13,6 +13,7 @@ interface ECSConfig {
 interface ECSEditorProps {
   onClose: () => void;
   onSave: () => void;
+  inline?: boolean;
 }
 
 const EC2_INSTANCE_TYPES = [
@@ -22,7 +23,7 @@ const EC2_INSTANCE_TYPES = [
   'c5.large', 'c5.xlarge', 'c5.2xlarge', 'c5.4xlarge',
 ];
 
-const ECSEditor = ({ onClose, onSave }: ECSEditorProps) => {
+const ECSEditor = ({ onClose, onSave, inline }: ECSEditorProps) => {
   const [config, setConfig] = useState<ECSConfig>({
     enable_fargate: true,
     enable_ec2: false,
@@ -39,6 +40,7 @@ const ECSEditor = ({ onClose, onSave }: ECSEditorProps) => {
 
   useEffect(() => {
     fetchConfig();
+    if (inline) return;
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
@@ -71,9 +73,9 @@ const ECSEditor = ({ onClose, onSave }: ECSEditorProps) => {
         body: JSON.stringify(config),
       });
       if (!response.ok) throw new Error('Failed to save ECS configuration');
-      alert('ECS configuration saved successfully!\n\nClick APPLY to deploy with the new settings.');
+      alert('ECS configuration saved successfully!\n\nClick Update to deploy with the new settings.');
       onSave();
-      onClose();
+      if (!inline) onClose();
     } catch (error) {
       alert(`Failed to save: ${(error as Error).message}`);
     } finally {
@@ -102,43 +104,38 @@ const ECSEditor = ({ onClose, onSave }: ECSEditorProps) => {
     setConfig(prev => ({ ...prev, ...updates }));
   };
 
-  if (loading) {
-    return (
-      <div className="modal-overlay" onClick={onClose}>
-        <div className="eks-editor loading">Loading ECS configuration...</div>
-      </div>
-    );
-  }
+  const renderLoading = () => (
+    <div className={`eks-editor loading ${inline ? 'eks-editor-inline' : ''}`}>Loading ECS configuration...</div>
+  );
 
-  if (configError) {
-    return (
-      <div className="modal-overlay" onClick={onClose}>
-        <div className="eks-editor" onClick={(e) => e.stopPropagation()}>
-          <div className="editor-header">
-            <h2>ECS Configuration</h2>
-            <button onClick={onClose} className="close-button">&times;</button>
-          </div>
-          <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-            <p style={{ marginBottom: '12px' }}>No ECS configuration found.</p>
-            <p style={{ fontSize: '13px' }}>Deploy the ECS resource first, or click Save to create a default configuration.</p>
-            <button className="btn-primary" style={{ marginTop: '20px' }} onClick={handleCreateDefault} disabled={saving}>
-              {saving ? 'Creating...' : 'Create Default Config'}
-            </button>
-          </div>
+  const renderError = () => (
+    <div className={`eks-editor ${inline ? 'eks-editor-inline' : ''}`}>
+      {!inline && (
+        <div className="editor-header">
+          <h2>ECS Configuration</h2>
+          <button onClick={onClose} className="close-button">&times;</button>
         </div>
+      )}
+      <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+        <p style={{ marginBottom: '12px' }}>No ECS configuration found.</p>
+        <p style={{ fontSize: '13px' }}>Deploy the ECS resource first, or click Save to create a default configuration.</p>
+        <button className="btn-primary" style={{ marginTop: '20px' }} onClick={handleCreateDefault} disabled={saving}>
+          {saving ? 'Creating...' : 'Create Default Config'}
+        </button>
       </div>
-    );
-  }
+    </div>
+  );
 
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="eks-editor" onClick={(e) => e.stopPropagation()}>
+  const renderContent = () => (
+    <div className={`eks-editor ${inline ? 'eks-editor-inline' : ''}`} onClick={(e) => e.stopPropagation()}>
+      {!inline && (
         <div className="editor-header">
           <h2>ECS Cluster Configuration</h2>
           <button onClick={onClose} className="close-button">&times;</button>
         </div>
+      )}
 
-        <div className="editor-tabs">
+      <div className="editor-tabs">
           <button
             className={`tab ${activeTab === 'fargate' ? 'active' : ''}`}
             onClick={() => setActiveTab('fargate')}
@@ -242,18 +239,30 @@ const ECSEditor = ({ onClose, onSave }: ECSEditorProps) => {
 
         <div className="editor-footer">
           <div className="footer-info">
-            <span>Changes require APPLY to take effect</span>
+            <span>Changes require Update to take effect</span>
           </div>
           <div className="footer-actions">
-            <button onClick={onClose} className="btn-cancel">Cancel</button>
+            {!inline && <button onClick={onClose} className="btn-cancel">Cancel</button>}
             <button onClick={handleSave} className="btn-save" disabled={saving}>
               {saving ? 'Saving...' : 'Save Configuration'}
             </button>
           </div>
         </div>
       </div>
-    </div>
   );
+
+  if (loading) {
+    if (inline) return renderLoading();
+    return <div className="modal-overlay" onClick={onClose}>{renderLoading()}</div>;
+  }
+
+  if (configError) {
+    if (inline) return renderError();
+    return <div className="modal-overlay" onClick={onClose}>{renderError()}</div>;
+  }
+
+  if (inline) return renderContent();
+  return <div className="modal-overlay" onClick={onClose}>{renderContent()}</div>;
 };
 
 export default ECSEditor;

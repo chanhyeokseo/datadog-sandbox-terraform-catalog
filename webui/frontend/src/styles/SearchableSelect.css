@@ -16,11 +16,9 @@
   gap: 8px;
   padding: 12px 14px;
   border: 1px solid var(--border-color);
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   font-size: 0.9375rem;
-  background: var(--glass-bg);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
+  background: var(--bg-primary);
   color: var(--text-primary);
   cursor: pointer;
   text-align: left;
@@ -29,14 +27,14 @@
 }
 
 .ss-trigger:hover {
-  border-color: var(--glass-border-strong);
+  border-color: var(--border-color-strong);
 }
 
 .ss-container.ss-open .ss-trigger,
 .ss-trigger:focus-visible {
   outline: none;
   border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px rgba(139, 127, 199, 0.15);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
 }
 
 .ss-trigger-text {
@@ -66,25 +64,17 @@
   left: 0;
   right: 0;
   z-index: 100;
-  background: var(--panel-bg);
-  backdrop-filter: blur(20px) saturate(1.4);
-  -webkit-backdrop-filter: blur(20px) saturate(1.4);
-  border: 1px solid var(--panel-border);
-  border-radius: 0;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.1);
   overflow: hidden;
   animation: ss-slide-in 0.15s ease-out;
 }
 
 @keyframes ss-slide-in {
-  from {
-    opacity: 0;
-    transform: translateY(-6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .ss-search-wrap {
@@ -96,10 +86,8 @@
   width: 100%;
   padding: 8px 10px;
   border: 1px solid var(--border-color);
-  border-radius: 0;
-  background: var(--glass-bg);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
   color: var(--text-primary);
   font-size: 0.875rem;
   font-family: inherit;
@@ -133,16 +121,16 @@
 }
 
 .ss-option.ss-highlighted {
-  background: var(--glass-bg-medium);
+  background: var(--bg-hover);
 }
 
 .ss-option.ss-selected {
-  color: var(--primary-light);
+  color: var(--primary-color);
   font-weight: 600;
 }
 
 .ss-option.ss-selected.ss-highlighted {
-  background: var(--glass-bg-medium);
+  background: var(--bg-hover);
 }
 
 .ss-empty {
@@ -150,10 +138,4 @@
   font-size: 0.875rem;
   color: var(--text-muted);
   text-align: center;
-}
-
-body.light-mode .ss-dropdown {
-  background: rgba(255, 255, 255, 0.92);
-  border-color: rgba(139, 127, 199, 0.2);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(139, 127, 199, 0.08);
 }

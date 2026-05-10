@@ -167,7 +167,10 @@ function App() {
   const [selectedResource, setSelectedResource] = useState<TerraformResource | null>(null);
   const [resources, setResources] = useState<TerraformResource[]>([]);
   const [results, setResults] = useState<Result[]>([]);
-  const [isDarkMode, setIsDarkMode] = useState(true);
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    const saved = localStorage.getItem('theme');
+    return saved === 'dark';
+  });
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [showConnectionsModal, setShowConnectionsModal] = useState(false);
   const [showOnboardingModal, setShowOnboardingModal] = useState(false);
@@ -194,15 +197,18 @@ function App() {
   const [showMcpGuide, setShowMcpGuide] = useState(false);
   const [tutorialActionEvent, setTutorialActionEvent] = useState<string | undefined>(undefined);
   const [initTrigger, setInitTrigger] = useState(0);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => { showTutorialRef.current = showTutorial; }, [showTutorial]);
 
   useEffect(() => {
-    const savedTheme = localStorage.getItem('theme');
-    if (savedTheme === 'light') {
-      setIsDarkMode(false);
-      document.body.classList.add('light-mode');
-    }
+    document.body.classList.toggle('dark-mode', isDarkMode);
+    localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
+  }, [isDarkMode]);
+
+  const toggleTheme = () => setIsDarkMode(prev => !prev);
+
+  useEffect(() => {
     let cancelled = false;
     const run = async () => {
       const extractCredentialError = (err: any): CredentialError => {
@@ -537,19 +543,6 @@ function App() {
     }
   };
 
-  const toggleTheme = () => {
-    const newMode = !isDarkMode;
-    setIsDarkMode(newMode);
-    
-    if (newMode) {
-      document.body.classList.remove('light-mode');
-      localStorage.setItem('theme', 'dark');
-    } else {
-      document.body.classList.add('light-mode');
-      localStorage.setItem('theme', 'light');
-    }
-  };
-
   const handleActionStart = (action: string, resourceId?: string) => {
     const newResult: Result = {
       id: Date.now().toString(),
@@ -773,7 +766,7 @@ function App() {
   }
 
   return (
-    <div className="app">
+    <div className={`app ${sidebarOpen ? 'sidebar-open' : ''}`}>
       {providerReady !== true && (
         providerReady === false
           ? <ProviderLoadingScreen progress={providerProgress.progress} message={providerProgress.message} />
@@ -788,54 +781,43 @@ function App() {
             </div>
           )
       )}
-      <header className="app-header">
-        <div className="header-content">
-          <img src="/logo.png" alt="DogSTAC" className="app-logo-header" />
-          <h1>DogSTAC</h1>
-        </div>
-        <div className="header-actions">
-          <button onClick={() => setShowMcpGuide(true)} className="config-button">
-            🤖 MCP Server
-          </button>
-          <button onClick={handleOpenConnections} className="config-button">
-            🔗 Connections
-          </button>
-          <button onClick={handleUpdateIP} className="config-button">
-            🌐 Security Group
-          </button>
-          <button onClick={() => setShowConfigModal(true)} className="config-button">
-            ⚙️ Config
-          </button>
-          <button onClick={toggleTheme} className="theme-toggle">
-            {isDarkMode ? '☀️ Light Mode' : '🌙 Dark Mode'}
-          </button>
-        </div>
-      </header>
+      <button
+        className="mobile-menu-btn"
+        onClick={() => setSidebarOpen(prev => !prev)}
+        aria-label="Toggle sidebar"
+      >
+        {sidebarOpen ? '✕' : '☰'}
+      </button>
+      {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
+      <ResourceSidebar
+        onResourceSelect={(r) => { setSelectedResource(r); setSidebarOpen(false); }}
+        selectedResourceId={selectedResource?.id || null}
+        refreshTrigger={resourceRefreshTrigger}
+        runningResources={runningResources}
+        onResourcesLoaded={setResources}
+        onRequestClusterShare={() => setShowClusterShareModal(true)}
+        sharedClusterRefreshTrigger={sharedClusterRefreshTrigger}
+        onOpenConfig={() => setShowConfigModal(true)}
+        onOpenConnections={handleOpenConnections}
+        onOpenMcpGuide={() => setShowMcpGuide(true)}
+        onUpdateIP={handleUpdateIP}
+        isDarkMode={isDarkMode}
+        onToggleTheme={toggleTheme}
+      />
 
       <main className="app-main">
-        <div className="three-panel-layout">
-          <ResourceSidebar
-            onResourceSelect={setSelectedResource}
-            selectedResourceId={selectedResource?.id || null}
-            refreshTrigger={resourceRefreshTrigger}
-            runningResources={runningResources}
-            onResourcesLoaded={setResources}
-            onRequestClusterShare={() => setShowClusterShareModal(true)}
-            sharedClusterRefreshTrigger={sharedClusterRefreshTrigger}
-          />
-          <ActionPanel
-            selectedResource={selectedResource}
-            onActionStart={handleActionStart}
-            onActionUpdate={handleActionUpdate}
-            onActionComplete={handleActionComplete}
-            onResourcesNeedRefresh={handleResourcesNeedRefresh}
-            runningAction={selectedResource ? runningResources.get(selectedResource.id) : undefined}
-          />
-          <ResultsPanel
-            results={results}
-            onClear={handleClearResults}
-          />
-        </div>
+        <ActionPanel
+          selectedResource={selectedResource}
+          onActionStart={handleActionStart}
+          onActionUpdate={handleActionUpdate}
+          onActionComplete={handleActionComplete}
+          onResourcesNeedRefresh={handleResourcesNeedRefresh}
+          runningAction={selectedResource ? runningResources.get(selectedResource.id) : undefined}
+        />
+        <ResultsPanel
+          results={results}
+          onClear={handleClearResults}
+        />
       </main>
 
       {showConfigModal && (

@@ -2,19 +2,11 @@
   position: fixed;
   inset: 0;
   z-index: 10000;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(12px) saturate(1.2);
-  -webkit-backdrop-filter: blur(12px) saturate(1.2);
+  background: rgba(0, 0, 0, 0.4);
   display: flex;
   align-items: center;
   justify-content: center;
   animation: idleOverlayFadeIn 0.3s ease;
-}
-
-body.light-mode .idle-overlay {
-  background: rgba(0, 0, 0, 0.4);
-  backdrop-filter: blur(16px) saturate(1.5);
-  -webkit-backdrop-filter: blur(16px) saturate(1.5);
 }
 
 @keyframes idleOverlayFadeIn {
@@ -23,14 +15,10 @@ body.light-mode .idle-overlay {
 }
 
 .idle-overlay-card {
-  background: var(--panel-bg);
-  backdrop-filter: blur(20px) saturate(1.4);
-  -webkit-backdrop-filter: blur(20px) saturate(1.4);
-  border: 1px solid var(--panel-border);
-  box-shadow: var(--glass-shadow-strong),
-              0 0 80px rgba(139, 127, 199, 0.15),
-              inset 0 1px 0 rgba(255, 255, 255, 0.1);
-  border-radius: 0;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+  border-radius: var(--radius-lg);
   padding: 40px 48px;
   min-width: 360px;
   max-width: 440px;
@@ -41,23 +29,9 @@ body.light-mode .idle-overlay {
   animation: idleCardSlideUp 0.35s ease;
 }
 
-body.light-mode .idle-overlay-card {
-  background: rgba(255, 255, 255, 0.92);
-  border-color: rgba(139, 127, 199, 0.2);
-  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.1),
-              0 0 60px rgba(139, 127, 199, 0.1),
-              inset 0 1px 0 rgba(255, 255, 255, 0.9);
-}
-
 @keyframes idleCardSlideUp {
-  from {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .idle-overlay-logo {
@@ -86,20 +60,19 @@ body.light-mode .idle-overlay-card {
 .idle-overlay-btn {
   margin-top: 8px;
   padding: 12px 36px;
-  background: linear-gradient(135deg, rgba(139, 127, 199, 0.5) 0%, rgba(139, 127, 199, 0.3) 100%);
-  border: 2px solid rgba(139, 127, 199, 0.6);
-  color: var(--text-primary);
+  background: var(--primary-color);
+  border: 1px solid var(--primary-dark);
+  color: #ffffff;
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.3s ease;
-  border-radius: 0;
+  border-radius: var(--radius-sm);
 }
 
 .idle-overlay-btn:hover {
-  background: linear-gradient(135deg, rgba(139, 127, 199, 0.6) 0%, rgba(139, 127, 199, 0.4) 100%);
-  border-color: rgba(139, 127, 199, 0.8);
-  box-shadow: 0 4px 20px rgba(139, 127, 199, 0.4);
+  background: var(--primary-dark);
+  box-shadow: 0 4px 20px rgba(99, 102, 241, 0.3);
 }
 
 .idle-overlay-status {
@@ -114,8 +87,8 @@ body.light-mode .idle-overlay-card {
 .idle-overlay-spinner {
   width: 18px;
   height: 18px;
-  border: 2px solid rgba(139, 127, 199, 0.3);
-  border-top-color: rgba(139, 127, 199, 0.8);
+  border: 2px solid var(--border-color);
+  border-top-color: var(--primary-color);
   border-radius: 50%;
   animation: idleSpinnerSpin 0.8s linear infinite;
 }
